@@ -1,13 +1,23 @@
 [project]
 name = "madplan"
-version = "0.0.1"
+version = "0.1.0"
 description = "Ugentlig madplan med samlet indkøbsliste"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "alembic>=1.16",
+    "argon2-cffi>=23",
+    "fastapi>=0.115",
+    "httpx>=0.28",
+    "recipe-scrapers>=15",
+    "sqlalchemy>=2.0.30",
+    "uvicorn>=0.30",
+]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
-scrape = ["recipe-scrapers>=15"]
+
+[project.scripts]
+madplan-admin = "madplan.cli:main"
 
 [build-system]
 requires = ["setuptools>=69"]
@@ -20,4 +30,4 @@ where = ["src"]
 testpaths = ["tests"]
 
 [tool.setuptools.package-data]
-madplan = ["ingredients/data/*.txt"]
+madplan = ["ingredients/data/*.txt", "migrations/*.py", "migrations/script.py.mako", "migrations/versions/*.py"]

@@ -1,0 +1,78 @@
+# Omregninger til sammenlægning på indkøbslisten (fase 3).
+#   navn | gram pr. stk | gram pr. dl
+# Navnet skal findes i ingredienser.txt. Tomt felt = ukendt.
+# Vejledende gennemsnit: et mellemstort stk uden emballage, 1 dl løst fyldt.
+
+løg | 150 |
+rødløg | 120 |
+salatløg | 200 |
+skalotteløg | 40 |
+forårsløg | 20 |
+hvidløg | 50 |
+porre | 200 |
+gulerod | 80 |
+kartofler | 100 |
+bagekartofler | 250 |
+søde kartofler | 350 |
+knoldselleri | 800 |
+bladselleri | 40 |
+pastinak | 150 |
+rødbeder | 150 |
+fennikel | 250 |
+squash | 300 |
+aubergine | 300 |
+peberfrugt | 150 |
+chili | 15 |
+tomat | 100 |
+agurk | 350 |
+salat | 300 |
+pak choi | 150 |
+spidskål | 800 |
+hvidkål | 1500 |
+blomkål | 800 |
+broccoli | 400 |
+champignon | 20 |
+avocado | 170 |
+citron | 120 |
+lime | 70 |
+appelsin | 200 |
+æble | 150 |
+pære | 170 |
+banan | 120 |
+mango | 350 |
+hokkaido græskar | 1200 |
+kyllingebryst | 150 |
+kyllingelår | 200 |
+hel kylling | 1500 |
+æg | 60 |
+mozzarella | 125 |
+burrata | 125 |
+flute | 250 |
+tortillas | 40 |
+
+ris | | 85
+risottoris | | 90
+røde linser | | 85
+hvedemel | | 60
+tipo 00 hvedemel | | 60
+fuldkornshvedemel | | 55
+sigtemel | | 60
+sukker | | 85
+flormelis | | 50
+brun farin | | 70
+rasp | | 40
+kokosmel | | 35
+mælk | | 100
+kærnemælk | | 100
+piskefløde | | 100
+madlavningsfløde | | 100
+creme fraiche | | 100
+yoghurt naturel | | 100
+græsk yoghurt | | 100
+skyr | | 100
+kokosmælk | | 100
+revet ost | | 40
+parmesan | | 40
+hakkede tomater | | 100
+ærter | | 60
+majs | | 65

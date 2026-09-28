@@ -39,6 +39,7 @@ rucola | fg | |
 spinat | fg | | frisk spinat
 babyspinat | fg | |
 pak choi | fg | |
+grønkål | fg | | grønkålsblade, friske grønkålsblade, palmekål
 spidskål | fg | |
 hvidkål | fg | |
 rosenkål | fg | |
@@ -47,6 +48,7 @@ broccoli | fg | | bimi, broccolini
 grønne asparges | fg | | asparges
 hvide asparges | fg | |
 champignon | fg | | champignoner, svampe
+shiitake | fg | | shiitakesvampe, shiitake svampe
 ærter | fg | | sukkerærter
 majs | fg | | majskolbe
 avocado | fg | |
@@ -98,6 +100,7 @@ kyllingelår | kod | | kyllingeoverlår
 hel kylling | kod | | kylling
 høne | kod | |
 bacon | kod | | baconskiver
+flæsk | kod | | stegeflæsk, skiveskåret flæsk, bryst flæsk
 chorizo | kod | |
 skinke | kod | | serrano skinke, parmaskinke
 skinkemignon | kod | |
@@ -124,6 +127,7 @@ creme fraiche | mej | | cremefraiche, fraiche
 yoghurt naturel | mej | | yoghurt
 græsk yoghurt | mej | |
 skyr | mej | | skyr med vanilje
+kvark | mej | | kvarg
 hytteost | mej | |
 flødeost | mej | | naturel flødeost, flødeost naturel
 hvidløgsflødeost | mej | |
@@ -158,6 +162,7 @@ jordbær | fg | |
 pasta | kol | | pasta penne, penne, pastarør, spaghetti, linguine, fusilli, tagliatelle, suppehorn, tørret pasta
 lasagneplader | kol | |
 ris | kol | | basmati ris, jasminris
+nudler | kol | | ramen nudler, ramennudler, ægnudler, udon nudler, hvedenudler
 risottoris | kol | |
 hakkede tomater | kol | | hakkede tomater på dåse
 flåede tomater | kol | |
@@ -196,7 +201,8 @@ riseddike | kol | |
 soja | kol | | soyasauce, sojasauce
 teriyakisauce | kol | |
 hoisinsauce | kol | | hoisin sauce
-engelsk sauce | kol | | worcestershiresauce
+engelsk sauce | kol | | worcestershiresauce, worcestershire sauce
+miso | kol | | misopasta, hvid miso, lys miso
 ketchup | kol | | tomatketchup
 sennep | kol | |
 dijonsennep | kol | | dijon sennep

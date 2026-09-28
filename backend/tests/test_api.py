@@ -265,6 +265,14 @@ def test_create_and_rename_ingredient(app, client):
         assert s.scalar(select(IngredientAlias).where(IngredientAlias.key == "løg")).source == "user"
 
 
+def test_new_ingredient_is_matched_in_existing_recipes(client):
+    rec = client.post("/api/recipes", json={"title": "A", "ingredients": [{"raw": "2 dragefrugter"}]}).json()
+    assert rec["ingredients"][0]["match_status"] == "ingen"
+    client.post("/api/ingredients", json={"name": "dragefrugt", "department": "fg"})
+    line = client.get(f"/api/recipes/{rec['id']}").json()["ingredients"][0]
+    assert (line["ingredient"]["name"], line["match_status"]) == ("dragefrugt", "sikker")
+
+
 def test_meta(client):
     meta = client.get("/api/meta").json()
     assert {"code": "kod", "name": "Kød & fisk"} in meta["departments"]

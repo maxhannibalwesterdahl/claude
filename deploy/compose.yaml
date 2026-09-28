@@ -1,4 +1,4 @@
-# Fase 0.3-spike: offline-indkøbsliste bag Tailscale Funnel.
+# Madplan bag Tailscale Funnel.
 # Kør fra denne mappe:  docker compose up -d --build
 # Kræver en .env-fil ved siden af (se .env.example). Den må ALDRIG committes.
 
@@ -15,21 +15,24 @@ services:
     volumes:
       - tailscale-state:/var/lib/tailscale
       - ./serve.json:/config/serve.json:ro
+    networks: [madplan]
     restart: unless-stopped
 
   app:
-    build: ../spike/offline
-    # Deler netværk med tailscale: appen kan kun nås via Funnel.
-    network_mode: service:tailscale
+    build: ..
     environment:
-      - APP_PASSWORD=${APP_PASSWORD}
       - APP_SECRET=${APP_SECRET}
     volumes:
-      - app-data:/data
-    depends_on:
-      - tailscale
+      - madplan-data:/data
+    # Ingen porte ud af Docker: appen kan kun nås via tailscale-containeren.
+    # Eget netværk (i stedet for at dele tailscales), så en genstart af den
+    # ene container ikke tager netværket fra den anden.
+    networks: [madplan]
     restart: unless-stopped
+
+networks:
+  madplan:
 
 volumes:
   tailscale-state:
-  app-data:
+  madplan-data:

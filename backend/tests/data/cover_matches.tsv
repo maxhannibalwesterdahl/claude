@@ -1,9 +1,9 @@
 # Sæt 4: 20 nye opskrifter. Kun varenavne, der ikke fandtes i sæt 1-3.
 # Facit skrevet før matcheren blev kørt på dem. Varenavnene er læserens output.
 # item	unit	forventet
-ramen nudler	g	-
-shiitake svampe	g	-
-miso	spsk	-
+ramen nudler	g	nudler
+shiitake svampe	g	shiitake
+miso	spsk	miso
 baby spinat	g	babyspinat
 chiliflager	tsk	chiliflager
 dryp worcestershire sauce		engelsk sauce
@@ -13,7 +13,7 @@ kirsebær	g	-
 øko lime		lime
 vand og isterninger	dl	vand
 øko appelsin		appelsin
-flæsk	skive	-
+flæsk	skive	flæsk
 purløg	håndfuld	purløg
 peberrod		-
 pasteuriserede æggeblommer		æg
@@ -33,11 +33,11 @@ koriander	bundt	frisk koriander
 æggehvide		æg
 skrubbede kartofler	kg	kartofler
 rødbeder	g	rødbeder
-friske grønkålsblade	g	-
+friske grønkålsblade	g	grønkål
 uskrællede æbler		æble
-kvark	g	-
+kvark	g	kvark
 skind-og benfri laksefilet	g	laksefilet
-friske grønkålsblade		-
+friske grønkålsblade		grønkål
 cherry	g	cherrytomater
 salami evt. med chili	g	-
 rucolasalat	g	rucola

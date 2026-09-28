@@ -7,7 +7,7 @@ from fastapi import APIRouter, FastAPI, HTTPException
 from fastapi.responses import FileResponse
 
 from ..auth import RateLimiter
-from ..catalog import sync_seed
+from ..catalog import rematch_open_lines, sync_seed
 from ..config import Settings, load_settings
 from ..db import Database, make_engine, migrate
 from . import auth_routes, ingredients, recipes
@@ -25,6 +25,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.db = Database(engine)
         with app.state.db.sessionmaker() as s:
             sync_seed(s)
+            rematch_open_lines(s)
+            s.commit()
         yield
         engine.dispose()
 

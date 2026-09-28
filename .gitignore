@@ -13,3 +13,6 @@ backend/data/
 node_modules/
 frontend/build/
 frontend/.svelte-kit/
+
+# Lokale Claude-indstillinger
+.claude/

@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
-from ..catalog import Catalog
+from ..catalog import Catalog, rematch_open_lines
 from ..ingredients.matcher import DEPARTMENTS, key
 from ..ingredients.parser_da import UNITS
 from ..models import Ingredient, IngredientAlias, RecipeIngredient
@@ -82,6 +82,9 @@ def create_ingredient(body: IngredientIn, session: DbSession, _: CurrentUser) ->
     ing = Ingredient()
     _fill(ing, body)
     session.add(ing)
+    session.flush()
+    # Andre opskrifter med samme varenavn får den nye vare med det samme.
+    rematch_open_lines(session)
     session.commit()
     return _out(ing, 0)
 

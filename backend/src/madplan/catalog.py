@@ -130,6 +130,23 @@ def learn_alias(session: Session, item: str, ingredient: Ingredient) -> int:
     return changed
 
 
+def rematch_open_lines(session: Session, catalog: "Catalog | None" = None) -> int:
+    """Match linjer uden sikker vare igen, fx efter nye varer i tabellen.
+    Bekræftede linjer røres ikke. Returnerer antal linjer, der fik en vare."""
+    catalog = catalog or Catalog(session)
+    changed = 0
+    open_lines = session.scalars(
+        select(RecipeIngredient).where(RecipeIngredient.match_status.in_(("ingen", "usikker")))
+    )
+    for line in open_lines:
+        found = catalog.matcher.match(line.item, line.unit) if line.item else None
+        if found and found.confidence == "sikker":
+            line.ingredient_id = catalog._id_by_name[found.ingredient.name]
+            line.match_status = "sikker"
+            changed += 1
+    return changed
+
+
 # --- Hovedingredienser -----------------------------------------------------
 
 _GRAMS_PER_UNIT = {"g": 1.0, "kg": 1000.0}

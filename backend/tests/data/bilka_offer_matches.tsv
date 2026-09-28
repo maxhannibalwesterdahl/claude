@@ -1,0 +1,37 @@
+# Facit: hvilke varer i ingredienstabellen et Bilka-tilbud er et relevant køb for.
+# Tilbud, der ikke står her, forventes IKKE at matche noget (fx elektronik,
+# pynt, færdigretter, pålæg, blandingsfars). Skrevet før tilbudsmatcheren.
+# Uge: 2026-09-24 til 2026-10-01 (tests/data/bilka_offers_2026-09-28.json)
+# heading	forventede varer (komma-separeret)
+Hakket okse-, grise- eller grise/kalvekød	hakket oksekød, hakket svinekød
+Dava danske frilandsæg	æg
+Athena autentisk græsk yoghurt	græsk yoghurt
+Parmigiano Reggiano eller Castello havarti	parmesan
+Okseculotte eller marineret lammekølle	oksekød
+Entrecotes eller ribeyes	oksekød
+XXL bacon	bacon
+Oksespidsbryst	oksekød
+Kyllingebrystfilet eller -inderfilet	kyllingebryst
+Almindelig eller gammeldags modnede sild	marinerede sild
+XXL pølser	pølser
+Mørbrad af dansk gris	svinemørbrad
+Agurk	agurk
+Grønlandske rejer, kold- eller varmrøget laks	rejer, røget laks
+Porchetta eller tørsaltet bacon	bacon
+Hele danske kyllingelår eller -overlår	kyllingelår
+Grana Padano eller Puck ost	parmesan
+Rødspættefileter, lakseportioner eller rejer	rødspættefilet, laksefilet, rejer
+Danpo hel dansk kylling	hel kylling
+Zucchi ekstra jomfru olivenolie	olivenolie
+Brystfilet med skind eller udbenet lår med skind af fransk majskylling	kyllingebryst, kyllingelår
+Tykstegsbøffer eller -medaljoner af okse	oksekød
+Kamben, røget bacon eller hamburgerryg	bacon
+Danske kartofler	kartofler
+Løse danske majs	majs
+John West tun 3-pak	tun på dåse
+Pasta	pasta
+Oatly plantedrik	havredrik
+Softkernerugbrød	rugbrød
+Grøntsager, brød eller baguettes	flute
+Bagerens brød	brød
+Rullepølser, sylte, frankfurter eller spegepølser	pølser

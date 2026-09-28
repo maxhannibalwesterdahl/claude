@@ -1,0 +1,267 @@
+# Ingredienstabel. Én linje pr. vare, som den står på indkøbslisten.
+#   navn | afdeling | basis | aliaser
+# afdeling: fg=frugt & grønt, brod=brød, kod=kød & fisk, mej=mejeri & køl,
+#           frost, kol=kolonial, kry=krydderier, dri=drikkevarer, andet
+# basis: b = basisvare (kommer ikke på indkøbslisten automatisk)
+# Navnet er altid selv et alias. Flertal klares af matcheren, men uregelmæssige
+# former skrives her. Bygget ud fra testsæt 1+2 (ikke det blinde sæt 3).
+
+# --- Frugt & grønt ---
+løg | fg | | alm løg, gule løg
+rødløg | fg | |
+salatløg | fg | |
+skalotteløg | fg | | bananskalotteløg
+forårsløg | fg | |
+perleløg | fg | |
+hvidløg | fg | |
+porre | fg | |
+gulerod | fg | | gulerødder
+kartofler | fg | | kartoffel
+babykartofler | fg | | nye kartofler
+bagekartofler | fg | | bagekartoffel
+søde kartofler | fg | | sød kartoffel
+knoldselleri | fg | |
+bladselleri | fg | |
+pastinak | fg | |
+jordskokker | fg | | jordskok
+rødbeder | fg | | rødbede
+fennikel | fg | |
+squash | fg | | grøn squash, gul squash
+aubergine | fg | |
+peberfrugt | fg | | rød peberfrugt, grøn peberfrugt, gul peberfrugt, røde peberfrugter, peberfrugter
+chili | fg | | rød chili, grøn chili
+tomat | fg | | tomater
+cherrytomater | fg | | cherrytomat, blommetomater
+agurk | fg | |
+salat | fg | | hjertesalat, iceberg, romainesalat
+feldsalat | fg | |
+rucola | fg | |
+spinat | fg | | frisk spinat
+babyspinat | fg | |
+pak choi | fg | |
+spidskål | fg | |
+hvidkål | fg | |
+rosenkål | fg | |
+blomkål | fg | |
+broccoli | fg | | bimi, broccolini
+grønne asparges | fg | | asparges
+hvide asparges | fg | |
+champignon | fg | | champignoner, svampe
+ærter | fg | | sukkerærter
+majs | fg | | majskolbe
+avocado | fg | |
+ingefær | fg | | frisk ingefær
+citron | fg | | øko citron, citronsaft, citronskal
+lime | fg | | limesaft, limeskal
+appelsin | fg | | appelsinskal
+æble | fg | | æbler, røde æbler
+pære | fg | | pærer
+banan | fg | |
+mango | fg | |
+ananas | fg | |
+melon | fg | | galia melon, cantaloupe melon, vandmelon
+granatæble | fg | |
+passionsfrugt | fg | |
+rabarber | fg | |
+stikkelsbær | fg | |
+hyldebær | fg | |
+hokkaido græskar | fg | | græskar
+karse | fg | |
+frisk basilikum | fg | |
+frisk timian | fg | |
+frisk rosmarin | fg | | rosmarinkviste
+frisk oregano | fg | |
+frisk mynte | fg | | mynte, mynteblad, mynteblade
+frisk salvie | fg | | salvie
+frisk koriander | fg | |
+dild | fg | | frisk dild
+persille | fg | | frisk persille, kruspersille
+bredbladet persille | fg | |
+estragon | fg | | estragonblade, frisk estragon
+kørvel | fg | |
+purløg | fg | | frisk purløg
+krydderurter | fg | | friske krydderurter
+
+# --- Brød ---
+flute | brod | | flutes, italiensk flute, baguette
+rugbrød | brod | |
+brød | brod | | groft brød, franskbrød, landbrød, speltbrød, sandwichbrød
+tortillas | brod | | tortillaer, tortilla
+tarteletter | brod | |
+
+# --- Kød & fisk ---
+hakket oksekød | kod | | oksefars
+hakket svinekød | kod | | svinefars, hakket grisekød
+hakket kylling | kod | | hakket kyllingekød
+kyllingebryst | kod | | kyllingebrystfilet, kyllingefilet, kyllingebryst med skind
+kyllingelår | kod | | kyllingeoverlår
+hel kylling | kod | | kylling
+høne | kod | |
+bacon | kod | | baconskiver
+chorizo | kod | |
+skinke | kod | | serrano skinke, parmaskinke
+skinkemignon | kod | |
+svinemørbrad | kod | | mørbrad
+pølser | kod | | wienerpølser
+oksekød | kod | | cuvette, culotte, oksefilet
+laksefilet | kod | | laks
+røget laks | kod | |
+torskefilet | kod | | torsk
+rødspættefilet | kod | | rødspætte
+lyssejfilet | kod | | lyssejfilet uden skind, sej
+rejer | kod | |
+stenbiderrogn | kod | |
+marinerede sild | kod | | sild
+tun på dåse | kol | | tun, tun i vand
+
+# --- Mejeri & køl ---
+smør | mej | b |
+mælk | mej | | sødmælk, letmælk, minimælk
+kærnemælk | mej | |
+piskefløde | mej | | fløde
+madlavningsfløde | mej | |
+creme fraiche | mej | | cremefraiche, fraiche
+yoghurt naturel | mej | | yoghurt
+græsk yoghurt | mej | |
+skyr | mej | | skyr med vanilje
+hytteost | mej | |
+flødeost | mej | | naturel flødeost, flødeost naturel
+hvidløgsflødeost | mej | |
+æg | mej | | æggeblommer, æggeblomme, æggehvider, æggehvide
+parmesan | mej | | parmigiano reggiano, grana padano
+cheddar | mej | | revet cheddar, cheddarost
+revet ost | mej | | revet mozzarella, pizzaost
+mozzarella | mej | | frisk mozzarella
+burrata | mej | |
+feta | mej | |
+salatost | mej | |
+halloumi | mej | |
+gær | mej | |
+butterdej | mej | |
+havredrik | mej | |
+tofu | mej | |
+pesto | mej | |
+remoulade | mej | |
+mayonnaise | mej | |
+gnocchi | mej | |
+
+# --- Frost ---
+frosne blåbær | frost | |
+frosne hindbær | frost | |
+frossen spinat | frost | |
+frossen broccoli | frost | |
+blåbær | fg | |
+hindbær | fg | |
+jordbær | fg | |
+
+# --- Kolonial ---
+pasta | kol | | pasta penne, penne, pastarør, spaghetti, linguine, fusilli, tagliatelle, suppehorn, tørret pasta
+lasagneplader | kol | |
+ris | kol | | basmati ris, jasminris
+risottoris | kol | |
+hakkede tomater | kol | | hakkede tomater på dåse
+flåede tomater | kol | |
+tomatpuré | kol | | koncentreret tomatpuré
+soltørrede tomater | kol | | soltørrede tomater i olie
+kikærter | kol | |
+sorte bønner | kol | | sorte bønner i lage
+kidneybønner | kol | |
+baked beans | kol | |
+røde linser | kol | |
+belugalinser | kol | |
+kokosmælk | kol | |
+kondenseret mælk | kol | |
+hvedemel | kol | b |
+tipo 00 hvedemel | kol | |
+fuldkornshvedemel | kol | | fuldkornsmel
+sigtemel | kol | |
+boghvedemel | kol | |
+majsstivelse | kol | b | maizena
+bagepulver | kol | b |
+sukker | kol | b |
+flormelis | kol | |
+brun farin | kol | |
+vaniljesukker | kol | b |
+glukosesirup | kol | |
+sirup | kol | |
+honning | kol | | akaciehonning, flydende honning
+olivenolie | kol | b |
+neutral olie | kol | b | olie, rapsolie, smagsneutral olie, solsikkeolie
+sesamolie | kol | |
+eddike | kol | b |
+æblecidereddike | kol | | æbleeddike
+balsamico | kol | | balsamicoeddike
+balsamicoglace | kol | | balsamico glace
+riseddike | kol | |
+soja | kol | | soyasauce, sojasauce
+teriyakisauce | kol | |
+hoisinsauce | kol | | hoisin sauce
+engelsk sauce | kol | | worcestershiresauce
+ketchup | kol | | tomatketchup
+sennep | kol | |
+dijonsennep | kol | | dijon sennep
+kapers | kol | |
+tahin | kol | |
+rød karrypasta | kol | |
+bouillon | kol | b | bouillonterning, grøntsagsbouillon, hønsebouillon, oksebouillon
+kalvefond | kol | |
+mandler | kol | |
+saltede mandler | kol | |
+hasselnødder | kol | |
+valnødder | kol | |
+cashewnødder | kol | |
+peanuts | kol | |
+pinjekerner | kol | |
+pistaciekerner | kol | | pistaciekerner uden salt
+kokosflager | kol | | ristede kokosflager
+græskarkerner | kol | |
+solsikkekerner | kol | |
+sesamfrø | kol | |
+hørfrø | kol | |
+rasp | kol | | pankorasp
+mørk chokolade | kol | |
+hvid chokolade | kol | |
+kakao | kol | | usødet kakao, kakaopulver
+kokosmel | kol | |
+rosiner | kol | |
+marcipan | kol | |
+tomatsauce | kol | |
+tomatsalsa | kol | |
+mornaysauce | kol | | let mornaysauce
+tomatsuppe | kol | |
+
+# --- Krydderier (tørret = basisvare) ---
+salt | kry | b | groft salt, flagesalt
+peber | kry | b | friskkværnet peber, sort peber
+salt og peber | kry | b | salt og friskkværnet peber
+tørret timian | kry | b |
+tørret rosmarin | kry | b |
+tørret oregano | kry | b |
+tørret basilikum | kry | b |
+paprika | kry | b | sød paprika
+røget paprika | kry | |
+spidskommen | kry | b | stødt spidskommen, hel spidskommen
+stødt koriander | kry | b |
+kanel | kry | b | stødt kanel
+kardemomme | kry | b | stødt kardemomme
+karry | kry | b | mediumstærk karry
+cayennepeber | kry | b |
+garam masala | kry | |
+muskatnød | kry | b |
+laurbærblade | kry | b | laurbærblad
+peberkorn | kry | b | sorte peberkorn, hvide peberkorn
+chiliflager | kry | b | tørrede chiliflager
+fennikelfrø | kry | |
+stjerneanis | kry | |
+safran | kry | |
+vaniljestang | kry | |
+vaniljepulver | kry | |
+
+# --- Drikkevarer ---
+vand | dri | b | kogevand, danskvand
+isterninger | andet | b |
+hvidvin | dri | | tør hvidvin
+rødvin | dri | |
+appelsinjuice | dri | |
+æblejuice | dri | |
+hyldeblomstsaft | dri | |

@@ -19,7 +19,8 @@ Formål: finde ud af, om de tre ting, der kan vælte projektet, holder.
    - Skriv den regelbaserede parser (§4 i SPEC) og tests mod testdataene.
    - *Færdig:* ≥ 90 % af linjerne giver korrekt mængde, enhed og vare.
      Fejlene er listet og kategoriseret.
-2. **Bilka-tilbud**
+2. **Bilka-tilbud** – ✅ færdig: tilbud hentes, varekobling god nok, tilbudskobling
+   delvis. Se [fase0-tilbud-og-kobling.md](fase0-tilbud-og-kobling.md)
    - Script, der henter alle Bilka-tilbud for ugen fra Tjek med sideinddeling.
    - Første udgave af tilbudsmatchning mod en lille ingredienstabel
      (ca. 50 almindelige varer).

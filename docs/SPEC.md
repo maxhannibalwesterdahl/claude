@@ -141,7 +141,11 @@ Planen fra idéfasen er gennemgået. Følgende er ændret eller præciseret:
 - **"Løbet tør":** sætter en basisvare på næste indkøbsliste med ét tryk.
 
 ### 3.7 Tilbud (første version: kun Bilka)
-- Ugens Bilka-tilbud hentes automatisk (dagligt) fra Tjek.
+- Ugens Bilka-tilbud hentes automatisk (dagligt) fra Tjek, **kun fra Bilkas
+  madvareavis** (Tjek har ingen kategorier; nonfood og halloween frasorteres).
+- Tilbudsmatch vises som forslag. Usikre forslag bekræftes eller afvises med ét
+  tryk, og svaret gemmes, så samme tilbud genkendes næste gang.
+- Pakningsstørrelse og kilopris vises, da mange tilbud er storpakninger.
 - **På indkøbslisten:** varer med et matchende tilbud markeres med pris og
   gyldighed.
 - **Retforslag ved planlægning:**
@@ -238,7 +242,7 @@ App-container
 | Valdemarsro, Madens Verden, Arla | Import | Testet i fase 0: 92 opskrifter importeret uden fejl | Lav |
 | Spis Bedre | Import | Virker ikke: 0 af 204 sider har opskriftsdata | – |
 | valdemarsro.dk `/?s=` | Søgning | Returnerer links, blandet med artikler | Mellem. Uofficielt, kan ændres |
-| Tjek API (`squid-api.tjek.com/v2`) | Bilka-tilbud | Testet: Bilka = dealer `93f13`, 200+ tilbud/uge med pris, mængde, enhed og gyldighed | Mellem. Uofficielt, ingen aftale |
+| Tjek API (`squid-api.tjek.com/v2`) | Bilka-tilbud | Testet: Bilka = dealer `93f13`, 644 tilbud i uge 40, heraf 191 i madvareavisen. Pris, mængde, enhed og gyldighed. Ingen kategorier | Mellem. Uofficielt, ingen aftale |
 | Salling Group API | – | Har ikke priser eller tilbud. Ikke brugbar | – |
 | Bilka ToGo | Normalpriser | Ikke efterprøvet | Udskudt |
 

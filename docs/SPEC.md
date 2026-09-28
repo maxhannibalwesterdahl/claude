@@ -31,8 +31,9 @@ Planen fra idéfasen er gennemgået. Følgende er ændret eller præciseret:
    `recipe-scrapers`, som vi kan bruge direkte. Mealie ville koste en ekstra
    tjeneste, et ekstra login, synkronisering mellem to datamodeller og afhængighed
    af deres API. Testet: `recipe-scrapers` læser Valdemarsro korrekt og har
-   færdige læsere til valdemarsro.dk, madensverden.dk, dr.dk, spisbedre.dk,
-   sundpaabudget.dk og hellofresh.dk.
+   færdige læsere til valdemarsro.dk, madensverden.dk, dr.dk, sundpaabudget.dk
+   og hellofresh.dk. Arla virker via generiske opskriftsdata. Spis Bedre virker
+   ikke (ingen opskriftsdata på siderne, testet i fase 0).
    *Konsekvens:* Home Assistant-integrationen via Mealie forsvinder. Kan bygges
    senere mod vores eget API (fase 6).
 2. **Ikke alle måltider er opskrifter.** "Pizza ude", "Rugbrød", "Grød" skal
@@ -234,6 +235,8 @@ App-container
 | Kilde | Bruges til | Status | Risiko |
 |---|---|---|---|
 | `recipe-scrapers` (Python) | Import fra danske opskriftssider | Testet på Valdemarsros lasagne: titel, 4 portioner, 21 ingredienslinjer korrekt | Lav. Vedligeholdt open source-bibliotek |
+| Valdemarsro, Madens Verden, Arla | Import | Testet i fase 0: 92 opskrifter importeret uden fejl | Lav |
+| Spis Bedre | Import | Virker ikke: 0 af 204 sider har opskriftsdata | – |
 | valdemarsro.dk `/?s=` | Søgning | Returnerer links, blandet med artikler | Mellem. Uofficielt, kan ændres |
 | Tjek API (`squid-api.tjek.com/v2`) | Bilka-tilbud | Testet: Bilka = dealer `93f13`, 200+ tilbud/uge med pris, mængde, enhed og gyldighed | Mellem. Uofficielt, ingen aftale |
 | Salling Group API | – | Har ikke priser eller tilbud. Ikke brugbar | – |

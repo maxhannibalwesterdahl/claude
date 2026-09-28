@@ -12,7 +12,8 @@ opfyldt på den rigtige server og en rigtig telefon.
 
 Formål: finde ud af, om de tre ting, der kan vælte projektet, holder.
 
-1. **Dansk ingredienslæser**
+1. **Dansk ingredienslæser** – ✅ færdig: 93,6 % i blind måling, se
+   [fase0-ingredienslaeser.md](fase0-ingredienslaeser.md)
    - Hent ingredienslinjer fra ca. 30 forskellige Valdemarsro-opskrifter
      (≥ 200 linjer) og gem dem som testdata.
    - Skriv den regelbaserede parser (§4 i SPEC) og tests mod testdataene.
@@ -22,6 +23,9 @@ Formål: finde ud af, om de tre ting, der kan vælte projektet, holder.
    - Script, der henter alle Bilka-tilbud for ugen fra Tjek med sideinddeling.
    - Første udgave af tilbudsmatchning mod en lille ingredienstabel
      (ca. 50 almindelige varer).
+   - Kobling af læserens varenavne til ingredienstabellen, målt på varerne fra
+     fase 0.1 ("citron", "øko citron", "citronsaft" osv.). Det er her,
+     AI-spørgsmålet reelt afgøres.
    - *Færdig:* ugens tilbud hentes komplet. Andelen af madvaretilbud, der
      matches korrekt, er målt og noteret.
 3. **Drift, Funnel og offline**

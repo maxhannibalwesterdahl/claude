@@ -1,0 +1,20 @@
+[project]
+name = "madplan"
+version = "0.0.1"
+description = "Ugentlig madplan med samlet indkøbsliste"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+scrape = ["recipe-scrapers>=15"]
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

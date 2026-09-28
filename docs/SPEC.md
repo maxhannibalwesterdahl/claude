@@ -13,7 +13,7 @@ Status: specifikation, intet er bygget endnu. Se [PLAN.md](PLAN.md) for rækkef�
 | | |
 |---|---|
 | Brugere | 2 voksne med hver sit login, én fælles husstand |
-| Husstand | 2 voksne + 1 barn (født ca. 2025, 1 år i dag) |
+| Husstand | 2 voksne + 1 barn (1 år) |
 | Primær enhed | Mobil (PWA på hjemmeskærmen). Tablet/computer til planlægning |
 | Indkøb | Én stor tur om ugen i Bilka, søndag eller mandag |
 | Drift | Egen LXC-container i Proxmox, adskilt fra Home Assistant |
@@ -25,7 +25,7 @@ Status: specifikation, intet er bygget endnu. Se [PLAN.md](PLAN.md) for rækkef�
 Planen fra idéfasen er gennemgået. Følgende er ændret eller præciseret:
 
 1. **Mealie droppes som motor.** Efter beslutningerne skulle vi selv bygge
-   madplanen (barneportioner, rester, ønskeliste), indkøbslisten (sammenlægning,
+   madplanen (barnets ret, rester, ønskeliste), indkøbslisten (sammenlægning,
    basisvarer, afkrydsning pr. dag) og den danske ingredienslæsning. Mealie ville
    kun have leveret opskriftslagring og import, og import kommer fra biblioteket
    `recipe-scrapers`, som vi kan bruge direkte. Mealie ville koste en ekstra
@@ -59,6 +59,11 @@ Planen fra idéfasen er gennemgået. Følgende er ændret eller præciseret:
    daglig kopi af databasefilen.
 10. **Drift sættes op tidligt**, ikke til sidst. Offline og Funnel på en rigtig
     telefon er en af de største risici og testes i fase 0.
+11. **Ingen automatisk skalering efter portioner** (brugerens beslutning). En
+    opskrift er ét familiemåltid, som den står. I stedet en manuel gange-knap
+    (×½, ×1, ×2) pr. dag, så der kan laves dobbelt til rester. Undgår skæve
+    mængder som "½ dåse" og fjerner husstandsopsætningen. Almindelige
+    opskrifter til 4 giver naturligt rester til jer.
 
 ## 3. Funktioner
 
@@ -73,45 +78,41 @@ Planen fra idéfasen er gennemgået. Følgende er ændret eller præciseret:
   ingredienser. Bruges til tilbudsforslag. Foreslås automatisk (kød/fisk/største
   mængde), kan rettes.
 - **Barnenote:** fast note pr. opskrift, fx "tag barnets portion fra før chili".
-- **Portioner:** fra opskriften. Hvis siden ikke oplyser det, antages 4.
+- **Portioner:** opskriftens antal portioner gemmes og vises tydeligt, men
+  bruges ikke til at skalere automatisk (se §3.3).
 
 ### 3.2 Madplan
 - En plan dækker en periode, der starter på indkøbsdagen (typisk søndag eller
   mandag) og løber 7 dage. Ingen fast ugestart.
 - **Én ret pr. dag** til hele husstanden (aftensmad). Frokost er ikke med i
   første version.
-- **Barn får noget andet:** en dag kan deles, så voksenretten kun beregnes til de
-  voksne og barnets ret kun til barnet.
+- **Barn får noget andet:** en dag kan have en ekstra ret til barnet. Typisk
+  fritekst (grød, mos, rester) uden indkøb, men kan også være en opskrift.
 - **Ret-typer pr. dag:** opskrift, fritekst (intet indkøb), rester.
-- **Rester:** "Rester fra <ret>" har intet indkøb. Kilderetten beregnes med
-  ekstra portioner svarende til restedagens portioner.
+- **Rester:** "Rester fra <ret>" har intet indkøb og ændrer ikke kilderetten.
+  Skal der laves dobbelt, sættes kilderetten manuelt til ×2.
 - **Bruger rest fra:** en opskrift (fx lasagne) kan markere, at den bruger rest
-  fra en anden dag (kødsovs). Kilderetten får ekstra portioner, og brugeren
-  markerer, hvilke af lasagnens ingredienser resten dækker. De bliver krydset af
-  automatisk. Appen vurderer ikke, om resten er nok.
+  fra en anden dag (kødsovs). Brugeren markerer, hvilke af lasagnens
+  ingredienser resten dækker, og de krydses af automatisk. Appen foreslår at
+  sætte kilderetten til ×2, men gør det ikke selv, og vurderer ikke, om resten
+  er nok.
 - **Ønskeliste:** retter til ugen, som trækkes ud på dagene manuelt. Ingen
   automatisk fordeling efter holdbarhed (fravalgt).
 - **Visning:** mobil = én dag ad gangen med swipe. Tablet/computer = ugegitter
   med træk og slip.
 
-### 3.3 Portioner
-- Husstandens medlemmer oprettes med rolle og fødselsdato.
-- Portionsfaktor pr. person (kan overskrives):
-
-  | Alder | Faktor |
-  |---|---|
-  | Voksen | 1,0 |
-  | 0-1 år | 0,2 |
-  | 1-3 år | 0,3 |
-  | 4-6 år | 0,5 |
-  | 7-10 år | 0,7 |
-  | 11+ år | 1,0 |
-
-- Dagens portioner = summen af faktorerne for dem, der spiser retten. I dag:
-  2,3 portioner. Opskriften skaleres med `portioner / opskriftens portioner`.
+### 3.3 Mængder
+- En opskrift bruges som den står: ét familiemåltid. Ingen portionsfaktorer og
+  ingen husstandsopsætning.
+- Hver ret i planen har en **gange-knap: ×½, ×1 (standard), ×2**. Bruges til at
+  lave dobbelt til rester eller til at justere opskrifter til 2 eller 8
+  personer.
+- Opskriftens antal portioner vises ved retten, så det er tydeligt, når en
+  opskrift er usædvanligt stor eller lille.
+- Ved ×½ rundes styk-enheder (dåse, stk, pakke, æg) op til hele tal.
 
 ### 3.4 Ingredienser pr. dag
-- Hver dag viser sine ingredienser, skaleret.
+- Hver dag viser sine ingredienser, ganget med dagens gange-knap.
 - Hver linje kan krydses af som **"har hjemme"**, og så kommer den ikke på
   indkøbslisten.
 - Linjer, der dækkes af rester, er krydset af automatisk og markeret "rest".
@@ -214,13 +215,12 @@ App-container
 | Tabel | Indhold |
 |---|---|
 | `user` | brugernavn, kodeords-hash |
-| `household_member` | navn, rolle (voksen/barn), fødselsdato, faktor-overskrivning |
 | `recipe` | titel, kilde-URL, portioner, fremgangsmåde, billede, barnenote |
 | `recipe_ingredient` | opskrift, rå tekst, mængde, enhed, ingrediens, note, hovedingrediens, gruppe |
 | `ingredient` | kanonisk navn, afdeling, basisvare, g/stk, g/dl |
 | `ingredient_alias` | alias → ingrediens (også brugerens rettelser) |
 | `plan` | startdato (indkøbsdag), antal dage |
-| `plan_meal` | plan, dato, type (opskrift/fritekst/rester), opskrift, spisende (alle/voksne/barn), rest-kilde |
+| `plan_meal` | plan, dato, type (opskrift/fritekst/rester), opskrift eller fritekst, gange (½/1/2), til barn (ja/nej), rest-kilde |
 | `plan_line_state` | plan_meal + recipe_ingredient → har hjemme / dækket af rest |
 | `wishlist_item` | plan, opskrift eller fritekst |
 | `shopping_extra` | egen vare på listen, afkrydset |
@@ -253,6 +253,7 @@ tilbudsmarkeringer udebliver.
 | To rækker (voksne/børn) | Fravalgt | Erstattet af "barn får noget andet" pr. dag |
 | Automatisk fordeling efter holdbarhed | Fravalgt | De fleste varer holder 5-6 dage |
 | Mealie | Fravalgt | Se §2.1 |
+| Skalering efter portioner og alder | Fravalgt | Opskrift = ét familiemåltid. Manuel ×½/×1/×2 i stedet (§3.3) |
 | Home Assistant-add-on/ingress | Fravalgt | Selvstændig app i Proxmox |
 | Cloudflare Tunnel, nyt domæne, Tailscale på telefoner | Fravalgt | Brugerens valg |
 | AI-matchning | Udskudt (fase 6) | Gratis først. Grænseflader forberedt (§4) |

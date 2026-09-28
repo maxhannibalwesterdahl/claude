@@ -49,15 +49,15 @@ op igen, før vi fortsætter.
 
 ## Fase 2 – Madplan
 
-- Husstand med fødselsdato og portionsfaktor.
 - Plan fra valgt indkøbsdag, 7 dage.
 - Ret pr. dag: opskrift, fritekst, rester. "Barn får noget andet".
-- "Bruger rest fra" med automatisk skalering af kilderetten.
+- Gange-knap pr. ret (×½, ×1, ×2).
+- "Bruger rest fra" med automatisk afkrydsning og forslag om ×2 på kilderetten.
 - Ønskeliste.
 - Mobil: én dag ad gangen. Computer: ugegitter med træk og slip.
-- Ingredienser pr. dag, skaleret, med "har hjemme".
+- Ingredienser pr. dag, med "har hjemme".
 - *Færdig:* en hel uge er planlagt på telefonen, og mængderne er kontrolleret
-  i hånden for mindst tre retter, inklusive en rest-kobling.
+  i hånden for mindst tre retter, inklusive én ret på ×2 og en rest-kobling.
 
 ## Fase 3 – Indkøbsliste
 

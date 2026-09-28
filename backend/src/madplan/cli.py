@@ -3,11 +3,15 @@
     madplan-admin create-user <brugernavn>
     madplan-admin set-password <brugernavn>
     madplan-admin list-users
+    madplan-admin backup [--keep 14]
 """
 
 import argparse
 import getpass
+import sqlite3
 import sys
+from datetime import date
+from pathlib import Path
 
 from sqlalchemy import select
 
@@ -36,10 +40,14 @@ def main(argv: list[str] | None = None) -> int:
     for name in ("create-user", "set-password"):
         sub.add_parser(name).add_argument("username")
     sub.add_parser("list-users")
+    sub.add_parser("backup").add_argument("--keep", type=int, default=14, help="antal dage, der gemmes")
     args = ap.parse_args(argv)
 
     settings = load_settings()
     settings.data_dir.mkdir(parents=True, exist_ok=True)
+    if args.cmd == "backup":
+        print(backup(settings.data_dir, args.keep))
+        return 0
     engine = make_engine(settings.db_url)
     migrate(engine)
     db = Database(engine)
@@ -68,6 +76,24 @@ def main(argv: list[str] | None = None) -> int:
             s.commit()
             print(f"Nyt kodeord gemt. {username} er logget ud på alle enheder.")
     return 0
+
+
+def backup(data_dir: Path, keep: int, today: date | None = None) -> Path:
+    """Kopi af databasen til data/backups/madplan-ÅÅÅÅ-MM-DD.db. Sikker, mens
+    appen kører (SQLites backup-funktion). Ældre kopier end `keep` slettes."""
+    folder = data_dir / "backups"
+    folder.mkdir(exist_ok=True)
+    target = folder / f"madplan-{(today or date.today()).isoformat()}.db"
+    src = sqlite3.connect(data_dir / "madplan.db")
+    dst = sqlite3.connect(target)
+    try:
+        src.backup(dst)
+    finally:
+        dst.close()
+        src.close()
+    for old in sorted(folder.glob("madplan-*.db"))[:-keep]:
+        old.unlink()
+    return target
 
 
 if __name__ == "__main__":

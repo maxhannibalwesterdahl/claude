@@ -4,7 +4,7 @@ Ugentlig madplan til eget brug for én husstand. Opskrifter importeres fra dansk
 opskriftssider, ingredienser lægges sammen på tværs af ugen, og indkøbslisten
 bruges på mobilen i Bilka.
 
-Status: specifikation, intet er bygget endnu. Se [PLAN.md](PLAN.md) for rækkefølge.
+Status: fase 0 og 1 er bygget. Se [PLAN.md](PLAN.md) for rækkefølge og status.
 
 ---
 

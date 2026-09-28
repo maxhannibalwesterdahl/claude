@@ -29,8 +29,8 @@ Formål: finde ud af, om de tre ting, der kan vælte projektet, holder.
      AI-spørgsmålet reelt afgøres.
    - *Færdig:* ugens tilbud hentes komplet. Andelen af madvaretilbud, der
      matches korrekt, er målt og noteret.
-3. **Drift, Funnel og offline** – ⏳ klar til afprøvning, se
-   [fase0-drift.md](fase0-drift.md)
+3. **Drift, Funnel og offline** – ✅ færdig 28-09-2026: kører i LXC 102 i Proxmox,
+   testprotokollen gennemført på begge telefoner. Se [fase0-drift.md](fase0-drift.md)
    - LXC i Proxmox med Docker. Tailscale-container med Funnel foran en minimal
      PWA (én side med en liste, der kan krydses af).
    - *Færdig:* åbnes fra begge telefoner uden Tailscale, kan lægges på
@@ -41,6 +41,9 @@ Formål: finde ud af, om de tre ting, der kan vælte projektet, holder.
 op igen, før vi fortsætter.
 
 ## Fase 1 – Opskrifter
+
+⏳ Bygget og sat i drift 28-09-2026. Mangler: brugerne oprettes, og de faste
+retter lægges ind (færdigt-kriteriet). Se [drift.md](drift.md).
 
 - Projektstruktur: FastAPI + SQLite + Alembic, SvelteKit-frontend, Docker
   Compose, tests i CI.

@@ -6,8 +6,9 @@ Formål: afprøve, før den rigtige app bygges, at
 2. begge telefoner kan åbne den via Tailscale Funnel uden at installere noget,
 3. indkøbslisten kan bruges uden dækning og synkroniserer bagefter.
 
-Testappen ligger i `spike/offline/` og smides væk bagefter. Driftsopsætningen i
-`deploy/` genbruges.
+Testappen lå i `spike/offline/` og er fjernet efter testen. Driftsopsætningen i
+`deploy/` kører nu den rigtige app. Trin 1-5 herunder gælder stadig for en ny
+opsætning. Daglig drift: se [drift.md](drift.md).
 
 **Allerede testet i udviklingsmiljøet:** appen, login med begrænsning af forsøg,
 offline-afkrydsning med to "telefoner" i Chromium, Docker-imaget (kører som
@@ -67,7 +68,7 @@ cd /opt/madplan && git checkout claude/weekly-meal-planner-app-kzmnlj
 cd /opt/madplan/deploy
 cp .env.example .env
 openssl rand -hex 32     # kopiér output til APP_SECRET
-nano .env                # udfyld TS_AUTHKEY, APP_PASSWORD, APP_SECRET
+nano .env                # udfyld TS_AUTHKEY og APP_SECRET
 chmod 600 .env
 ```
 
@@ -125,6 +126,9 @@ Kryds af og noter afvigelser.
 
 ## Bagefter
 
-- Stop og fjern: `cd /opt/madplan/deploy && docker compose down -v`
-  (`-v` sletter også testdata og Tailscale-tilstand).
-- Containeren og `deploy/` genbruges til den rigtige app i fase 1.
+Gjort 28-09-2026: testappen er erstattet af fase 1-appen i samme container og
+med samme Tailscale-tilstand (ingen ny auth key). Den gamle testdata-volumen
+`deploy_app-data` kan slettes med `docker volume rm deploy_app-data`.
+
+**Brug aldrig `docker compose down -v`** fremover. Det sletter databasen og
+Tailscale-tilstanden.

@@ -282,3 +282,19 @@ def test_meta(client):
 def test_unknown_api_route_is_json_404(client):
     r = client.get("/api/findes-ikke")
     assert r.status_code == 404 and r.json()["detail"] == "Findes ikke"
+
+
+def test_backup_keeps_newest_copies(app, client, tmp_path):
+    from datetime import date
+
+    from madplan.cli import backup
+
+    client.post("/api/recipes", json={"title": "Kødsovs", "ingredients": [{"raw": "1 løg"}]})
+    for day in range(1, 5):
+        backup(tmp_path, keep=2, today=date(2026, 10, day))
+    copies = sorted(p.name for p in (tmp_path / "backups").iterdir())
+    assert copies == ["madplan-2026-10-03.db", "madplan-2026-10-04.db"]
+    import sqlite3
+    con = sqlite3.connect(tmp_path / "backups" / copies[-1])
+    assert con.execute("select title from recipe").fetchall() == [("Kødsovs",)]
+    con.close()

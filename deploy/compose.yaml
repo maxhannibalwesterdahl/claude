@@ -1,0 +1,35 @@
+# Fase 0.3-spike: offline-indkøbsliste bag Tailscale Funnel.
+# Kør fra denne mappe:  docker compose up -d --build
+# Kræver en .env-fil ved siden af (se .env.example). Den må ALDRIG committes.
+
+services:
+  tailscale:
+    image: tailscale/tailscale:stable
+    hostname: madplan
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY}
+      - TS_STATE_DIR=/var/lib/tailscale
+      # Userspace: kræver ikke /dev/net/tun, så LXC'en behøver ingen ekstra rettigheder.
+      - TS_USERSPACE=true
+      - TS_SERVE_CONFIG=/config/serve.json
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+      - ./serve.json:/config/serve.json:ro
+    restart: unless-stopped
+
+  app:
+    build: ../spike/offline
+    # Deler netværk med tailscale: appen kan kun nås via Funnel.
+    network_mode: service:tailscale
+    environment:
+      - APP_PASSWORD=${APP_PASSWORD}
+      - APP_SECRET=${APP_SECRET}
+    volumes:
+      - app-data:/data
+    depends_on:
+      - tailscale
+    restart: unless-stopped
+
+volumes:
+  tailscale-state:
+  app-data:

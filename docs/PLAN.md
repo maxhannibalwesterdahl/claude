@@ -29,7 +29,8 @@ Formål: finde ud af, om de tre ting, der kan vælte projektet, holder.
      AI-spørgsmålet reelt afgøres.
    - *Færdig:* ugens tilbud hentes komplet. Andelen af madvaretilbud, der
      matches korrekt, er målt og noteret.
-3. **Drift, Funnel og offline**
+3. **Drift, Funnel og offline** – ⏳ klar til afprøvning, se
+   [fase0-drift.md](fase0-drift.md)
    - LXC i Proxmox med Docker. Tailscale-container med Funnel foran en minimal
      PWA (én side med en liste, der kan krydses af).
    - *Færdig:* åbnes fra begge telefoner uden Tailscale, kan lægges på

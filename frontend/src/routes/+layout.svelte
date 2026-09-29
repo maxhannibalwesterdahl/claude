@@ -13,15 +13,16 @@
 
 	const tabs = [
 		{ href: '/', label: 'Madplan', icon: 'M4 6h16v14H4zM4 10h16M8 3v5M16 3v5' },
+		{ href: '/planlaeg', label: 'Planlæg', icon: 'M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4' },
 		{ href: '/indkob', label: 'Indkøb', icon: 'M3 4h2l2.4 11h10.2L20 7H6.2M9 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2zM17 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2z' },
 		{ href: '/opskrifter', label: 'Opskrifter', icon: 'M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3zM5 17a3 3 0 0 1 3-3h11' },
-		{ href: '/tjek', label: 'Tjek', icon: 'M5 12l4 4 10-10' },
 		{ href: '/varer', label: 'Varer', icon: 'M4 6h16M4 12h16M4 18h10' }
 	];
 
 	function active(href: string): boolean {
 		const p = page.url.pathname;
-		if (href === '/') return p === '/';
+		if (href === '/') return p === '/' || p.startsWith('/dag/');
+		if (href === '/varer') return p.startsWith('/varer') || p.startsWith('/tjek');
 		if (href === '/opskrifter') return p.startsWith('/opskrift') || p === '/ny' || p === '/importer';
 		return p.startsWith(href);
 	}
@@ -37,7 +38,7 @@
 			<a href={tab.href} class:active={active(tab.href)} aria-current={active(tab.href) ? 'page' : undefined}>
 				<span class="icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d={tab.icon} /></svg></span>
 				<span>{tab.label}</span>
-				{#if tab.href === '/tjek' && reviewCount.value > 0}
+				{#if tab.href === '/varer' && reviewCount.value > 0}
 					<b class="count">{reviewCount.value}</b>
 				{/if}
 			</a>

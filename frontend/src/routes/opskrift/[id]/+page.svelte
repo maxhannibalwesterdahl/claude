@@ -5,6 +5,7 @@
 	import { api, ApiError } from '$lib/api';
 	import { formatQuantity } from '$lib/format';
 	import { groupLines } from '$lib/lines';
+	import { groupSteps } from '$lib/steps';
 	import type { Line, Recipe } from '$lib/types';
 
 	let recipe = $state<Recipe | null>(null);
@@ -20,17 +21,7 @@
 
 	const groups = $derived(recipe ? groupLines(recipe.ingredients) : []);
 
-	// Korte trin uden punktum er afsnitsoverskrifter ("Mornaysauce").
-	const isHeading = (s: string) => s.length <= 40 && !/[.!?:]$/.test(s) && s.split(' ').length <= 5;
-	const stepGroups = $derived.by(() => {
-		const out: { title: string; steps: string[] }[] = [];
-		for (const step of recipe?.instructions ?? []) {
-			if (isHeading(step)) out.push({ title: step, steps: [] });
-			else if (out.length) out[out.length - 1].steps.push(step);
-			else out.push({ title: '', steps: [step] });
-		}
-		return out;
-	});
+	const stepGroups = $derived(groupSteps(recipe?.instructions ?? []));
 	const toReview = $derived(recipe?.ingredients.filter((l) => l.match_status === 'usikker' || l.match_status === 'ingen').length ?? 0);
 
 	async function toggleMain(line: Line) {

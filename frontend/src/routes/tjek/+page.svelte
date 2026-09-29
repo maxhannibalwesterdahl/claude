@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { api, ApiError } from '$lib/api';
 	import IngredientPicker from '$lib/IngredientPicker.svelte';
+	import VarerTabs from '$lib/VarerTabs.svelte';
 	import { refreshReviewCount } from '$lib/review.svelte';
 	import type { IngredientRef, ReviewLine } from '$lib/types';
 
@@ -66,8 +67,10 @@
 
 <main>
 	<header class="top">
-		<h1>Tjek varer</h1>
+		<h1>Varer</h1>
 	</header>
+
+	<VarerTabs active="tjek" />
 
 	<p class="muted small">
 		Ingredienser, hvor appen ikke er sikker på, hvilken vare der skal købes. Dit valg huskes og bruges i alle

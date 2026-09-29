@@ -132,7 +132,7 @@
 	{#if data && !data.plan && !total}
 		<div class="empty">
 			<p>Ingen madplan endnu.</p>
-			<p><a class="button primary" href="/">Lav en madplan</a></p>
+			<p><a class="button primary" href="/planlaeg">Lav en madplan</a></p>
 		</div>
 	{:else if data && !total}
 		<div class="empty"><p>Listen er tom. Vælg retter i madplanen, så kommer ingredienserne her.</p></div>

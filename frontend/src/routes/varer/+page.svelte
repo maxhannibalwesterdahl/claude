@@ -1,5 +1,8 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import { api, ApiError } from '$lib/api';
+	import VarerTabs from '$lib/VarerTabs.svelte';
+	import { refreshReviewCount } from '$lib/review.svelte';
 	import { catalog } from '$lib/catalog.svelte';
 	import { formatNumber, parseNumber } from '$lib/format';
 	import type { Ingredient } from '$lib/types';
@@ -9,10 +12,11 @@
 	let editing = $state<number | 'ny' | null>(null);
 	let form = $state({ name: '', department: 'fg', pantry: false, perPiece: '', perDl: '' });
 	let loaded = $state(false);
-	let tab = $state<'alle' | 'basis'>('alle');
+	const tab = $derived<'alle' | 'basis'>(page.url.searchParams.get('fane') === 'basis' ? 'basis' : 'alle');
 	let busy = $state<number | null>(null);
 
 	$effect(() => {
+		refreshReviewCount().catch(() => {});
 		catalog
 			.load(true)
 			.then(() => (loaded = true))
@@ -120,10 +124,7 @@
 	{#if editing === 'ny'}{@render editor()}{/if}
 	{#if error && editing === null}<p class="error">{error}</p>{/if}
 
-	<div class="tabs segmented" role="tablist">
-		<button role="tab" aria-selected={tab === 'alle'} onclick={() => (tab = 'alle')}>Alle varer</button>
-		<button role="tab" aria-selected={tab === 'basis'} onclick={() => (tab = 'basis')}>Basisvarer ({pantryCount})</button>
-	</div>
+	<VarerTabs active={tab} {pantryCount} />
 
 	{#if tab === 'basis'}
 		<p class="muted small">Basisvarer er altid hjemme og kommer ikke på indkøbslisten. Mangler I en, så tryk "Løbet tør" under Indkøb.</p>
@@ -179,9 +180,6 @@
 </main>
 
 <style>
-	.tabs {
-		margin-bottom: 12px;
-	}
 	.line {
 		display: flex;
 		align-items: center;

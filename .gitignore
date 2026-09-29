@@ -1,0 +1,18 @@
+__pycache__/
+*.egg-info/
+.venv/
+.pytest_cache/
+
+# Hemmeligheder til drift
+deploy/.env
+
+# Lokal database og billeder under udvikling
+backend/data/
+
+# Frontend
+node_modules/
+frontend/build/
+frontend/.svelte-kit/
+
+# Lokale Claude-indstillinger
+.claude/

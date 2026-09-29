@@ -1,0 +1,302 @@
+:root {
+	--fg: #1d1f1c;
+	--muted: #676b64;
+	--bg: #f7f6f1;
+	--card: #ffffff;
+	--line: #e3e1d8;
+	/* Kanter på felter og afkrydsning: mindst 3:1 mod baggrunden (WCAG 1.4.11) */
+	--line-strong: #8a877d;
+	--accent: #2f6b3f;
+	--accent-fg: #ffffff;
+	--accent-soft: #e4efe5;
+	--warn: #9a5800;
+	--warn-soft: #fbefdc;
+	--danger: #b3261e;
+	--star: #b07800;
+	--radius: 14px;
+	--shadow: 0 1px 2px rgb(40 38 30 / 0.06), 0 2px 8px rgb(40 38 30 / 0.05);
+	--nav-h: 64px;
+	color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--fg: #ecebe6;
+		--muted: #a3a69e;
+		--bg: #141513;
+		--card: #1e201d;
+		--line: #33362f;
+		--line-strong: #6f736a;
+		--accent: #7cc48f;
+		--accent-fg: #0f1a12;
+		--accent-soft: #223328;
+		--warn: #f0a94a;
+		--warn-soft: #3a2a12;
+		--danger: #ff8a80;
+		--star: #f2c14e;
+		--shadow: none;
+		color-scheme: dark;
+	}
+}
+
+* {
+	box-sizing: border-box;
+}
+
+html {
+	-webkit-text-size-adjust: 100%;
+	text-size-adjust: 100%;
+}
+
+body {
+	margin: 0;
+	font: 17px/1.45 system-ui, -apple-system, 'Segoe UI', sans-serif;
+	color: var(--fg);
+	background: var(--bg);
+}
+
+main {
+	max-width: 760px;
+	margin: 0 auto;
+	/* Plads til notch/afrundede hjørner på telefoner på langs. */
+	padding: 0 max(16px, env(safe-area-inset-right)) calc(var(--nav-h) + 32px + env(safe-area-inset-bottom))
+		max(16px, env(safe-area-inset-left));
+	/* Lange ord og links brydes i stedet for at gøre siden bredere end skærmen. */
+	overflow-wrap: anywhere;
+}
+
+@media (min-width: 900px) {
+	main {
+		max-width: 1080px;
+		padding-left: 32px;
+		padding-right: 32px;
+	}
+}
+
+a {
+	color: var(--accent);
+}
+
+h1 {
+	font-size: 1.5rem;
+	line-height: 1.2;
+	margin: 0;
+}
+
+h2 {
+	font-size: 0.8rem;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: var(--muted);
+	margin: 28px 0 8px;
+}
+
+.top {
+	position: sticky;
+	top: 0;
+	z-index: 5;
+	background: var(--bg);
+	padding: calc(12px + env(safe-area-inset-top)) 0 10px;
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	border-bottom: 1px solid var(--line);
+	margin-bottom: 12px;
+}
+
+.top h1 {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+button,
+.button {
+	font: inherit;
+	font-size: 0.95rem;
+	padding: 9px 14px;
+	border-radius: 10px;
+	border: 1px solid var(--line-strong);
+	background: var(--card);
+	color: var(--fg);
+	cursor: pointer;
+	text-decoration: none;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	min-height: 42px;
+	/* Knapper må ombryde mellem ord, så lang tekst ikke skubber siden ud over
+	   skærmen, men aldrig midt i et ord ("Væl-g"). */
+	max-width: 100%;
+	text-align: left;
+	overflow-wrap: normal;
+}
+
+button.primary,
+.button.primary {
+	background: var(--accent);
+	border-color: var(--accent);
+	color: var(--accent-fg);
+	font-weight: 600;
+}
+
+button.danger {
+	color: var(--danger);
+}
+
+button:active:not(:disabled) {
+	transform: scale(0.98);
+}
+
+button.plain {
+	border: none;
+	background: none;
+	padding: 6px;
+	min-height: 0;
+}
+
+button:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
+input,
+select,
+textarea {
+	font: inherit;
+	color: var(--fg);
+	background: var(--card);
+	border: 1px solid var(--line-strong);
+	border-radius: 10px;
+	padding: 9px 11px;
+	width: 100%;
+	min-width: 0;
+	min-height: 42px;
+	/* Under 16px zoomer iPhone ind, når feltet får fokus, og zoomer ikke ud igen. */
+	font-size: max(16px, 1rem);
+}
+
+textarea {
+	resize: vertical;
+	line-height: 1.4;
+}
+
+input:focus,
+select:focus,
+textarea:focus,
+button:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 1px;
+}
+
+label.field {
+	display: grid;
+	min-width: 0;
+	gap: 4px;
+	font-size: 0.9rem;
+	color: var(--muted);
+}
+
+label.field > span {
+	font-weight: 600;
+}
+
+.card {
+	background: var(--card);
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	box-shadow: var(--shadow);
+}
+
+/* Fælles stil til faner og knapgrupper (vælger, varer, gange-knap). */
+.segmented {
+	display: flex;
+	gap: 4px;
+	padding: 4px;
+	background: var(--card);
+	border: 1px solid var(--line);
+	border-radius: 12px;
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+.segmented > button {
+	flex: 1 0 auto;
+	justify-content: center;
+	border: none;
+	border-radius: 9px;
+	background: none;
+	min-height: 38px;
+	padding: 6px 12px;
+	font-weight: 600;
+	color: var(--muted);
+	text-align: center;
+}
+.segmented > button[aria-selected='true'],
+.segmented > button[aria-pressed='true'] {
+	background: var(--accent);
+	color: var(--accent-fg);
+}
+
+.muted {
+	color: var(--muted);
+}
+
+.small {
+	font-size: 0.85rem;
+}
+
+.error {
+	background: var(--warn-soft);
+	color: var(--warn);
+	border-radius: 10px;
+	padding: 10px 12px;
+	margin: 12px 0;
+}
+
+.badge {
+	display: inline-block;
+	font-size: 0.75rem;
+	font-weight: 600;
+	padding: 1px 8px;
+	border-radius: 999px;
+	background: var(--warn-soft);
+	color: var(--warn);
+	white-space: nowrap;
+}
+
+.badge.ok {
+	background: var(--accent-soft);
+	color: var(--accent);
+}
+
+.row {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	flex-wrap: wrap;
+}
+
+.grow {
+	flex: 1;
+	min-width: 0;
+}
+
+/* Grid- og flex-børn må krympe under deres indholds bredde. */
+form > *,
+.row > * {
+	min-width: 0;
+}
+
+.ellipsis {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.empty {
+	text-align: center;
+	color: var(--muted);
+	padding: 48px 16px;
+}

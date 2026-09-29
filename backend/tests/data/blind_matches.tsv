@@ -1,0 +1,193 @@
+# Facit for kobling af varenavne i sæt 3 til ingredienstabellen.
+# "-" = ingen passende vare i tabellen (korrekt svar er intet match).
+# Skrevet før matcheren blev kørt på disse varer.
+# item	unit	forventet
+kyllingebryst med skind	g	kyllingebryst
+øko citron		citron
+brød	skive	brød
+hyldeblomstsaft	spsk	hyldeblomstsaft
+fersken		-
+abrikoser		-
+rucola	g	rucola
+pinjekerner	g	pinjekerner
+burrata	g	burrata
+vand	dl	vand
+fuldkorn ølandshvedemel	g	-
+hvedemel	g	hvedemel
+smør	g	smør
+persille	spsk	persille
+pasta penne	g	pasta
+tun i vand	dåse	tun på dåse
+cremefraiche 18 %	dl	creme fraiche
+majsstivelse	tsk	majsstivelse
+frisk mozzarella	g	mozzarella
+krydderurter	håndfuld	krydderurter
+hasselnødder	g	hasselnødder
+vaniljesukker	tsk	vaniljesukker
+æg		æg
+kokosmel	g	kokosmel
+mørk chokolade	g	mørk chokolade
+stødt kanel	tsk	kanel
+sukker	spsk	sukker
+jordbær	g	jordbær
+sukker	g	sukker
+skyr	dl	skyr
+gulerødder		gulerod
+bladselleri	stængel	bladselleri
+soltørrede tomater i olie	g	soltørrede tomater
+røde linser	g	røde linser
+belugalinser	g	belugalinser
+friske lasagneplader	g	lasagneplader
+burrata		burrata
+parmesan	g	parmesan
+hyldebærsaft	dl	-
+majsstivelse	g	majsstivelse
+rugbrød	skive	rugbrød
+brun farin	g	brun farin
+græsk yoghurt 10 %	dl	græsk yoghurt
+æble		æble
+mælk	dl	mælk
+flormelis	g	flormelis
+rød chili		chili
+flåede tomater	g	flåede tomater
+balsamico	tsk	balsamico
+frisk basilikum	håndfuld	frisk basilikum
+pære		pære
+citron		citron
+vaniljeis	l	-
+mandler	g	mandler
+gær	g	gær
+fuldkornshvedemel	g	fuldkornshvedemel
+mælk	spsk	mælk
+salt	tsk	salt
+marcipan	g	marcipan
+stødt kardemomme	knsp	kardemomme
+stødt kanel	knsp	kanel
+rosiner	g	rosiner
+perlesukker	spsk	-
+flødeost	g	flødeost
+mayonnaise	dl	mayonnaise
+citronsaft	spsk	citron
+dild	spsk	dild
+agurk		agurk
+sandwichbrød	skive	brød
+fuldkornsmel	g	fuldkornshvedemel
+oregano	tsk	tørret oregano
+rosmarin	tsk	tørret rosmarin
+cheddarost	g	cheddar
+grønne asparges	bundt	grønne asparges
+spidskål		spidskål
+ærter	dl	ærter
+forårsløg		forårsløg
+rapsolie	spsk	neutral olie
+hvidvinseddike	tsk	-
+sennep	tsk	sennep
+chokolade	g	-
+kakaopulver	tsk	kakao
+torsk	g	torskefilet
+hvedemel	dl	hvedemel
+rasp	dl	rasp
+olie		neutral olie
+cuvette		oksekød
+rødløg		rødløg
+hvidløg	fed	hvidløg
+gulerod		gulerod
+tomat		tomat
+knoldselleri	skive	knoldselleri
+rødvin	dl	rødvin
+timian	kvist	frisk timian
+estragon	kvist	estragon
+skyen		-
+gastrik	spsk	-
+estragon		estragon
+svinemørbrad		svinemørbrad
+smør		smør
+løg		løg
+balsamico	spsk	balsamico
+champignon	g	champignon
+madlavningsfløde	dl	madlavningsfløde
+ketchup	spsk	ketchup
+timian	potte	frisk timian
+engelsk sauce	spsk	engelsk sauce
+bouillon	dl	bouillon
+fløde	dl	piskefløde
+sovsekulør		-
+bimi	g	broccoli
+olivenolie		olivenolie
+vindruer	håndfuld	-
+valnødder	håndfuld	valnødder
+kylling		hel kylling
+vand	l	vand
+bouillonterning		bouillon
+peberkorn		peberkorn
+smør	spsk	smør
+hønsebouillon	dl	bouillon
+citronsaft		citron
+gulerødder	g	gulerod
+knoldselleri		knoldselleri
+persille	håndfuld	persille
+rosenkål	g	rosenkål
+tørret pasta	g	pasta
+parmigiano reggiano	g	parmesan
+ristede pinjekerner	spsk	pinjekerner
+basilikumblade	dl	frisk basilikum
+søde kartofler		søde kartofler
+hvidløgspulver	tsk	-
+smagsneutral olie	spsk	neutral olie
+serrano skinke	g	skinke
+risottoris	dl	risottoris
+bananskalotteløg		skalotteløg
+hvidvin	dl	hvidvin
+koncentreret kyllingefond	spsk	-
+grøn squash		squash
+æbler	g	æble
+hytteost	g	hytteost
+jordskokker	g	jordskokker
+bredbladet persille	dl	bredbladet persille
+limesaft	spsk	lime
+kyllingefilet	g	kyllingebryst
+bredbladet persille		bredbladet persille
+eddike	dl	eddike
+sukker	dl	sukker
+hel spidskommen	tsk	spidskommen
+perleløg		perleløg
+cherrytomater		cherrytomater
+salatost	g	salatost
+vand	spsk	vand
+kartofler	g	kartofler
+cherrytomater	g	cherrytomater
+champignoner	g	champignon
+tørrede kantareller	spsk	-
+saucejævner	tsk	-
+frisk purløg	dl	purløg
+speltbrød	g	brød
+halloumioste	g	halloumi
+pankorasp	dl	rasp
+rapsolie	l	neutral olie
+chilimayonnaise		-
+friske blåmuslinger i skal	kg	-
+tør hvidvin	dl	hvidvin
+bredbladet persille	stængel	bredbladet persille
+karry	tsk	karry
+hønsebouillon	l	bouillon
+flødeost naturel	g	flødeost
+fennikel		fennikel
+fennikler		fennikel
+landbrød	g	brød
+pastinakker		pastinak
+rørsukker	tsk	-
+brombær	g	-
+frisk timian	dl	frisk timian
+tørret timian	tsk	tørret timian
+grøntsagsbouillon	dl	bouillon
+mælkesauce	l	-
+groft brød	g	brød
+olie	spsk	neutral olie
+kyllingebrystfileter		kyllingebryst
+tomatpuré	spsk	tomatpuré
+tørrede chiliflager	tsk	chiliflager
+røde peberfrugter		peberfrugt
+frossen helbladet spinat	g	frossen spinat
+revet mozzarellaost	g	revet ost
+lasagneplader		lasagneplader
+mornaysauce	l	mornaysauce

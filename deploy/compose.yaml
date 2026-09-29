@@ -1,0 +1,38 @@
+# Madplan bag Tailscale Funnel.
+# Kør fra denne mappe:  docker compose up -d --build
+# Kræver en .env-fil ved siden af (se .env.example). Den må ALDRIG committes.
+
+services:
+  tailscale:
+    image: tailscale/tailscale:stable
+    hostname: madplan
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY}
+      - TS_STATE_DIR=/var/lib/tailscale
+      # Userspace: kræver ikke /dev/net/tun, så LXC'en behøver ingen ekstra rettigheder.
+      - TS_USERSPACE=true
+      - TS_SERVE_CONFIG=/config/serve.json
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+      - ./serve.json:/config/serve.json:ro
+    networks: [madplan]
+    restart: unless-stopped
+
+  app:
+    build: ..
+    environment:
+      - APP_SECRET=${APP_SECRET}
+    volumes:
+      - madplan-data:/data
+    # Ingen porte ud af Docker: appen kan kun nås via tailscale-containeren.
+    # Eget netværk (i stedet for at dele tailscales), så en genstart af den
+    # ene container ikke tager netværket fra den anden.
+    networks: [madplan]
+    restart: unless-stopped
+
+networks:
+  madplan:
+
+volumes:
+  tailscale-state:
+  madplan-data:

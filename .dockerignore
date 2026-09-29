@@ -1,0 +1,12 @@
+.git
+.claude
+**/node_modules
+**/.venv
+**/__pycache__
+**/.pytest_cache
+backend/data
+backend/tests
+frontend/build
+frontend/.svelte-kit
+spike
+deploy/.env

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import BackButton from '$lib/BackButton.svelte';
 	import { goto } from '$app/navigation';
 	import { api, ApiError } from '$lib/api';
 	import type { Recipe } from '$lib/types';
@@ -41,7 +42,7 @@
 
 <main>
 	<header class="top">
-		<a class="button" href="/" aria-label="Tilbage">‹</a>
+		<BackButton fallback="/opskrifter" />
 		<h1>Importér opskrift</h1>
 	</header>
 

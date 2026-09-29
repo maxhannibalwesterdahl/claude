@@ -4,9 +4,9 @@
     alembic revision --autogenerate -m "beskrivelse"
 """
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -105,3 +105,79 @@ class RecipeIngredient(Base):
 
     recipe: Mapped[Recipe] = relationship(back_populates="ingredients")
     ingredient: Mapped[Ingredient | None] = relationship()
+
+
+# --- Madplan (fase 2) ---------------------------------------------------------
+
+
+class Plan(Base):
+    """En madplan fra indkøbsdagen og et antal dage frem."""
+
+    __tablename__ = "plan"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    start_date: Mapped[date] = mapped_column(Date, index=True)
+    days: Mapped[int] = mapped_column(Integer, default=7)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    meals: Mapped[list["PlanMeal"]] = relationship(
+        back_populates="plan", cascade="all, delete-orphan", order_by="PlanMeal.date"
+    )
+    wishlist: Mapped[list["WishlistItem"]] = relationship(
+        back_populates="plan", cascade="all, delete-orphan", order_by="WishlistItem.id"
+    )
+
+
+class PlanMeal(Base):
+    """Én ret på én dag. Højst én til husstanden og én til barnet pr. dag."""
+
+    __tablename__ = "plan_meal"
+    __table_args__ = (UniqueConstraint("plan_id", "date", "for_child"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    plan_id: Mapped[int] = mapped_column(ForeignKey("plan.id", ondelete="CASCADE"), index=True)
+    date: Mapped[date] = mapped_column(Date)
+    for_child: Mapped[bool] = mapped_column(Boolean, default=False)
+    # "opskrift", "fritekst" eller "rester"
+    kind: Mapped[str] = mapped_column(String(10))
+    recipe_id: Mapped[int | None] = mapped_column(ForeignKey("recipe.id", ondelete="SET NULL"))
+    text: Mapped[str] = mapped_column(String(200), default="")
+    multiplier: Mapped[float] = mapped_column(Float, default=1.0)
+    # "rester": retten, resterne er fra. "opskrift": retten, den bruger rest fra.
+    leftover_from_id: Mapped[int | None] = mapped_column(ForeignKey("plan_meal.id", ondelete="SET NULL"))
+
+    plan: Mapped[Plan] = relationship(back_populates="meals")
+    recipe: Mapped[Recipe | None] = relationship()
+    leftover_from: Mapped["PlanMeal | None"] = relationship(remote_side=[id])
+    line_states: Mapped[list["PlanLineState"]] = relationship(
+        back_populates="meal", cascade="all, delete-orphan"
+    )
+
+
+class PlanLineState(Base):
+    """En ingredienslinje i en planlagt ret, der ikke skal købes."""
+
+    __tablename__ = "plan_line_state"
+    __table_args__ = (UniqueConstraint("meal_id", "line_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    meal_id: Mapped[int] = mapped_column(ForeignKey("plan_meal.id", ondelete="CASCADE"), index=True)
+    line_id: Mapped[int] = mapped_column(ForeignKey("recipe_ingredient.id", ondelete="CASCADE"))
+    # "hjemme" (har vi) eller "rest" (dækkes af rest fra en anden dag)
+    state: Mapped[str] = mapped_column(String(10))
+
+    meal: Mapped[PlanMeal] = relationship(back_populates="line_states")
+
+
+class WishlistItem(Base):
+    """En ret, I gerne vil have i perioden, men ikke har lagt på en dag endnu."""
+
+    __tablename__ = "wishlist_item"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    plan_id: Mapped[int] = mapped_column(ForeignKey("plan.id", ondelete="CASCADE"), index=True)
+    recipe_id: Mapped[int | None] = mapped_column(ForeignKey("recipe.id", ondelete="CASCADE"))
+    text: Mapped[str] = mapped_column(String(200), default="")
+
+    plan: Mapped[Plan] = relationship(back_populates="wishlist")
+    recipe: Mapped[Recipe | None] = relationship()

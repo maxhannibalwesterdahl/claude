@@ -1,4 +1,5 @@
 <script lang="ts">
+	import BackButton from '$lib/BackButton.svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { api, ApiError } from '$lib/api';
@@ -36,7 +37,7 @@
 		if (!recipe || !confirm(`Slet "${recipe.title}"?`)) return;
 		try {
 			await api(`/recipes/${recipe.id}`, { method: 'DELETE' });
-			await goto('/');
+			await goto('/opskrifter');
 		} catch (e) {
 			error = e instanceof ApiError ? e.message : 'Kunne ikke slette';
 		}
@@ -45,7 +46,7 @@
 
 <main>
 	<header class="top">
-		<a class="button" href="/" aria-label="Tilbage">‹</a>
+		<BackButton fallback="/opskrifter" />
 		<h1>{recipe?.title ?? ''}</h1>
 		{#if recipe}<a class="button" href="/opskrift/{recipe.id}/rediger">Rediger</a>{/if}
 	</header>

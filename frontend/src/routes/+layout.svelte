@@ -1,19 +1,28 @@
 <script lang="ts">
 	import '../app.css';
+	import { afterNavigate } from '$app/navigation';
 	import { page } from '$app/state';
+	import { navState } from '$lib/nav.svelte';
 	import { reviewCount } from '$lib/review.svelte';
 
 	let { children } = $props();
 
+	afterNavigate(({ from }) => {
+		if (from) navState.inApp = true;
+	});
+
 	const tabs = [
-		{ href: '/', label: 'Opskrifter', icon: 'M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3zM5 17a3 3 0 0 1 3-3h11' },
+		{ href: '/', label: 'Madplan', icon: 'M4 6h16v14H4zM4 10h16M8 3v5M16 3v5' },
+		{ href: '/opskrifter', label: 'Opskrifter', icon: 'M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3zM5 17a3 3 0 0 1 3-3h11' },
 		{ href: '/tjek', label: 'Tjek', icon: 'M5 12l4 4 10-10' },
 		{ href: '/varer', label: 'Varer', icon: 'M4 6h16M4 12h16M4 18h10' }
 	];
 
 	function active(href: string): boolean {
 		const p = page.url.pathname;
-		return href === '/' ? p === '/' || p.startsWith('/opskrift') || p === '/ny' || p === '/importer' : p.startsWith(href);
+		if (href === '/') return p === '/';
+		if (href === '/opskrifter') return p.startsWith('/opskrift') || p === '/ny' || p === '/importer';
+		return p.startsWith(href);
 	}
 
 	const showNav = $derived(page.url.pathname !== '/login');

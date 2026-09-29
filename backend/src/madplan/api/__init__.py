@@ -10,7 +10,7 @@ from ..auth import RateLimiter
 from ..catalog import rematch_open_lines, sync_seed
 from ..config import Settings, load_settings
 from ..db import Database, make_engine, migrate
-from . import auth_routes, ingredients, recipes
+from . import auth_routes, ingredients, plans, recipes
 from .deps import CurrentUser, get_settings  # noqa: F401  (bruges af ruterne)
 
 
@@ -36,6 +36,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(auth_routes.router)
     app.include_router(recipes.router)
     app.include_router(ingredients.router)
+    app.include_router(plans.router)
     app.include_router(_images(settings))
 
     @app.get("/api/health")

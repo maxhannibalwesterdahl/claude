@@ -1,0 +1,252 @@
+<script lang="ts">
+	import { api } from './api';
+	import { shortDate, weekdayName } from './dates';
+	import { searchKey } from './format';
+	import type { Meal, Plan, RecipeSummary, SlotChoice } from './types';
+
+	interface Props {
+		plan: Plan;
+		date: string;
+		forChild: boolean;
+		onchoose: (choice: SlotChoice) => void;
+		oncancel: () => void;
+	}
+	let { plan, date, forChild, onchoose, oncancel }: Props = $props();
+
+	type Tab = 'opskrift' | 'ønske' | 'rester' | 'fritekst';
+	let tab = $state<Tab>('opskrift');
+	let q = $state('');
+	let text = $state('');
+	let recipes = $state<RecipeSummary[] | null>(null);
+	let error = $state('');
+
+	const quick = $derived(forChild ? ['Grød', 'Mos', 'Rugbrød', 'Pasta'] : ['Pizza ude', 'Rugbrød', 'Takeaway', 'Spiser ude']);
+
+	// Retter på tidligere dage, der kan give rester.
+	const sources = $derived(
+		plan.days
+			.filter((d) => d.date < date)
+			.flatMap((d) => [d.meal, d.child])
+			.filter((m): m is Meal => !!m && m.kind === 'opskrift')
+	);
+
+	const shown = $derived(
+		(recipes ?? []).filter((r) => searchKey(r.title + ' ' + r.main_ingredients.join(' ')).includes(searchKey(q)))
+	);
+
+	$effect(() => {
+		api<RecipeSummary[]>('/recipes')
+			.then((r) => (recipes = r))
+			.catch(() => (error = 'Kunne ikke hente opskrifter'));
+	});
+
+	function submitText(e: SubmitEvent) {
+		e.preventDefault();
+		if (text.trim()) onchoose({ kind: 'fritekst', text: text.trim() });
+	}
+
+	function keydown(e: KeyboardEvent) {
+		if (e.key === 'Escape') oncancel();
+	}
+</script>
+
+<svelte:window onkeydown={keydown} />
+
+<div class="backdrop" onclick={oncancel} aria-hidden="true"></div>
+<div class="sheet" role="dialog" aria-modal="true" aria-label="Vælg ret">
+	<header>
+		<div class="grow">
+			<strong>{forChild ? 'Barnets ret' : 'Aftensmad'}</strong>
+			<div class="muted small">{weekdayName(date)} {shortDate(date)}</div>
+		</div>
+		<button onclick={oncancel}>Luk</button>
+	</header>
+
+	<div class="tabs" role="tablist">
+		<button role="tab" aria-selected={tab === 'opskrift'} onclick={() => (tab = 'opskrift')}>Opskrift</button>
+		{#if plan.wishlist.length}
+			<button role="tab" aria-selected={tab === 'ønske'} onclick={() => (tab = 'ønske')}>Ønsker ({plan.wishlist.length})</button>
+		{/if}
+		{#if sources.length}
+			<button role="tab" aria-selected={tab === 'rester'} onclick={() => (tab = 'rester')}>Rester</button>
+		{/if}
+		<button role="tab" aria-selected={tab === 'fritekst'} onclick={() => (tab = 'fritekst')}>Fritekst</button>
+	</div>
+
+	<div class="body">
+		{#if error}<p class="error">{error}</p>{/if}
+
+		{#if tab === 'opskrift'}
+			<input type="search" bind:value={q} placeholder="Søg opskrift eller ingrediens" aria-label="Søg" />
+			<ul>
+				{#each shown as r (r.id)}
+					<li>
+						<button class="option" onclick={() => onchoose({ kind: 'opskrift', recipe_id: r.id })}>
+							{#if r.image_url}<img src={r.image_url} alt="" loading="lazy" />{:else}<span class="noimg"></span>{/if}
+							<span class="grow">
+								<span class="title">{r.title}</span>
+								<span class="muted small">
+									{[r.servings ? `${r.servings} pers.` : '', r.main_ingredients.length ? `★ ${r.main_ingredients.join(', ')}` : ''].filter(Boolean).join(' · ')}
+								</span>
+							</span>
+						</button>
+					</li>
+				{:else}
+					{#if recipes}<li class="muted empty-row">Ingen opskrifter matcher.</li>{/if}
+				{/each}
+			</ul>
+		{:else if tab === 'ønske'}
+			<ul>
+				{#each plan.wishlist as w (w.id)}
+					<li>
+						<button class="option" onclick={() => onchoose({ kind: 'ønske', wish_id: w.id })}>
+							{#if w.recipe?.image_url}<img src={w.recipe.image_url} alt="" />{:else}<span class="noimg"></span>{/if}
+							<span class="grow title">{w.title}</span>
+						</button>
+					</li>
+				{/each}
+			</ul>
+		{:else if tab === 'rester'}
+			<p class="muted small">Ingen indkøb. Skal der laves dobbelt, så sæt retten til ×2.</p>
+			<ul>
+				{#each sources as m (m.id)}
+					<li>
+						<button class="option" onclick={() => onchoose({ kind: 'rester', leftover_from_id: m.id })}>
+							<span class="grow">
+								<span class="title">Rester: {m.title}</span>
+								<span class="muted small">{weekdayName(m.date)} · ×{m.multiplier === 0.5 ? '½' : m.multiplier}</span>
+							</span>
+						</button>
+					</li>
+				{/each}
+			</ul>
+		{:else}
+			<form onsubmit={submitText}>
+				<input bind:value={text} placeholder={forChild ? 'Fx grød' : 'Fx pizza ude'} maxlength="200" aria-label="Ret" />
+				<button class="primary" disabled={!text.trim()}>Vælg</button>
+			</form>
+			<div class="chips">
+				{#each quick as t}
+					<button onclick={() => onchoose({ kind: 'fritekst', text: t })}>{t}</button>
+				{/each}
+			</div>
+			<p class="muted small">Fritekst giver ingen indkøb.</p>
+		{/if}
+	</div>
+</div>
+
+<style>
+	.backdrop {
+		position: fixed;
+		inset: 0;
+		z-index: 20;
+		background: rgb(0 0 0 / 0.4);
+	}
+	.sheet {
+		position: fixed;
+		z-index: 21;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		max-height: 88dvh;
+		display: flex;
+		flex-direction: column;
+		background: var(--bg);
+		border-radius: 16px 16px 0 0;
+		padding: 12px max(16px, env(safe-area-inset-right)) env(safe-area-inset-bottom) max(16px, env(safe-area-inset-left));
+		box-shadow: 0 -8px 32px rgb(0 0 0 / 0.25);
+	}
+	@media (min-width: 700px) {
+		/* iPad og computer: dialog midt på skærmen. */
+		.sheet {
+			left: 50%;
+			right: auto;
+			bottom: auto;
+			top: 8dvh;
+			width: min(560px, 92vw);
+			max-height: 84dvh;
+			transform: translateX(-50%);
+			border-radius: 16px;
+		}
+	}
+	header {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		padding-bottom: 8px;
+	}
+	.tabs {
+		display: flex;
+		gap: 6px;
+		overflow-x: auto;
+		padding-bottom: 8px;
+		border-bottom: 1px solid var(--line);
+	}
+	.tabs button {
+		flex: none;
+		min-height: 36px;
+		padding: 6px 12px;
+		border-radius: 999px;
+	}
+	.tabs button[aria-selected='true'] {
+		background: var(--accent);
+		border-color: var(--accent);
+		color: var(--accent-fg);
+	}
+	.body {
+		overflow-y: auto;
+		padding: 12px 0 16px;
+		overscroll-behavior: contain;
+	}
+	ul {
+		list-style: none;
+		padding: 0;
+		margin: 8px 0 0;
+	}
+	.option {
+		width: 100%;
+		border: none;
+		border-bottom: 1px solid var(--line);
+		border-radius: 0;
+		background: none;
+		padding: 8px 2px;
+		gap: 12px;
+		min-height: 56px;
+	}
+	.option img,
+	.noimg {
+		width: 48px;
+		height: 48px;
+		border-radius: 8px;
+		object-fit: cover;
+		flex: none;
+		background: var(--accent-soft);
+	}
+	.option .grow {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+	}
+	.title {
+		font-weight: 600;
+	}
+	form {
+		display: flex;
+		gap: 8px;
+	}
+	form input {
+		flex: 1;
+	}
+	form button {
+		flex: none;
+	}
+	.chips {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		margin-top: 12px;
+	}
+	.empty-row {
+		padding: 16px 0;
+	}
+</style>

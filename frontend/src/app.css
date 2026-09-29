@@ -122,9 +122,11 @@ button,
 	align-items: center;
 	gap: 6px;
 	min-height: 42px;
-	/* Knapper må ombryde, så lang tekst ikke skubber siden ud over skærmen. */
+	/* Knapper må ombryde mellem ord, så lang tekst ikke skubber siden ud over
+	   skærmen, men aldrig midt i et ord ("Væl-g"). */
 	max-width: 100%;
 	text-align: left;
+	overflow-wrap: normal;
 }
 
 button.primary,

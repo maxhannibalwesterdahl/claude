@@ -58,6 +58,9 @@ retter lægges ind (færdigt-kriteriet). Se [drift.md](drift.md).
 
 ## Fase 2 – Madplan
 
+⏳ Bygget og sat i drift 29-09-2026. Mangler færdigt-kriteriet: en rigtig uge
+planlagt på telefonen, og mængderne kontrolleret i hånden.
+
 - Plan fra valgt indkøbsdag, 7 dage.
 - Ret pr. dag: opskrift, fritekst, rester. "Barn får noget andet".
 - Gange-knap pr. ret (×½, ×1, ×2).

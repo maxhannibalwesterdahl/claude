@@ -63,8 +63,8 @@
 
 		<p class="muted">
 			{#if recipe.servings}<strong class="servings">{recipe.servings} portioner</strong>{/if}
-			{#if recipe.servings && recipe.source_url} · {/if}
-			{#if recipe.source_url}
+			{#if recipe.servings && recipe.source_url && /^https?:\/\//i.test(recipe.source_url)} · {/if}
+			{#if recipe.source_url && /^https?:\/\//i.test(recipe.source_url)}
 				<a href={recipe.source_url} target="_blank" rel="noopener noreferrer">{new URL(recipe.source_url).hostname.replace(/^www\./, '')}</a>
 			{/if}
 		</p>

@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 MatchStatus = Literal["sikker", "usikker", "ingen", "bekræftet"]
 
@@ -61,6 +61,14 @@ class RecipeIn(BaseModel):
     child_note: str = Field("", max_length=2000)
     source_url: str | None = Field(None, max_length=500)
     ingredients: list[LineIn] = []
+
+    @field_validator("source_url")
+    @classmethod
+    def _http_only(cls, v: str | None) -> str | None:
+        # Vises som link i appen. Kun http(s), så fx "javascript:" ikke kan gemmes.
+        if v and v.strip() and not v.strip().lower().startswith(("http://", "https://")):
+            raise ValueError("Linket skal starte med https://")
+        return v
 
 
 class RecipeOut(BaseModel):

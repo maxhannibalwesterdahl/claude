@@ -29,6 +29,14 @@ def test_login_is_rate_limited(anon):
     assert r.status_code == 200
 
 
+def test_rate_limit_uses_address_set_by_proxy(anon):
+    # Klienten kan selv skrive forreste adresser i X-Forwarded-For. Den sidste
+    # (sat af Tailscale) er den samme, så grænsen rammer stadig.
+    codes = [anon.post("/api/login", json={"username": "max", "password": "forkert"},
+                       headers={"x-forwarded-for": f"10.0.0.{i}, 7.7.7.7"}).status_code for i in range(6)]
+    assert codes == [401] * 5 + [429]
+
+
 def test_new_password_logs_out_old_sessions(app, client):
     assert client.get("/api/me").json()["username"] == "max"
     with app.state.db.sessionmaker() as s:
@@ -105,6 +113,17 @@ def test_update_keeps_line_ids_and_learns_confirmed_items(client):
     # "dragefrugt" er lært; flertalsformen i opskrift B rettes kun, hvis nøglen er den samme.
     assert client.post("/api/parse", json={"lines": ["1 dragefrugt"]}).json()[0]["ingredient"]["name"] == "mango"
     assert client.get(f"/api/recipes/{other['id']}").json()["ingredients"][0]["match_status"] == "ingen"
+
+
+@pytest.mark.parametrize("url", ["javascript:alert(1)", " JavaScript:alert(1)", "data:text/html,x", "ftp://x.dk"])
+def test_source_url_must_be_http(client, url):
+    assert client.post("/api/recipes", json={"title": "A", "source_url": url}).status_code == 422
+
+
+def test_source_url_http_is_accepted(client):
+    r = client.post("/api/recipes", json={"title": "A", "source_url": "https://www.valdemarsro.dk/lasagne/"})
+    assert r.status_code == 201
+    assert client.post("/api/recipes", json={"title": "B", "source_url": ""}).status_code == 201
 
 
 def test_line_from_other_recipe_is_rejected(client):

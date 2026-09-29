@@ -162,7 +162,7 @@
 								</ol>
 							{/each}
 						{:else if recipe}
-							<p class="muted">Opskriften har ingen fremgangsmåde. {#if recipe.source_url}<a href={recipe.source_url} target="_blank" rel="noopener noreferrer">Se den på siden</a>.{/if}</p>
+							<p class="muted">Opskriften har ingen fremgangsmåde. {#if recipe.source_url && /^https?:\/\//i.test(recipe.source_url)}<a href={recipe.source_url} target="_blank" rel="noopener noreferrer">Se den på siden</a>.{/if}</p>
 						{/if}
 					</section>
 				</div>

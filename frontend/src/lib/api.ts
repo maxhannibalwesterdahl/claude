@@ -13,7 +13,11 @@ export class ApiError extends Error {
 function message(detail: unknown, status: number): string {
 	if (typeof detail === 'string') return detail;
 	if (detail && typeof detail === 'object' && 'message' in detail) return String(detail.message);
-	if (Array.isArray(detail)) return 'Ugyldige oplysninger';
+	if (Array.isArray(detail)) {
+		// Valideringsfejl fra serveren: vis den første besked ("Linket skal starte med https://").
+		const msg = detail[0]?.msg;
+		return typeof msg === 'string' ? msg.replace(/^Value error, /, '') : 'Ugyldige oplysninger';
+	}
 	return `Fejl ${status}`;
 }
 

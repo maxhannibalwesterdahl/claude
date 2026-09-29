@@ -36,7 +36,9 @@ CurrentUser = Annotated[User, Depends(current_user)]
 
 
 def client_ip(request: Request) -> str:
-    # Tailscale Funnel sender klientens IP i X-Forwarded-For. Appen kan kun nås
-    # gennem Funnel, så headeren kan stoles på.
-    fwd = request.headers.get("x-forwarded-for", "")
-    return fwd.split(",")[0].strip() or (request.client.host if request.client else "?")
+    # Tailscale Funnel er den eneste vej ind og sætter klientens IP i
+    # X-Forwarded-For. Brug den sidste adresse: den er sat af Tailscale. De
+    # forreste kan klienten selv have skrevet og må ikke bruges til at
+    # begrænse loginforsøg.
+    fwd = [p.strip() for p in request.headers.get("x-forwarded-for", "").split(",") if p.strip()]
+    return fwd[-1] if fwd else (request.client.host if request.client else "?")

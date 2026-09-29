@@ -85,7 +85,7 @@
 		<div class="columns">
 		<section>
 		<h2>Ingredienser</h2>
-		<p class="muted small hint">★ = hovedingrediens. Appen kigger efter tilbud på dem. Tryk på stjernen for at sætte eller fjerne den. Der må gerne være flere.</p>
+		<p class="muted small hint">Tryk ☆ for at markere hovedingredienser. Appen holder øje med tilbud på dem.</p>
 		{#if toReview}
 			<p class="small">
 				<span class="badge">{toReview} at tjekke</span>

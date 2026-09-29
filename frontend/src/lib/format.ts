@@ -41,8 +41,18 @@ export function unitLabel(unit: string, amount: number): string {
 	return amount > 1 ? (PLURAL[unit] ?? unit) : unit;
 }
 
+/** 1000 g -> 1 kg, 1500 ml -> 1,5 l, 250 ml -> 2,5 dl (kun til visning). */
+function normalize(q: number, qMax: number | null, unit: string | null): [number, number | null, string | null] {
+	const top = qMax ?? q;
+	if (unit === 'g' && top >= 1000) return [q / 1000, qMax === null ? null : qMax / 1000, 'kg'];
+	if (unit === 'ml' && top >= 1000) return [q / 1000, qMax === null ? null : qMax / 1000, 'l'];
+	if (unit === 'ml' && top >= 100) return [q / 100, qMax === null ? null : qMax / 100, 'dl'];
+	return [q, qMax, unit];
+}
+
 export function formatQuantity(q: number | null, qMax: number | null, unit: string | null): string {
 	if (q === null) return unit ?? '';
+	[q, qMax, unit] = normalize(q, qMax, unit);
 	const amount = qMax !== null ? `${formatNumber(q)}-${formatNumber(qMax)}` : formatNumber(q);
 	return unit ? `${amount} ${unitLabel(unit, qMax ?? q)}` : amount;
 }

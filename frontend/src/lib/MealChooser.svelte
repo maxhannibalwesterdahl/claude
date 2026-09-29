@@ -77,7 +77,7 @@
 		<button class:primary={wishMode} onclick={oncancel}>{wishMode ? 'Færdig' : 'Luk'}</button>
 	</header>
 
-	<div class="tabs" role="tablist">
+	<div class="tabs segmented" role="tablist">
 		<button role="tab" aria-selected={tab === 'opskrift'} onclick={() => (tab = 'opskrift')}>Opskrift</button>
 		{#if plan.wishlist.length && !wishMode}
 			<button role="tab" aria-selected={tab === 'ønske'} onclick={() => (tab = 'ønske')}>Ønsker ({plan.wishlist.length})</button>
@@ -195,22 +195,7 @@
 		padding-bottom: 8px;
 	}
 	.tabs {
-		display: flex;
-		gap: 6px;
-		overflow-x: auto;
-		padding-bottom: 8px;
-		border-bottom: 1px solid var(--line);
-	}
-	.tabs button {
-		flex: none;
-		min-height: 36px;
-		padding: 6px 12px;
-		border-radius: 999px;
-	}
-	.tabs button[aria-selected='true'] {
-		background: var(--accent);
-		border-color: var(--accent);
-		color: var(--accent-fg);
+		margin-bottom: 4px;
 	}
 	.body {
 		overflow-y: auto;

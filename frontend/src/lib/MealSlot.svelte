@@ -106,10 +106,9 @@
 
 		{#if meal.kind === 'opskrift' && meal.recipe}
 			<div class="controls">
-				<div class="seg" role="group" aria-label="Gange">
+				<div class="seg segmented" role="group" aria-label="Gange">
 					{#each MULTS as [value, label]}
 						<button
-							class:on={meal.multiplier === value}
 							aria-pressed={meal.multiplier === value}
 							disabled={busy}
 							onclick={() => run(() => planApi.patchMeal(meal!.id, { multiplier: value }))}>{label}</button
@@ -149,10 +148,12 @@
 		{/if}
 
 		{#if meal.lines.length}
-			<details class="lines" open>
+			<!-- Sammenklappet som standard: dagen handler om retten. Åben, når rester skal markeres. -->
+			<details class="lines" open={!!meal.leftover_from}>
 				<summary>
-					Ingredienser
+					<span class="grow">Ingredienser</span>
 					<span class="muted small">{toBuy} skal købes</span>
+					<span class="chev" aria-hidden="true">›</span>
 				</summary>
 				{#if meal.leftover_from}
 					<p class="muted small">Tryk "rest" på det, resten fra {meal.leftover_from.title.toLowerCase()} dækker.</p>
@@ -251,25 +252,10 @@
 		align-items: end;
 	}
 	.seg {
-		display: inline-flex;
-		border: 1px solid var(--line);
-		border-radius: 10px;
-		overflow: hidden;
 		flex: none;
 	}
 	.seg button {
-		border: none;
-		border-radius: 0;
 		min-width: 52px;
-		justify-content: center;
-		font-weight: 600;
-	}
-	.seg button + button {
-		border-left: 1px solid var(--line);
-	}
-	.seg button.on {
-		background: var(--accent);
-		color: var(--accent-fg);
 	}
 	.rest-from {
 		display: grid;
@@ -291,8 +277,23 @@
 		font-weight: 600;
 		display: flex;
 		gap: 8px;
-		align-items: baseline;
-		padding: 4px 0;
+		align-items: center;
+		min-height: 44px;
+		padding: 0 4px;
+		margin: 0 -4px;
+		border-radius: 8px;
+		list-style: none;
+	}
+	.lines summary::-webkit-details-marker {
+		display: none;
+	}
+	.chev {
+		font-size: 1.3rem;
+		color: var(--muted);
+		transition: transform 0.15s;
+	}
+	.lines[open] .chev {
+		transform: rotate(90deg);
 	}
 	h4 {
 		margin: 10px 0 2px;

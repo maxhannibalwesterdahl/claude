@@ -114,8 +114,13 @@
 				<span class:warn={shopping.status === 'offline' || shopping.status === 'error'}>{statusText}</span>
 			</div>
 		</div>
-		{#if total}<div class="progress" aria-label="{done} af {total} købt"><b>{done}</b>/{total}</div>{/if}
+		{#if total}<div class="progress"><b>{done}</b>/{total}</div>{/if}
 	</header>
+	{#if total}
+		<div class="bar" role="progressbar" aria-label="Købt" aria-valuemin="0" aria-valuemax={total} aria-valuenow={done}>
+			<span style="width: {(done / total) * 100}%"></span>
+		</div>
+	{/if}
 
 	{#if actionError}<p class="error" role="alert">{actionError}</p>{/if}
 
@@ -134,7 +139,11 @@
 	{/if}
 
 	{#if total}
-		<label class="hide"><input type="checkbox" bind:checked={hideBought} /> Skjul købte</label>
+		<div class="tools">
+			<button class="chip" aria-pressed={hideBought} onclick={() => (hideBought = !hideBought)}>
+				{hideBought ? `Vis købte (${done})` : 'Skjul købte'}
+			</button>
+		</div>
 	{/if}
 
 	{#each sections as s (s.code)}
@@ -260,15 +269,35 @@
 	.add button {
 		flex: none;
 	}
-	.hide {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		color: var(--muted);
-		font-size: 0.9rem;
-		margin: 8px 0;
+	.bar {
+		height: 6px;
+		border-radius: 3px;
+		background: var(--line);
+		overflow: hidden;
+		margin: -4px 0 12px;
 	}
-	.hide input,
+	.bar span {
+		display: block;
+		height: 100%;
+		background: var(--accent);
+		transition: width 0.3s;
+	}
+	.tools {
+		display: flex;
+		justify-content: flex-end;
+		margin: 4px 0;
+	}
+	.chip {
+		min-height: 36px;
+		padding: 4px 14px;
+		border-radius: 999px;
+		font-size: 0.9rem;
+	}
+	.chip[aria-pressed='true'] {
+		background: var(--accent-soft);
+		border-color: var(--accent);
+		color: var(--accent);
+	}
 	.order button {
 		width: auto;
 		min-height: 0;
@@ -304,7 +333,7 @@
 		width: 30px;
 		height: 30px;
 		border-radius: 8px;
-		border: 2px solid var(--line);
+		border: 2px solid var(--line-strong);
 		display: grid;
 		place-items: center;
 		font-weight: 800;

@@ -120,7 +120,7 @@
 	{#if editing === 'ny'}{@render editor()}{/if}
 	{#if error && editing === null}<p class="error">{error}</p>{/if}
 
-	<div class="tabs" role="tablist">
+	<div class="tabs segmented" role="tablist">
 		<button role="tab" aria-selected={tab === 'alle'} onclick={() => (tab = 'alle')}>Alle varer</button>
 		<button role="tab" aria-selected={tab === 'basis'} onclick={() => (tab = 'basis')}>Basisvarer ({pantryCount})</button>
 	</div>
@@ -180,25 +180,7 @@
 
 <style>
 	.tabs {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 4px;
-		padding: 4px;
 		margin-bottom: 12px;
-		background: var(--card);
-		border: 1px solid var(--line);
-		border-radius: 12px;
-	}
-	.tabs button {
-		border: none;
-		justify-content: center;
-		background: none;
-		font-weight: 600;
-		color: var(--muted);
-	}
-	.tabs button[aria-selected='true'] {
-		background: var(--accent);
-		color: var(--accent-fg);
 	}
 	.line {
 		display: flex;

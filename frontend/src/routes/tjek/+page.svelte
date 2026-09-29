@@ -136,4 +136,13 @@
 		gap: 2px;
 		margin: 6px 0 10px;
 	}
+	/* Større trykflade på links til opskrifterne */
+	.uses li {
+		padding: 4px 0;
+		line-height: 1.5;
+	}
+	.uses a {
+		display: inline-block;
+		padding: 4px 0;
+	}
 </style>

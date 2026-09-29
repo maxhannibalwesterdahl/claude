@@ -4,14 +4,17 @@
 	--bg: #f7f6f1;
 	--card: #ffffff;
 	--line: #e3e1d8;
+	/* Kanter på felter og afkrydsning: mindst 3:1 mod baggrunden (WCAG 1.4.11) */
+	--line-strong: #8a877d;
 	--accent: #2f6b3f;
 	--accent-fg: #ffffff;
 	--accent-soft: #e4efe5;
 	--warn: #9a5800;
 	--warn-soft: #fbefdc;
 	--danger: #b3261e;
-	--star: #c98a00;
-	--radius: 12px;
+	--star: #b07800;
+	--radius: 14px;
+	--shadow: 0 1px 2px rgb(40 38 30 / 0.06), 0 2px 8px rgb(40 38 30 / 0.05);
 	--nav-h: 64px;
 	color-scheme: light;
 }
@@ -23,6 +26,7 @@
 		--bg: #141513;
 		--card: #1e201d;
 		--line: #33362f;
+		--line-strong: #6f736a;
 		--accent: #7cc48f;
 		--accent-fg: #0f1a12;
 		--accent-soft: #223328;
@@ -30,6 +34,7 @@
 		--warn-soft: #3a2a12;
 		--danger: #ff8a80;
 		--star: #f2c14e;
+		--shadow: none;
 		color-scheme: dark;
 	}
 }
@@ -113,7 +118,7 @@ button,
 	font-size: 0.95rem;
 	padding: 9px 14px;
 	border-radius: 10px;
-	border: 1px solid var(--line);
+	border: 1px solid var(--line-strong);
 	background: var(--card);
 	color: var(--fg);
 	cursor: pointer;
@@ -141,6 +146,10 @@ button.danger {
 	color: var(--danger);
 }
 
+button:active:not(:disabled) {
+	transform: scale(0.98);
+}
+
 button.plain {
 	border: none;
 	background: none;
@@ -159,7 +168,7 @@ textarea {
 	font: inherit;
 	color: var(--fg);
 	background: var(--card);
-	border: 1px solid var(--line);
+	border: 1px solid var(--line-strong);
 	border-radius: 10px;
 	padding: 9px 11px;
 	width: 100%;
@@ -198,6 +207,36 @@ label.field > span {
 	background: var(--card);
 	border: 1px solid var(--line);
 	border-radius: var(--radius);
+	box-shadow: var(--shadow);
+}
+
+/* Fælles stil til faner og knapgrupper (vælger, varer, gange-knap). */
+.segmented {
+	display: flex;
+	gap: 4px;
+	padding: 4px;
+	background: var(--card);
+	border: 1px solid var(--line);
+	border-radius: 12px;
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+.segmented > button {
+	flex: 1 0 auto;
+	justify-content: center;
+	border: none;
+	border-radius: 9px;
+	background: none;
+	min-height: 38px;
+	padding: 6px 12px;
+	font-weight: 600;
+	color: var(--muted);
+	text-align: center;
+}
+.segmented > button[aria-selected='true'],
+.segmented > button[aria-pressed='true'] {
+	background: var(--accent);
+	color: var(--accent-fg);
 }
 
 .muted {

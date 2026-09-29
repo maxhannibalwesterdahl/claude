@@ -133,13 +133,20 @@
 	<header class="top">
 		<div class="grow">
 			<h1>Madplan</h1>
-			{#if plan}<div class="period muted">{periodLabel(plan.start_date, plan.end_date)}</div>{/if}
+			{#if plan}
+				<!-- Skift mellem planer (uger) ved perioden, så det ikke forveksles med dagene -->
+				<div class="period">
+					{#if plans.length > 1}
+						<button class="plain" aria-label="Forrige plan" disabled={planIndex >= plans.length - 1} onclick={() => load(plans[planIndex + 1].id)}>‹</button>
+					{/if}
+					<span>{periodLabel(plan.start_date, plan.end_date)}</span>
+					{#if plans.length > 1}
+						<button class="plain" aria-label="Næste plan" disabled={planIndex <= 0} onclick={() => load(plans[planIndex - 1].id)}>›</button>
+					{/if}
+				</div>
+			{/if}
 		</div>
-		{#if plan}
-			<button aria-label="Forrige plan" disabled={planIndex >= plans.length - 1} onclick={() => load(plans[planIndex + 1].id)}>‹</button>
-			<button aria-label="Næste plan" disabled={planIndex <= 0} onclick={() => load(plans[planIndex - 1].id)}>›</button>
-			<button onclick={newPlan}>+ Ny</button>
-		{/if}
+		{#if plan}<button onclick={newPlan}>+ Ny plan</button>{/if}
 	</header>
 
 	{#if error}<p class="error" role="alert">{error}</p>{/if}
@@ -225,6 +232,31 @@
 			{/key}
 		</section>
 
+		<!-- Telefon: hele ugen på én gang. Gitteret dækker det på iPad/computer. -->
+		<section class="week">
+			<h2>Ugen</h2>
+			<ul>
+				{#each plan.days as d (d.date)}
+					<li>
+						<button
+							class="plain"
+							class:on={d.date === day.date}
+							onclick={() => {
+								selected = d.date;
+								scrollTo({ top: 0, behavior: 'smooth' });
+							}}
+						>
+							<span class="wk-day" class:today={d.date === today()}>{weekday(d.date)} {parseDate(d.date).getDate()}.</span>
+							<span class="grow wk-meal">
+								{#if d.meal}<span>{d.meal.title}{#if d.meal.multiplier !== 1}&nbsp;<b class="wk-mult">×{d.meal.multiplier === 0.5 ? '½' : d.meal.multiplier}</b>{/if}</span>{:else}<span class="muted">Ingen ret</span>{/if}
+								{#if d.child}<span class="wk-child">Barn: {d.child.title}</span>{/if}
+							</span>
+						</button>
+					</li>
+				{/each}
+			</ul>
+		</section>
+
 		<section class="wishes">
 			<h2>Ønskeliste</h2>
 			<p class="muted small">Retter I vil have i perioden. Tryk på en dag for at lægge retten der.</p>
@@ -281,7 +313,24 @@
 
 <style>
 	.period {
+		display: flex;
+		align-items: center;
+		gap: 2px;
 		font-size: 0.9rem;
+		color: var(--muted);
+		margin-left: -6px;
+	}
+	.period span {
+		padding: 0 6px;
+	}
+	.period button {
+		min-height: 28px;
+		padding: 0 8px;
+		font-size: 1.1rem;
+		color: var(--accent);
+	}
+	.period button:disabled {
+		visibility: hidden;
 	}
 	.top button {
 		padding: 8px 12px;
@@ -446,6 +495,60 @@
 	.child-toggle {
 		justify-self: start;
 		color: var(--accent);
+	}
+
+	/* Ugeoverblik (telefon) */
+	.week ul {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		background: var(--card);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		box-shadow: var(--shadow);
+		overflow: hidden;
+	}
+	.week li + li {
+		border-top: 1px solid var(--line);
+	}
+	.week button {
+		width: 100%;
+		display: flex;
+		gap: 12px;
+		align-items: baseline;
+		padding: 12px 14px;
+		border-radius: 0;
+		min-height: 48px;
+	}
+	.week button.on {
+		background: var(--accent-soft);
+	}
+	.wk-day {
+		flex: 0 0 64px;
+		font-weight: 700;
+		color: var(--muted);
+		text-transform: capitalize;
+	}
+	.wk-day.today {
+		color: var(--accent);
+	}
+	.wk-meal {
+		display: flex;
+		flex-direction: column;
+		font-weight: 600;
+	}
+	.wk-mult {
+		color: var(--accent);
+	}
+	.wk-child {
+		font-size: 0.85rem;
+		font-weight: 400;
+		color: var(--muted);
+	}
+	@media (min-width: 900px) {
+		.week {
+			display: none;
+		}
 	}
 
 	/* Ønskeliste */

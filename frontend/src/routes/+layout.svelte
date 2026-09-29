@@ -35,7 +35,7 @@
 	<nav aria-label="Hovedmenu">
 		{#each tabs as tab}
 			<a href={tab.href} class:active={active(tab.href)} aria-current={active(tab.href) ? 'page' : undefined}>
-				<svg viewBox="0 0 24 24" aria-hidden="true"><path d={tab.icon} /></svg>
+				<span class="icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d={tab.icon} /></svg></span>
 				<span>{tab.label}</span>
 				{#if tab.href === '/tjek' && reviewCount.value > 0}
 					<b class="count">{reviewCount.value}</b>
@@ -70,8 +70,21 @@
 		text-decoration: none;
 	}
 	a.active {
+		color: var(--fg);
+		font-weight: 700;
+	}
+	/* Tydelig markering af den aktive fane: farvet "pille" bag ikonet. */
+	.icon {
+		display: grid;
+		place-items: center;
+		width: 56px;
+		height: 30px;
+		border-radius: 15px;
+		transition: background 0.15s;
+	}
+	a.active .icon {
+		background: var(--accent-soft);
 		color: var(--accent);
-		font-weight: 600;
 	}
 	svg {
 		width: 24px;
@@ -84,8 +97,8 @@
 	}
 	.count {
 		position: absolute;
-		top: 8px;
-		left: calc(50% + 8px);
+		top: 4px;
+		left: calc(50% + 10px);
 		min-width: 18px;
 		height: 18px;
 		padding: 0 5px;

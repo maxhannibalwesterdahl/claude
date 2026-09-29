@@ -44,7 +44,9 @@
 						{#if r.image_url}
 							<img src={r.image_url} alt="" loading="lazy" />
 						{:else}
-							<div class="noimg" aria-hidden="true">{r.title.slice(0, 1)}</div>
+							<div class="noimg" aria-hidden="true">
+								<svg viewBox="0 0 24 24"><path d="M4 11h16a8 8 0 0 1-16 0zM9 7c0-2 2-2 2-4M14 7c0-2 2-2 2-4" /></svg>
+							</div>
 						{/if}
 						<div class="grow">
 							<strong>{r.title}</strong>
@@ -89,6 +91,7 @@
 		grid-column: 1 / -1;
 	}
 	li > a {
+		transition: border-color 0.15s;
 		display: flex;
 		gap: 12px;
 		align-items: center;
@@ -109,8 +112,14 @@
 		place-items: center;
 		background: var(--accent-soft);
 		color: var(--accent);
-		font-size: 1.8rem;
-		font-weight: 700;
+	}
+	.noimg svg {
+		width: 32px;
+		height: 32px;
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 1.8;
+		stroke-linecap: round;
 	}
 	strong {
 		display: block;

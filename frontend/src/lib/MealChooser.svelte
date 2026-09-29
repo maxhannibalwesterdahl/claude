@@ -6,12 +6,19 @@
 
 	interface Props {
 		plan: Plan;
-		date: string;
-		forChild: boolean;
+		/** Dagen, der vælges til. Tom ved "wish": tilføj til ønskelisten. */
+		date?: string;
+		forChild?: boolean;
+		/** "wish": vælg flere retter til ønskelisten. Arket bliver åbent. */
+		mode?: 'slot' | 'wish';
 		onchoose: (choice: SlotChoice) => void;
 		oncancel: () => void;
 	}
-	let { plan, date, forChild, onchoose, oncancel }: Props = $props();
+	let { plan, date = '', forChild = false, mode = 'slot', onchoose, oncancel }: Props = $props();
+
+	const wishMode = $derived(mode === 'wish');
+	// Opskrifter, der allerede er på ønskelisten (vises med flueben).
+	const wished = $derived(new Set(plan.wishlist.map((w) => w.recipe?.id).filter(Boolean)));
 
 	type Tab = 'opskrift' | 'ønske' | 'rester' | 'fritekst';
 	let tab = $state<Tab>('opskrift');
@@ -20,7 +27,9 @@
 	let recipes = $state<RecipeSummary[] | null>(null);
 	let error = $state('');
 
-	const quick = $derived(forChild ? ['Grød', 'Mos', 'Rugbrød', 'Pasta'] : ['Pizza ude', 'Rugbrød', 'Takeaway', 'Spiser ude']);
+	const quick = $derived(
+		wishMode ? ['Tacos', 'Pizza', 'Suppe', 'Fisk'] : forChild ? ['Grød', 'Mos', 'Rugbrød', 'Pasta'] : ['Pizza ude', 'Rugbrød', 'Takeaway', 'Spiser ude']
+	);
 
 	// Retter på tidligere dage, der kan give rester.
 	const sources = $derived(
@@ -43,6 +52,7 @@
 	function submitText(e: SubmitEvent) {
 		e.preventDefault();
 		if (text.trim()) onchoose({ kind: 'fritekst', text: text.trim() });
+		text = '';
 	}
 
 	function keydown(e: KeyboardEvent) {
@@ -56,18 +66,23 @@
 <div class="sheet" role="dialog" aria-modal="true" aria-label="Vælg ret">
 	<header>
 		<div class="grow">
-			<strong>{forChild ? 'Barnets ret' : 'Aftensmad'}</strong>
-			<div class="muted small">{weekdayName(date)} {shortDate(date)}</div>
+			{#if wishMode}
+				<strong>Tilføj til ønskelisten</strong>
+				<div class="muted small">Vælg alle de retter, I vil have i perioden</div>
+			{:else}
+				<strong>{forChild ? 'Barnets ret' : 'Aftensmad'}</strong>
+				<div class="muted small">{weekdayName(date)} {shortDate(date)}</div>
+			{/if}
 		</div>
-		<button onclick={oncancel}>Luk</button>
+		<button class:primary={wishMode} onclick={oncancel}>{wishMode ? 'Færdig' : 'Luk'}</button>
 	</header>
 
 	<div class="tabs" role="tablist">
 		<button role="tab" aria-selected={tab === 'opskrift'} onclick={() => (tab = 'opskrift')}>Opskrift</button>
-		{#if plan.wishlist.length}
+		{#if plan.wishlist.length && !wishMode}
 			<button role="tab" aria-selected={tab === 'ønske'} onclick={() => (tab = 'ønske')}>Ønsker ({plan.wishlist.length})</button>
 		{/if}
-		{#if sources.length}
+		{#if sources.length && !wishMode}
 			<button role="tab" aria-selected={tab === 'rester'} onclick={() => (tab = 'rester')}>Rester</button>
 		{/if}
 		<button role="tab" aria-selected={tab === 'fritekst'} onclick={() => (tab = 'fritekst')}>Fritekst</button>
@@ -81,10 +96,14 @@
 			<ul>
 				{#each shown as r (r.id)}
 					<li>
-						<button class="option" onclick={() => onchoose({ kind: 'opskrift', recipe_id: r.id })}>
+						<button
+							class="option"
+							disabled={wishMode && wished.has(r.id)}
+							onclick={() => onchoose({ kind: 'opskrift', recipe_id: r.id })}
+						>
 							{#if r.image_url}<img src={r.image_url} alt="" loading="lazy" />{:else}<span class="noimg"></span>{/if}
 							<span class="grow">
-								<span class="title">{r.title}</span>
+								<span class="title">{r.title}{#if wishMode && wished.has(r.id)} <span class="badge ok">på listen</span>{/if}</span>
 								<span class="muted small">
 									{[r.servings ? `${r.servings} pers.` : '', r.main_ingredients.length ? `★ ${r.main_ingredients.join(', ')}` : ''].filter(Boolean).join(' · ')}
 								</span>
@@ -130,7 +149,7 @@
 					<button onclick={() => onchoose({ kind: 'fritekst', text: t })}>{t}</button>
 				{/each}
 			</div>
-			<p class="muted small">Fritekst giver ingen indkøb.</p>
+			<p class="muted small">{wishMode ? 'Fritekst er en idé uden opskrift og giver ingen indkøb.' : 'Fritekst giver ingen indkøb.'}</p>
 		{/if}
 	</div>
 </div>
@@ -221,6 +240,9 @@
 		object-fit: cover;
 		flex: none;
 		background: var(--accent-soft);
+	}
+	.option:disabled {
+		opacity: 0.6;
 	}
 	.option .grow {
 		display: flex;

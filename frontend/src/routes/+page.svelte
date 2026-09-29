@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { api, ApiError } from '$lib/api';
 	import { addDays, isoDate, nextWeekday, parseDate, periodLabel, shortDate, today, weekday, weekdayName } from '$lib/dates';
+	import MealChooser from '$lib/MealChooser.svelte';
 	import MealSlot from '$lib/MealSlot.svelte';
 	import { planApi } from '$lib/planApi';
 	import { refreshReviewCount } from '$lib/review.svelte';
-	import type { Plan, PlanBrief, RecipeSummary } from '$lib/types';
+	import type { Plan, PlanBrief } from '$lib/types';
 
 	let plan = $state<Plan | null>(null);
 	let plans = $state<PlanBrief[]>([]);
@@ -14,8 +15,7 @@
 	let childOpen = $state<Record<string, boolean>>({});
 	let creating = $state(false);
 	let startDate = $state('');
-	let wishText = $state('');
-	let recipes = $state<RecipeSummary[]>([]);
+	let addingWishes = $state(false);
 	let dragOver = $state('');
 
 	const day = $derived(plan?.days.find((d) => d.date === selected) ?? plan?.days[0] ?? null);
@@ -49,7 +49,6 @@
 
 	$effect(() => {
 		load();
-		api<RecipeSummary[]>('/recipes').then((r) => (recipes = r)).catch(() => {});
 		refreshReviewCount().catch(() => {});
 	});
 
@@ -92,16 +91,6 @@
 		} catch (e) {
 			error = e instanceof ApiError ? e.message : 'Noget gik galt';
 		}
-	}
-
-	function addWish(e: SubmitEvent) {
-		e.preventDefault();
-		if (!plan || !wishText.trim()) return;
-		const match = recipes.find((r) => r.title.toLowerCase() === wishText.trim().toLowerCase());
-		const body = match ? { recipe_id: match.id } : { text: wishText.trim() };
-		const id = plan.id;
-		run(() => planApi.addWish(id, body));
-		wishText = '';
 	}
 
 	// Swipe mellem dage på telefonen.
@@ -237,38 +226,46 @@
 
 		<section class="wishes">
 			<h2>Ønskeliste</h2>
-			<p class="muted small">Retter I vil have i perioden. Læg dem på en dag, når I planlægger.</p>
+			<p class="muted small">Retter I vil have i perioden. Tryk på en dag for at lægge retten der.</p>
 			<ul>
 				{#each plan.wishlist as w (w.id)}
 					<li draggable="true" ondragstart={(e) => dragstart(e, `wish:${w.id}`)}>
-						<span class="grow">
-							{#if w.recipe}<a href="/opskrift/{w.recipe.id}">{w.title}</a>{:else}{w.title}{/if}
-						</span>
-						<select
-							value=""
-							aria-label="Læg på dag"
-							onchange={(e) => {
-								const d = e.currentTarget.value;
-								if (d) run(() => planApi.setSlot(plan!, d, false, { kind: 'ønske', wish_id: w.id }));
-							}}
-						>
-							<option value="">Læg på…</option>
-							{#each plan.days as d}
-								<option value={d.date}>{weekdayName(d.date)}{d.meal ? ` (erstat ${d.meal.title})` : ''}</option>
+						<div class="wish-head">
+							{#if w.recipe?.image_url}<img src={w.recipe.image_url} alt="" />{/if}
+							<span class="grow title">
+								{#if w.recipe}<a href="/opskrift/{w.recipe.id}">{w.title}</a>{:else}{w.title}{/if}
+							</span>
+							<button class="plain" aria-label="Fjern {w.title} fra ønskelisten" onclick={() => run(() => planApi.removeWish(w.id))}>✕</button>
+						</div>
+						<div class="place" role="group" aria-label="Læg {w.title} på en dag">
+							{#each plan.days as d (d.date)}
+								<button
+									class:free={!d.meal}
+									title={d.meal ? `Erstatter ${d.meal.title}` : 'Ledig'}
+									onclick={() => {
+										if (!d.meal || confirm(`Erstat ${d.meal.title} ${weekdayName(d.date).toLowerCase()}?`))
+											run(() => planApi.setSlot(plan!, d.date, false, { kind: 'ønske', wish_id: w.id }));
+									}}>{weekday(d.date)}</button
+								>
 							{/each}
-						</select>
-						<button class="plain" aria-label="Fjern ønske" onclick={() => run(() => planApi.removeWish(w.id))}>✕</button>
+						</div>
 					</li>
 				{/each}
 			</ul>
-			<form class="row" onsubmit={addWish}>
-				<input class="grow" list="recipe-titles" bind:value={wishText} placeholder="Opskrift eller ret" aria-label="Nyt ønske" />
-				<datalist id="recipe-titles">
-					{#each recipes as r}<option value={r.title}></option>{/each}
-				</datalist>
-				<button disabled={!wishText.trim()}>Tilføj</button>
-			</form>
+			<button class="add-wish" onclick={() => (addingWishes = true)}>+ Tilføj ønsker</button>
 		</section>
+
+		{#if addingWishes}
+			<MealChooser
+				{plan}
+				mode="wish"
+				onchoose={(c) => {
+					if (c.kind === 'opskrift') run(() => planApi.addWish(plan!.id, { recipe_id: c.recipe_id }));
+					else if (c.kind === 'fritekst') run(() => planApi.addWish(plan!.id, { text: c.text }));
+				}}
+				oncancel={() => (addingWishes = false)}
+			/>
+		{/if}
 
 		<p class="footer"><button class="plain danger small" onclick={removePlan}>Slet denne plan</button></p>
 	{:else if loaded && !creating && !error}
@@ -449,18 +446,55 @@
 	.wishes ul {
 		list-style: none;
 		padding: 0;
-		margin: 0 0 10px;
+		margin: 0 0 12px;
+		display: grid;
+		gap: 10px;
 	}
 	.wishes li {
-		display: flex;
-		align-items: center;
+		display: grid;
 		gap: 8px;
-		padding: 6px 0;
+		padding-bottom: 10px;
 		border-bottom: 1px solid var(--line);
 	}
-	.wishes select {
-		width: auto;
-		max-width: 45%;
+	.wish-head {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+	}
+	.wish-head img {
+		width: 44px;
+		height: 44px;
+		border-radius: 8px;
+		object-fit: cover;
+		flex: none;
+	}
+	.wish-head .title {
+		font-weight: 600;
+	}
+	.place {
+		display: grid;
+		grid-template-columns: repeat(7, minmax(0, 1fr));
+		gap: 4px;
+	}
+	.place button {
+		justify-content: center;
+		padding: 6px 0;
+		min-height: 38px;
+		font-size: 0.85rem;
+		color: var(--muted);
+	}
+	.place button.free {
+		color: var(--accent);
+		border-color: var(--accent);
+		font-weight: 600;
+	}
+	.add-wish {
+		width: 100%;
+		justify-content: center;
+		border-style: dashed;
+		color: var(--accent);
+		font-weight: 600;
+		background: transparent;
 	}
 	.footer {
 		text-align: center;

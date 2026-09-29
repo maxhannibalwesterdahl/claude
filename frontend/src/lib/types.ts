@@ -150,3 +150,41 @@ export type SlotChoice =
 	| { kind: 'fritekst'; text: string }
 	| { kind: 'rester'; leftover_from_id: number }
 	| { kind: 'ønske'; wish_id: number };
+
+// --- Indkøbsliste (backend/src/madplan/api/shopping.py) ---
+
+export interface Amount {
+	quantity: number;
+	unit: string | null;
+}
+
+export interface ShoppingItem {
+	key: string;
+	name: string;
+	department: string;
+	amounts: Amount[];
+	unquantified: boolean;
+	days: string[];
+	sources: { date: string; meal: string; raw: string }[];
+	checked: boolean;
+	kind: 'plan' | 'extra';
+	source: 'egen' | 'løbet tør' | null;
+	unknown: boolean;
+}
+
+export interface PantryItem {
+	ingredient_id: number;
+	name: string;
+	amounts: Amount[];
+	days: string[];
+	requested: boolean;
+}
+
+export interface ShoppingData {
+	plan: PlanBrief | null;
+	departments: Department[];
+	items: ShoppingItem[];
+	pantry: PantryItem[];
+	home: { key: string; name: string }[];
+	server_ms: number;
+}

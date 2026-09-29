@@ -13,6 +13,7 @@
 
 	const tabs = [
 		{ href: '/', label: 'Madplan', icon: 'M4 6h16v14H4zM4 10h16M8 3v5M16 3v5' },
+		{ href: '/indkob', label: 'Indkøb', icon: 'M3 4h2l2.4 11h10.2L20 7H6.2M9 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2zM17 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2z' },
 		{ href: '/opskrifter', label: 'Opskrifter', icon: 'M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3zM5 17a3 3 0 0 1 3-3h11' },
 		{ href: '/tjek', label: 'Tjek', icon: 'M5 12l4 4 10-10' },
 		{ href: '/varer', label: 'Varer', icon: 'M4 6h16M4 12h16M4 18h10' }

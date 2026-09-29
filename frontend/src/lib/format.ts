@@ -70,3 +70,10 @@ export function parseNumber(text: string): number | null {
 	const n = Number(t);
 	return Number.isFinite(n) ? n : null;
 }
+
+/** Mængder på indkøbslisten: "3 stk", "1,2 kg", "2 dåser + 1 bundt". */
+export function formatAmounts(amounts: { quantity: number; unit: string | null }[], unquantified = false): string {
+	const parts = amounts.map((a) => `${formatNumber(a.quantity)} ${a.unit ? unitLabel(a.unit, a.quantity) : 'stk'}`);
+	if (unquantified && parts.length) parts.push('lidt');
+	return parts.join(' + ');
+}

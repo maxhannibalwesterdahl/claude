@@ -6,7 +6,7 @@
 
 from datetime import date, datetime, timezone
 
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -181,3 +181,47 @@ class WishlistItem(Base):
 
     plan: Mapped[Plan] = relationship(back_populates="wishlist")
     recipe: Mapped[Recipe | None] = relationship()
+
+
+# --- Indkøbsliste (fase 3) ------------------------------------------------------
+
+
+class ShoppingCheck(Base):
+    """"Købt" for en række på indkøbslisten. Seneste ændring vinder (updated_ms)."""
+
+    __tablename__ = "shopping_check"
+    __table_args__ = (UniqueConstraint("plan_id", "key"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    plan_id: Mapped[int] = mapped_column(ForeignKey("plan.id", ondelete="CASCADE"), index=True)
+    # "i:<ingrediens-id>" eller "t:<varenavn>" for linjer uden kendt vare
+    key: Mapped[str] = mapped_column(String(120))
+    checked: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Klientens tidspunkt for ændringen i ms (til synkronisering mellem telefoner)
+    updated_ms: Mapped[int] = mapped_column(BigInteger, default=0)
+
+
+class ShoppingExtra(Base):
+    """Egen vare eller "løbet tør". Bliver på listen, til den er købt."""
+
+    __tablename__ = "shopping_extra"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    text: Mapped[str] = mapped_column(String(200))
+    ingredient_id: Mapped[int | None] = mapped_column(ForeignKey("ingredient.id", ondelete="SET NULL"))
+    # "egen" eller "løbet tør"
+    source: Mapped[str] = mapped_column(String(10), default="egen")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    checked: Mapped[bool] = mapped_column(Boolean, default=False)
+    updated_ms: Mapped[int] = mapped_column(BigInteger, default=0)
+
+    ingredient: Mapped[Ingredient | None] = relationship()
+
+
+class Setting(Base):
+    """Små indstillinger som JSON, fx afdelingernes rækkefølge."""
+
+    __tablename__ = "setting"
+
+    key: Mapped[str] = mapped_column(String(50), primary_key=True)
+    value: Mapped[str] = mapped_column(Text)

@@ -73,6 +73,14 @@ planlagt på telefonen, og mængderne kontrolleret i hånden.
 
 ## Fase 3 – Indkøbsliste
 
+⏳ Bygget og sat i drift 29-09-2026. Mangler færdigt-kriteriet: én rigtig tur i
+Bilka kun med appen.
+
+Valgt undervejs: listen viser næste indkøb (planen, der starter i dag eller
+senere). Egne varer og "Løbet tør" bliver på listen, til de er købt, også på
+tværs af uger. "Købt" (i butikken) og "har hjemme" (fjerner varen fra planen) er
+to handlinger.
+
 - Sammenlægning på tværs af dage og inden for samme opskrift.
 - Basisvarer, sammenklappet sektion, "Løbet tør".
 - Sortering efter afdeling. Egne varer.

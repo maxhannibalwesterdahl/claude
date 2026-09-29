@@ -221,3 +221,23 @@ def test_delete_plan(client, plan):
 def test_plans_require_login(anon):
     assert anon.get("/api/plans").status_code == 401
     assert anon.post("/api/plans", json={"start_date": str(date.today())}).status_code == 401
+
+
+def test_distribute_wishes_to_free_days(client, plan, recipes):
+    put(client, plan, date="2026-10-04", kind="fritekst", text="Pizza")
+    put(client, plan, date="2026-10-06", kind="fritekst", text="Tacos")
+    for r in ("kødsovs", "lasagne", "suppe"):
+        client.post(f"/api/plans/{plan['id']}/wishlist", json={"recipe_id": recipes[r]["id"]})
+    p = client.post(f"/api/plans/{plan['id']}/wishlist/distribute").json()
+    assert [d["meal"]["title"] if d["meal"] else None for d in p["days"]] == [
+        "Pizza", "Kødsovs", "Tacos", "Lasagne", "Suppe", None, None]
+    assert p["wishlist"] == []
+
+
+def test_distribute_keeps_wishes_without_room(client, recipes):
+    plan = client.post("/api/plans", json={"start_date": START, "days": 1}).json()
+    for r in ("kødsovs", "lasagne"):
+        client.post(f"/api/plans/{plan['id']}/wishlist", json={"recipe_id": recipes[r]["id"]})
+    p = client.post(f"/api/plans/{plan['id']}/wishlist/distribute").json()
+    assert p["days"][0]["meal"]["title"] == "Kødsovs"
+    assert [w["title"] for w in p["wishlist"]] == ["Lasagne"]

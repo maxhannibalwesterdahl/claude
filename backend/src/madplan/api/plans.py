@@ -435,6 +435,25 @@ def delete_wish(wish_id: int, session: DbSession, _: CurrentUser) -> PlanOut:
     return plan_out(load_plan(session, plan_id))
 
 
+@router.post("/plans/{plan_id}/wishlist/distribute")
+def distribute_wishes(plan_id: int, session: DbSession, _: CurrentUser) -> PlanOut:
+    """Læg ønskerne på de ledige dage i rækkefølge. Optagne dage røres ikke.
+    Ønsker, der ikke er plads til, bliver på listen."""
+    plan = load_plan(session, plan_id)
+    taken = {m.date for m in plan.meals if not m.for_child}
+    free = [plan.start_date + timedelta(days=i) for i in range(plan.days)]
+    free = [d for d in free if d not in taken]
+    for wish, d in zip(list(plan.wishlist), free):
+        plan.meals.append(PlanMeal(
+            date=d, for_child=False, multiplier=1.0,
+            kind="opskrift" if wish.recipe_id else "fritekst",
+            recipe_id=wish.recipe_id, text=wish.text,
+        ))
+        plan.wishlist.remove(wish)
+    session.commit()
+    return plan_out(load_plan(session, plan.id))
+
+
 @router.post("/wishlist/{wish_id}/place")
 def place_wish(wish_id: int, body: MoveIn, session: DbSession, user: CurrentUser) -> PlanOut:
     """Læg et ønske på en dag. Ønsket fjernes fra listen."""

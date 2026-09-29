@@ -5,7 +5,7 @@
 	import { api, ApiError } from '$lib/api';
 	import { formatQuantity } from '$lib/format';
 	import { groupLines } from '$lib/lines';
-	import type { Recipe } from '$lib/types';
+	import type { Line, Recipe } from '$lib/types';
 
 	let recipe = $state<Recipe | null>(null);
 	let error = $state('');
@@ -32,6 +32,17 @@
 		return out;
 	});
 	const toReview = $derived(recipe?.ingredients.filter((l) => l.match_status === 'usikker' || l.match_status === 'ingen').length ?? 0);
+
+	async function toggleMain(line: Line) {
+		const next = !line.is_main;
+		line.is_main = next;
+		try {
+			await api(`/lines/${line.id}/main`, { method: 'PUT', body: { is_main: next } });
+		} catch (e) {
+			line.is_main = !next;
+			error = e instanceof ApiError ? e.message : 'Kunne ikke gemme stjernen';
+		}
+	}
 
 	async function remove() {
 		if (!recipe || !confirm(`Slet "${recipe.title}"?`)) return;
@@ -74,6 +85,7 @@
 		<div class="columns">
 		<section>
 		<h2>Ingredienser</h2>
+		<p class="muted small hint">★ = hovedingrediens. Appen kigger efter tilbud på dem. Tryk på stjernen for at sætte eller fjerne den. Der må gerne være flere.</p>
 		{#if toReview}
 			<p class="small">
 				<span class="badge">{toReview} at tjekke</span>
@@ -85,10 +97,17 @@
 			<ul class="ingredients">
 				{#each g.lines as l}
 					<li class:main={l.is_main}>
+						<button
+							class="plain star"
+							class:on={l.is_main}
+							aria-pressed={l.is_main}
+							aria-label="Hovedingrediens: {l.item}"
+							title={l.is_main ? 'Hovedingrediens (fjern stjernen)' : 'Gør til hovedingrediens'}
+							onclick={() => toggleMain(l)}>{l.is_main ? '★' : '☆'}</button
+						>
 						<span class="qty">{formatQuantity(l.quantity, l.quantity_max, l.unit)}</span>
 						<span class="grow">
 							{l.item}{#if l.note}<span class="muted">, {l.note}</span>{/if}
-							{#if l.is_main}<span class="star" title="Hovedingrediens">★</span>{/if}
 							{#if l.match_status === 'usikker'}
 								<span class="badge">{l.ingredient?.name}?</span>
 							{:else if l.match_status === 'ingen'}
@@ -162,7 +181,8 @@
 	}
 	.ingredients li {
 		display: flex;
-		gap: 12px;
+		align-items: center;
+		gap: 8px;
 		padding: 7px 0;
 		border-bottom: 1px solid var(--line);
 	}
@@ -178,8 +198,20 @@
 		font-weight: 600;
 	}
 	.star {
+		flex: none;
+		width: 32px;
+		min-height: 32px;
+		justify-content: center;
+		font-size: 1.2rem;
+		line-height: 1;
+		color: var(--muted);
+		padding: 0;
+	}
+	.star.on {
 		color: var(--star);
-		margin-left: 4px;
+	}
+	.hint {
+		margin-top: -4px;
 	}
 	.steps {
 		padding-left: 1.4em;

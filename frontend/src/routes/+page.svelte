@@ -20,6 +20,7 @@
 
 	const day = $derived(plan?.days.find((d) => d.date === selected) ?? plan?.days[0] ?? null);
 	const index = $derived(plan && day ? plan.days.indexOf(day) : 0);
+	const freeDays = $derived(plan?.days.filter((d) => !d.meal).length ?? 0);
 	const planIndex = $derived(plan ? plans.findIndex((p) => p.id === plan!.id) : -1);
 
 	function show(p: Plan) {
@@ -252,6 +253,11 @@
 					</li>
 				{/each}
 			</ul>
+			{#if plan.wishlist.length && freeDays > 0}
+				<button class="primary distribute" onclick={() => run(() => api<Plan>(`/plans/${plan!.id}/wishlist/distribute`, { method: 'POST' }))}>
+					Fordel {Math.min(plan.wishlist.length, freeDays)} {Math.min(plan.wishlist.length, freeDays) === 1 ? 'ønske' : 'ønsker'} på ledige dage
+				</button>
+			{/if}
 			<button class="add-wish" onclick={() => (addingWishes = true)}>+ Tilføj ønsker</button>
 		</section>
 
@@ -487,6 +493,11 @@
 		color: var(--accent);
 		border-color: var(--accent);
 		font-weight: 600;
+	}
+	.distribute {
+		width: 100%;
+		justify-content: center;
+		margin-bottom: 8px;
 	}
 	.add-wish {
 		width: 100%;

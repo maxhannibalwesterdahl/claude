@@ -126,6 +126,17 @@ def test_review_confirm_updates_all_recipes(client):
     assert client.get("/api/review").json() == []
 
 
+def test_set_main_on_several_lines(client):
+    rec = client.post("/api/recipes", json={"title": "A", "ingredients": [
+        {"raw": "500 g hakket oksekød"}, {"raw": "200 g bacon"}, {"raw": "2 løg"}]}).json()
+    assert [l["is_main"] for l in rec["ingredients"]] == [True, True, False]
+    for line in rec["ingredients"][1:]:
+        assert client.put(f"/api/lines/{line['id']}/main", json={"is_main": line["item"] == "løg"}).status_code == 200
+    rec = client.get(f"/api/recipes/{rec['id']}").json()
+    assert [l["is_main"] for l in rec["ingredients"]] == [True, False, True]
+    assert client.put("/api/lines/9999/main", json={"is_main": True}).status_code == 404
+
+
 def test_ignore_line(client):
     client.post("/api/recipes", json={"title": "A", "ingredients": [{"raw": "pynt efter smag"}]})
     line = client.get("/api/review").json()[0]

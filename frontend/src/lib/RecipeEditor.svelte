@@ -178,7 +178,7 @@
 
 	<h2>Ingredienser</h2>
 	<p class="muted small">
-		★ = hovedingrediens (bruges til tilbudsforslag). Tryk på varen for at rette, hvad der skal købes.
+		Tryk ☆ ud for en ingrediens for at gøre den til hovedingrediens (★). Appen kigger efter tilbud på dem, og der må gerne være flere. Tryk på varen for at rette, hvad der skal købes.
 		{#if recipe}<button type="button" class="plain small" onclick={suggestMain}>Foreslå ★ igen</button>{/if}
 	</p>
 
@@ -201,7 +201,7 @@
 						class:on={line.is_main}
 						aria-pressed={line.is_main}
 						aria-label="Hovedingrediens"
-						onclick={() => (line.is_main = !line.is_main)}>★</button
+						onclick={() => (line.is_main = !line.is_main)}>{line.is_main ? '★' : '☆'}</button
 					>
 					<input class="grow" bind:value={line.raw} onchange={() => reparse(line)} aria-label="Ingredienslinje" />
 					<button type="button" class="plain" aria-label="Flyt op" onclick={() => move(line, -1)}>↑</button>
@@ -307,8 +307,9 @@
 	}
 	.star {
 		font-size: 1.4rem;
-		color: var(--line);
+		color: var(--muted);
 		width: 36px;
+		justify-content: center;
 	}
 	.star.on {
 		color: var(--star);

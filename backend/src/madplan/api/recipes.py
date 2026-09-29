@@ -1,6 +1,7 @@
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -259,6 +260,21 @@ def confirm_line(line_id: int, body: LineConfirmIn, session: DbSession, _: Curre
     also = learn_alias(session, line.item, ing)
     session.commit()
     return {"also_updated": also}
+
+
+class MainIn(BaseModel):
+    is_main: bool
+
+
+@router.put("/lines/{line_id}/main")
+def set_main(line_id: int, body: MainIn, session: DbSession, _: CurrentUser) -> dict:
+    """Sæt eller fjern stjernen (hovedingrediens) på en linje. Der må være flere."""
+    line = session.get(RecipeIngredient, line_id)
+    if line is None:
+        raise HTTPException(status_code=404, detail="Linjen findes ikke")
+    line.is_main = body.is_main
+    session.commit()
+    return {"is_main": line.is_main}
 
 
 @router.post("/lines/{line_id}/ignore")

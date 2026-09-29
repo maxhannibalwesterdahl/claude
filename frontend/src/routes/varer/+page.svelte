@@ -100,12 +100,11 @@
 			{#each g.items as ing (ing.id)}
 				<li>
 					<button class="plain item" onclick={() => (editing === ing.id ? (editing = null) : open(ing))}>
-						<span class="grow">
-							{ing.name}
-							{#if ing.aliases.length}<span class="muted small"> · {ing.aliases.slice(0, 4).join(', ')}{ing.aliases.length > 4 ? '…' : ''}</span>{/if}
+						<span class="grow ellipsis">
+							{ing.name}{#if ing.aliases.length}<span class="muted small"> · {ing.aliases.join(', ')}</span>{/if}
 						</span>
 						{#if ing.pantry}<span class="badge ok">basis</span>{/if}
-						{#if ing.used_in}<span class="muted small">{ing.used_in}</span>{/if}
+						{#if ing.used_in}<span class="muted small used" title="Bruges i {ing.used_in} opskrifter">{ing.used_in} opskr.</span>{/if}
 					</button>
 					{#if editing === ing.id}{@render editor()}{/if}
 				</li>
@@ -133,6 +132,9 @@
 		border-radius: 0;
 		min-height: 44px;
 	}
+	.used {
+		flex: none;
+	}
 	.edit {
 		display: grid;
 		gap: 10px;
@@ -141,7 +143,7 @@
 	}
 	.two {
 		display: grid;
-		grid-template-columns: 1fr 1fr;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 		gap: 10px;
 		align-items: end;
 	}

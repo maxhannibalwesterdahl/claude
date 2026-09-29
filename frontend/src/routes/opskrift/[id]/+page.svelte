@@ -70,6 +70,8 @@
 			<p class="child"><strong>Barnet:</strong> {recipe.child_note}</p>
 		{/if}
 
+		<div class="columns">
+		<section>
 		<h2>Ingredienser</h2>
 		{#if toReview}
 			<p class="small">
@@ -99,6 +101,8 @@
 			<p class="muted">Ingen ingredienser.</p>
 		{/each}
 
+		</section>
+		<section>
 		{#if recipe.instructions.length}
 			<h2>Fremgangsmåde</h2>
 			{#each stepGroups as sg}
@@ -111,14 +115,30 @@
 			{/each}
 		{/if}
 
+		</section>
+		</div>
+
 		<p class="actions"><button class="danger" onclick={remove}>Slet opskrift</button></p>
 	{/if}
 </main>
 
 <style>
+	/* iPad på tværs og computer: ingredienser ved siden af fremgangsmåden. */
+	@media (min-width: 900px) {
+		.columns {
+			display: grid;
+			grid-template-columns: minmax(280px, 2fr) 3fr;
+			gap: 40px;
+			align-items: start;
+		}
+		.columns > section:first-child {
+			position: sticky;
+			top: 80px;
+		}
+	}
 	.hero {
 		width: 100%;
-		max-height: 320px;
+		max-height: min(320px, 40vh);
 		object-fit: cover;
 		border-radius: var(--radius);
 	}
@@ -146,7 +166,9 @@
 		border-bottom: 1px solid var(--line);
 	}
 	.qty {
-		flex: 0 0 88px;
+		flex: 0 0 auto;
+		min-width: 64px;
+		max-width: 40%;
 		text-align: right;
 		font-variant-numeric: tabular-nums;
 		color: var(--muted);

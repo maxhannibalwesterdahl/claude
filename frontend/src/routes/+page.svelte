@@ -82,6 +82,11 @@
 		margin: 0;
 		display: grid;
 		gap: 8px;
+		/* 1 kolonne på telefon, 2-3 på iPad og computer. */
+		grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+	}
+	li.empty {
+		grid-column: 1 / -1;
 	}
 	li > a {
 		display: flex;

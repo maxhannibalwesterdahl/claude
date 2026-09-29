@@ -283,7 +283,7 @@
 	}
 	.two {
 		display: grid;
-		grid-template-columns: 7rem 1fr;
+		grid-template-columns: 6.5rem minmax(0, 1fr);
 		gap: 10px;
 	}
 	h2 {
@@ -334,9 +334,16 @@
 	}
 	.fields {
 		display: grid;
-		grid-template-columns: repeat(3, 1fr);
+		grid-template-columns: repeat(3, minmax(0, 1fr));
 		gap: 8px;
 		padding: 8px 0 0 44px;
+	}
+	@media (max-width: 380px) {
+		/* Smalle telefoner: brug hele bredden til felterne. */
+		.parsed,
+		.fields {
+			padding-left: 0;
+		}
 	}
 	.fields .wide {
 		grid-column: 1 / -1;
@@ -344,15 +351,19 @@
 	.add {
 		margin-top: 8px;
 	}
+	/* Fast bjælke over menuen, så Gem altid kan nås uden at dække felterne. */
 	.save {
 		position: sticky;
-		bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) + 8px);
+		bottom: calc(var(--nav-h) + env(safe-area-inset-bottom));
 		display: flex;
 		justify-content: flex-end;
+		background: var(--bg);
+		border-top: 1px solid var(--line);
+		padding: 8px 0;
+		margin-top: 8px;
 	}
 	.save button {
 		min-width: 140px;
 		justify-content: center;
-		box-shadow: 0 4px 16px rgb(0 0 0 / 0.15);
 	}
 </style>

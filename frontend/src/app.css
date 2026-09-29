@@ -40,6 +40,7 @@
 
 html {
 	-webkit-text-size-adjust: 100%;
+	text-size-adjust: 100%;
 }
 
 body {
@@ -52,7 +53,19 @@ body {
 main {
 	max-width: 760px;
 	margin: 0 auto;
-	padding: 0 16px calc(var(--nav-h) + 32px + env(safe-area-inset-bottom));
+	/* Plads til notch/afrundede hjørner på telefoner på langs. */
+	padding: 0 max(16px, env(safe-area-inset-right)) calc(var(--nav-h) + 32px + env(safe-area-inset-bottom))
+		max(16px, env(safe-area-inset-left));
+	/* Lange ord og links brydes i stedet for at gøre siden bredere end skærmen. */
+	overflow-wrap: anywhere;
+}
+
+@media (min-width: 900px) {
+	main {
+		max-width: 1080px;
+		padding-left: 32px;
+		padding-right: 32px;
+	}
 }
 
 a {
@@ -109,7 +122,9 @@ button,
 	align-items: center;
 	gap: 6px;
 	min-height: 42px;
-	white-space: nowrap;
+	/* Knapper må ombryde, så lang tekst ikke skubber siden ud over skærmen. */
+	max-width: 100%;
+	text-align: left;
 }
 
 button.primary,
@@ -146,7 +161,10 @@ textarea {
 	border-radius: 10px;
 	padding: 9px 11px;
 	width: 100%;
+	min-width: 0;
 	min-height: 42px;
+	/* Under 16px zoomer iPhone ind, når feltet får fokus, og zoomer ikke ud igen. */
+	font-size: max(16px, 1rem);
 }
 
 textarea {
@@ -164,6 +182,7 @@ button:focus-visible {
 
 label.field {
 	display: grid;
+	min-width: 0;
 	gap: 4px;
 	font-size: 0.9rem;
 	color: var(--muted);
@@ -221,6 +240,18 @@ label.field > span {
 .grow {
 	flex: 1;
 	min-width: 0;
+}
+
+/* Grid- og flex-børn må krympe under deres indholds bredde. */
+form > *,
+.row > * {
+	min-width: 0;
+}
+
+.ellipsis {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .empty {

@@ -181,3 +181,29 @@ def test_department_order(client, week):
     data = client.get("/api/shopping").json()
     assert data["items"][0]["department"] == "mej"
     assert client.put("/api/settings/departments", json={"order": ["mej"]}).status_code == 422
+
+
+def test_deleted_plan_clears_list_but_keeps_extras(client, week):
+    client.post("/api/shopping/extras", json={"text": "bleer"})
+    key = items(client.get("/api/shopping").json())["løg"]["key"]
+    client.delete(f"/api/plans/{week['id']}")
+    # Telefonen husker den slettede plan og har en ventende afkrydsning.
+    r = client.post("/api/shopping/sync", json={"plan_id": week["id"], "changes": [{"key": key, "checked": True, "ts": 5}]})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["plan"] is None and [i["name"] for i in data["items"]] == ["bleer"]
+    assert data["pantry"] == [] and data["home"] == []
+
+
+def test_list_follows_to_next_plan(client, app, week):
+    # Telefonen viser stadig en ældre plan (fx sidste uge) med en ventende afkrydsning.
+    old = client.post("/api/plans", json={"start_date": "2026-09-01"}).json()
+    r = client.post("/api/shopping/sync", json={"plan_id": old["id"], "changes": [{"key": "i:1", "checked": True, "ts": 5}]})
+    # Svaret er listen til næste indkøb ...
+    assert r.json()["plan"]["id"] == week["id"]
+    # ... og afkrydsningen er gemt på den plan, den blev lavet på.
+    from sqlalchemy import select
+
+    from madplan.models import ShoppingCheck
+    with app.state.db.sessionmaker() as s:
+        assert [(c.plan_id, c.key) for c in s.scalars(select(ShoppingCheck))] == [(old["id"], "i:1")]

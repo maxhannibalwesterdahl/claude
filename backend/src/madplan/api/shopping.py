@@ -268,21 +268,25 @@ def get_shopping(session: DbSession, _: CurrentUser, plan_id: int | None = None,
 
 @router.post("/shopping/sync")
 def sync(body: SyncIn, session: DbSession, _: CurrentUser) -> ShoppingOut:
-    """Modtag afkrydsninger (evt. lavet offline). Seneste ændring pr. række vinder."""
-    plan = choose_plan(session, body.plan_id)
+    """Modtag afkrydsninger (evt. lavet offline). Seneste ændring pr. række vinder.
+
+    Ændringerne gemmes på den plan, telefonen viste, da de blev lavet. Svaret er
+    altid listen til næste indkøb, så telefonen følger med, når en plan slettes,
+    eller når næste uges plan oprettes."""
+    target = session.get(Plan, body.plan_id) if body.plan_id is not None else choose_plan(session, None)
     for ch in body.changes:
         if ch.key.startswith("e:"):
             extra = session.get(ShoppingExtra, int(ch.key[2:])) if ch.key[2:].isdigit() else None
             if extra and ch.ts > extra.updated_ms:
                 extra.checked, extra.updated_ms = ch.checked, ch.ts
-        elif plan is not None and ch.key[:2] in ("i:", "t:"):
-            row = session.scalar(select(ShoppingCheck).where(ShoppingCheck.plan_id == plan.id, ShoppingCheck.key == ch.key))
+        elif target is not None and ch.key[:2] in ("i:", "t:"):
+            row = session.scalar(select(ShoppingCheck).where(ShoppingCheck.plan_id == target.id, ShoppingCheck.key == ch.key))
             if row is None:
-                session.add(ShoppingCheck(plan_id=plan.id, key=ch.key, checked=ch.checked, updated_ms=ch.ts))
+                session.add(ShoppingCheck(plan_id=target.id, key=ch.key, checked=ch.checked, updated_ms=ch.ts))
             elif ch.ts > row.updated_ms:
                 row.checked, row.updated_ms = ch.checked, ch.ts
     session.commit()
-    return build(session, plan)
+    return build(session, choose_plan(session, None))
 
 
 @router.post("/shopping/extras", status_code=201)

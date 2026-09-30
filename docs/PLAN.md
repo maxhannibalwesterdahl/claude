@@ -99,12 +99,21 @@ to handlinger.
 
 ## Fase 5 – Søgning og forslag
 
+✅ Søgning bygget 30-09-2026: egne opskrifter (også på ingredienser) og
+Valdemarsro, import med ét tryk, også direkte på en dag. Forslag ud fra tilbud
+venter sammen med fase 4.
+
 - Søgning på Valdemarsro fra appen, med artikler frasorteret, og import med ét
   tryk.
 - Retforslag ud fra tilbud: egne opskrifter først, derefter Valdemarsro-søgning
   på hovedingrediensen.
 - *Færdig:* ved planlægning vises forslag ud fra ugens tilbud, og mindst ét
   forslag er brugt i en rigtig uge.
+
+## Flere familier (ikke bygget)
+
+Design med delte opskrifter og delte rettelser: [flere-familier.md](flere-familier.md).
+Ca. 5½-7 dage. Afventer beslutninger (se afsnit 11 i dokumentet).
 
 ## Fase 6 – Senere (ingen rækkefølge)
 

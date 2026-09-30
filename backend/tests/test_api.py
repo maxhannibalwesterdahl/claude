@@ -37,6 +37,26 @@ def test_rate_limit_uses_address_set_by_proxy(anon):
     assert codes == [401] * 5 + [429]
 
 
+def test_successful_login_does_not_count_as_attempt(anon):
+    h = {"x-forwarded-for": "5.5.5.5"}
+    for _ in range(4):
+        anon.post("/api/login", json={"username": "max", "password": "forkert"}, headers=h)
+    assert anon.post("/api/login", json={"username": "max", "password": PASSWORD}, headers=h).status_code == 200
+    # 4 fejl + 1 succes: der er stadig ét forsøg tilbage.
+    assert anon.post("/api/login", json={"username": "max", "password": "forkert"}, headers=h).status_code == 401
+
+
+def test_login_is_refused_when_hash_gate_is_full(anon):
+    from madplan.auth import HASH_GATE
+    HASH_GATE.acquire(); HASH_GATE.acquire()
+    try:
+        r = anon.post("/api/login", json={"username": "max", "password": PASSWORD}, headers={"x-forwarded-for": "6.6.6.6"})
+        assert r.status_code == 429
+    finally:
+        HASH_GATE.release(); HASH_GATE.release()
+    assert anon.post("/api/login", json={"username": "max", "password": PASSWORD}).status_code == 200
+
+
 def test_new_password_logs_out_old_sessions(app, client):
     assert client.get("/api/me").json()["username"] == "max"
     with app.state.db.sessionmaker() as s:

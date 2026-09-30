@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from ..config import local_today
 from ..models import Plan, PlanLineState, PlanMeal, Recipe, RecipeIngredient, WishlistItem
 from ..planning import MULTIPLIERS, scale
 from .deps import CurrentUser, DbSession
@@ -263,7 +264,7 @@ def list_plans(session: DbSession, _: CurrentUser) -> list[PlanBrief]:
 @router.get("/plans/current")
 def current_plan(session: DbSession, _: CurrentUser, today: date | None = None) -> PlanOut:
     """Planen, der dækker i dag. Ellers den næste, ellers den seneste."""
-    today = today or date.today()
+    today = today or local_today()
     plans = session.scalars(select(Plan).order_by(Plan.start_date)).all()
     if not plans:
         raise HTTPException(status_code=404, detail="Ingen madplan endnu")
@@ -436,13 +437,14 @@ def delete_wish(wish_id: int, session: DbSession, _: CurrentUser) -> PlanOut:
 
 
 @router.post("/plans/{plan_id}/wishlist/distribute")
-def distribute_wishes(plan_id: int, session: DbSession, _: CurrentUser) -> PlanOut:
-    """Læg ønskerne på de ledige dage i rækkefølge. Optagne dage røres ikke.
-    Ønsker, der ikke er plads til, bliver på listen."""
+def distribute_wishes(plan_id: int, session: DbSession, _: CurrentUser, today: date | None = None) -> PlanOut:
+    """Læg ønskerne på de ledige dage i rækkefølge. Optagne dage og dage, der
+    er gået, røres ikke. Ønsker, der ikke er plads til, bliver på listen."""
     plan = load_plan(session, plan_id)
+    today = today or local_today()
     taken = {m.date for m in plan.meals if not m.for_child}
     free = [plan.start_date + timedelta(days=i) for i in range(plan.days)]
-    free = [d for d in free if d not in taken]
+    free = [d for d in free if d not in taken and d >= today]
     for wish, d in zip(list(plan.wishlist), free):
         plan.meals.append(PlanMeal(
             date=d, for_child=False, multiplier=1.0,

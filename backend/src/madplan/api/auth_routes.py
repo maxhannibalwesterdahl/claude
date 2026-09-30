@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Request, Response
 from sqlalchemy import select
 
-from ..auth import COOKIE, SESSION_DAYS, make_session, verify_password
+from ..auth import COOKIE, HASH_GATE, SESSION_DAYS, make_session, verify_password
 from ..models import User
 from .deps import AppSettings, CurrentUser, DbSession, client_ip
 from .schemas import LoginIn, UserOut
@@ -15,10 +15,18 @@ def login(body: LoginIn, request: Request, response: Response, session: DbSessio
     ip = client_ip(request)
     if limiter.blocked(ip):
         raise HTTPException(status_code=429, detail="For mange forsøg. Vent et minut.")
-    user = session.scalar(select(User).where(User.username == body.username.strip().lower()))
-    if not verify_password(user.password_hash if user else None, body.password) or user is None:
-        limiter.failed(ip)
+    # Tæl forsøget FØR kodeordet tjekkes, så samtidige forsøg også rammer grænsen.
+    limiter.failed(ip)
+    if not HASH_GATE.acquire(blocking=False):
+        raise HTTPException(status_code=429, detail="Mange logger ind lige nu. Prøv igen om lidt.")
+    try:
+        user = session.scalar(select(User).where(User.username == body.username.strip().lower()))
+        ok = verify_password(user.password_hash if user else None, body.password) and user is not None
+    finally:
+        HASH_GATE.release()
+    if not ok:
         raise HTTPException(status_code=401, detail="Forkert brugernavn eller kodeord")
+    limiter.succeeded(ip)
     response.set_cookie(
         COOKIE,
         make_session(settings.secret, user.id, user.session_version),

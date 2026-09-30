@@ -83,6 +83,7 @@ def apply_lines(session: Session, recipe: Recipe, lines: list[LineIn], catalog: 
         if li.id is not None and li.id not in existing:
             raise HTTPException(status_code=422, detail=f"Linje {li.id} hører ikke til opskriften")
         line = existing.get(li.id) if li.id is not None else None
+        before = (line.ingredient_id, line.match_status) if line is not None else (None, None)
         if line is None:
             line = RecipeIngredient()
             recipe.ingredients.append(line)
@@ -103,7 +104,9 @@ def apply_lines(session: Session, recipe: Recipe, lines: list[LineIn], catalog: 
             line.ingredient_id = li.ingredient_id
             # "bekræftet" uden vare betyder, at linjen bevidst ikke er koblet.
             line.match_status = li.match_status if li.ingredient_id or li.match_status == "bekræftet" else "ingen"
-            if line.match_status == "bekræftet" and line.ingredient_id:
+            # Lær kun af NYE bekræftelser. Ellers ville hver gemning genlære alle
+            # opskriftens gamle valg og rette andre opskrifter frem og tilbage.
+            if line.match_status == "bekræftet" and line.ingredient_id and before != (line.ingredient_id, "bekræftet"):
                 confirmed.append(line)
         keep.append(line)
     recipe.ingredients[:] = keep

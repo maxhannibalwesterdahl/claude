@@ -28,6 +28,11 @@ START = "2026-10-04"
     ([(2, None), (150, "g")], None, None, [Amount(2, None), Amount(150, "g")]),
     ([(1, "bundt"), (2, "spsk")], None, None, [Amount(30, "ml"), Amount(1, "bundt")]),
     ([], None, None, []),
+    # Hele pakninger (SPEC §2.4): ½ dåse købes som 1 dåse.
+    ([(0.5, "dåse")], None, None, [Amount(1, "dåse")]),
+    ([(0.5, "dåse"), (1, "dåse")], None, None, [Amount(2, "dåse")]),
+    ([(1.5, "fed")], None, None, [Amount(2, "fed")]),
+    ([(0.5, "dåse"), (100, "g")], None, None, [Amount(100, "g"), Amount(1, "dåse")]),
 ])
 def test_combine(parts, gpp, gpd, expected):
     assert combine(parts, gpp, gpd) == expected
@@ -91,19 +96,19 @@ def test_list_combines_the_week(client, week):
 
 
 def test_sync_last_write_wins(client, week):
-    r = client.post("/api/shopping/sync", json={"plan_id": week["id"], "changes": [
-        {"key": items(client.get("/api/shopping").json())["løg"]["key"], "checked": True, "ts": 2000}]})
+    r = client.post("/api/shopping/sync?today=2026-10-01", json={"plan_id": week["id"], "changes": [
+        {"key": items(client.get("/api/shopping?today=2026-10-01").json())["løg"]["key"], "checked": True, "ts": 2000}]})
     key = items(r.json())["løg"]["key"]
     assert items(r.json())["løg"]["checked"]
     # En ældre ændring fra den anden telefon taber.
-    r = client.post("/api/shopping/sync", json={"plan_id": week["id"], "changes": [{"key": key, "checked": False, "ts": 1000}]})
+    r = client.post("/api/shopping/sync?today=2026-10-01", json={"plan_id": week["id"], "changes": [{"key": key, "checked": False, "ts": 1000}]})
     assert items(r.json())["løg"]["checked"]
-    r = client.post("/api/shopping/sync", json={"plan_id": week["id"], "changes": [{"key": key, "checked": False, "ts": 3000}]})
+    r = client.post("/api/shopping/sync?today=2026-10-01", json={"plan_id": week["id"], "changes": [{"key": key, "checked": False, "ts": 3000}]})
     assert not items(r.json())["løg"]["checked"]
 
 
 def test_home_removes_item_and_can_be_undone(client, week):
-    key = items(client.get("/api/shopping").json())["hakkede tomater"]["key"]
+    key = items(client.get("/api/shopping?today=2026-10-01").json())["hakkede tomater"]["key"]
     data = client.post("/api/shopping/home", json={"plan_id": week["id"], "key": key, "home": True}).json()
     assert "hakkede tomater" not in items(data)
     assert data["home"] == [{"key": key, "name": "hakkede tomater"}]
@@ -115,47 +120,47 @@ def test_home_removes_item_and_can_be_undone(client, week):
 
 
 def test_extras(client, week):
-    data = client.post("/api/shopping/extras", json={"text": "bleer"}).json()
-    data = client.post("/api/shopping/extras", json={"text": "Kaffe"}).json()
+    data = client.post("/api/shopping/extras?today=2026-10-01", json={"text": "bleer"}).json()
+    data = client.post("/api/shopping/extras?today=2026-10-01", json={"text": "Kaffe"}).json()
     it = items(data)
     assert it["bleer"]["kind"] == "extra" and it["bleer"]["department"] == "andet"
-    assert client.post("/api/shopping/extras", json={"text": "  "}).status_code == 422
+    assert client.post("/api/shopping/extras?today=2026-10-01", json={"text": "  "}).status_code == 422
 
     # Kendt vare kommer i sin afdeling.
-    data = client.post("/api/shopping/extras", json={"text": "2 liter mælk"}).json()
+    data = client.post("/api/shopping/extras?today=2026-10-01", json={"text": "2 liter mælk"}).json()
     assert items(data)["2 liter mælk"]["department"] == "mej"
 
     key = it["bleer"]["key"]
-    data = client.post("/api/shopping/sync", json={"changes": [{"key": key, "checked": True, "ts": 10**13}]}).json()
+    data = client.post("/api/shopping/sync?today=2026-10-01", json={"changes": [{"key": key, "checked": True, "ts": 10**13}]}).json()
     assert items(data)["bleer"]["checked"]
-    data = client.delete(f"/api/shopping/extras/{key[2:]}").json()
+    data = client.delete(f"/api/shopping/extras/{key[2:]}?today=2026-10-01").json()
     assert "bleer" not in items(data)
 
 
 def test_bought_extras_disappear_later(client, app, week):
-    data = client.post("/api/shopping/extras", json={"text": "bleer"}).json()
+    data = client.post("/api/shopping/extras?today=2026-10-01", json={"text": "bleer"}).json()
     key = items(data)["bleer"]["key"]
     # Krydset af for længe siden (ts = 1): vises ikke længere.
-    data = client.post("/api/shopping/sync", json={"changes": [{"key": key, "checked": True, "ts": 1}]}).json()
+    data = client.post("/api/shopping/sync?today=2026-10-01", json={"changes": [{"key": key, "checked": True, "ts": 1}]}).json()
     assert "bleer" not in items(data)
 
 
 def test_unbought_extras_follow_to_next_plan(client, week):
-    client.post("/api/shopping/extras", json={"text": "bleer"})
+    client.post("/api/shopping/extras?today=2026-10-01", json={"text": "bleer"})
     nxt = client.post("/api/plans", json={"start_date": "2026-10-11"}).json()
-    data = client.get(f"/api/shopping?plan_id={nxt['id']}").json()
+    data = client.get(f"/api/shopping?plan_id={nxt['id']}&today=2026-10-01").json()
     assert "bleer" in items(data)
 
 
 def test_out_of_stock_pantry_item(client, week):
-    data = client.get("/api/shopping").json()
+    data = client.get("/api/shopping?today=2026-10-01").json()
     salt = data["pantry"][0]
-    data = client.post("/api/shopping/extras", json={"ingredient_id": salt["ingredient_id"], "source": "løbet tør"}).json()
+    data = client.post("/api/shopping/extras?today=2026-10-01", json={"ingredient_id": salt["ingredient_id"], "source": "løbet tør"}).json()
     assert data["pantry"][0]["requested"]
     it = items(data)["salt og peber"]
     assert it["source"] == "løbet tør" and it["department"] == "kry"
     # To tryk giver ikke to rækker.
-    data = client.post("/api/shopping/extras", json={"ingredient_id": salt["ingredient_id"], "source": "løbet tør"}).json()
+    data = client.post("/api/shopping/extras?today=2026-10-01", json={"ingredient_id": salt["ingredient_id"], "source": "løbet tør"}).json()
     assert [i["name"] for i in data["items"]].count("salt og peber") == 1
 
 
@@ -169,7 +174,7 @@ def test_choose_plan(client):
 
 
 def test_no_plan_still_shows_extras(client):
-    data = client.post("/api/shopping/extras", json={"text": "bleer"}).json()
+    data = client.post("/api/shopping/extras?today=2026-10-01", json={"text": "bleer"}).json()
     assert data["plan"] is None and [i["name"] for i in data["items"]] == ["bleer"]
 
 
@@ -178,17 +183,17 @@ def test_department_order(client, week):
     assert order[0] == "fg"
     new = ["mej"] + [c for c in order if c != "mej"]
     assert client.put("/api/settings/departments", json={"order": new}).status_code == 200
-    data = client.get("/api/shopping").json()
+    data = client.get("/api/shopping?today=2026-10-01").json()
     assert data["items"][0]["department"] == "mej"
     assert client.put("/api/settings/departments", json={"order": ["mej"]}).status_code == 422
 
 
 def test_deleted_plan_clears_list_but_keeps_extras(client, week):
-    client.post("/api/shopping/extras", json={"text": "bleer"})
-    key = items(client.get("/api/shopping").json())["løg"]["key"]
+    client.post("/api/shopping/extras?today=2026-10-01", json={"text": "bleer"})
+    key = items(client.get("/api/shopping?today=2026-10-01").json())["løg"]["key"]
     client.delete(f"/api/plans/{week['id']}")
     # Telefonen husker den slettede plan og har en ventende afkrydsning.
-    r = client.post("/api/shopping/sync", json={"plan_id": week["id"], "changes": [{"key": key, "checked": True, "ts": 5}]})
+    r = client.post("/api/shopping/sync?today=2026-10-01", json={"plan_id": week["id"], "changes": [{"key": key, "checked": True, "ts": 5}]})
     assert r.status_code == 200
     data = r.json()
     assert data["plan"] is None and [i["name"] for i in data["items"]] == ["bleer"]
@@ -198,7 +203,7 @@ def test_deleted_plan_clears_list_but_keeps_extras(client, week):
 def test_list_follows_to_next_plan(client, app, week):
     # Telefonen viser stadig en ældre plan (fx sidste uge) med en ventende afkrydsning.
     old = client.post("/api/plans", json={"start_date": "2026-09-01"}).json()
-    r = client.post("/api/shopping/sync", json={"plan_id": old["id"], "changes": [{"key": "i:1", "checked": True, "ts": 5}]})
+    r = client.post("/api/shopping/sync?today=2026-10-01", json={"plan_id": old["id"], "changes": [{"key": "i:1", "checked": True, "ts": 5}]})
     # Svaret er listen til næste indkøb ...
     assert r.json()["plan"]["id"] == week["id"]
     # ... og afkrydsningen er gemt på den plan, den blev lavet på.
@@ -207,3 +212,26 @@ def test_list_follows_to_next_plan(client, app, week):
     from madplan.models import ShoppingCheck
     with app.state.db.sessionmaker() as s:
         assert [(c.plan_id, c.key) for c in s.scalars(select(ShoppingCheck))] == [(old["id"], "i:1")]
+
+
+def test_one_invalid_change_does_not_block_the_rest(client, week):
+    key = items(client.get("/api/shopping?today=2026-10-01").json())["løg"]["key"]
+    r = client.post("/api/shopping/sync?today=2026-10-01", json={"plan_id": week["id"], "changes": [
+        {"key": "t:" + "x" * 400, "checked": True, "ts": 1000},   # for lang
+        {"key": key},                                              # mangler felter
+        {"key": key, "checked": True, "ts": 2000},
+    ]})
+    assert r.status_code == 200 and items(r.json())["løg"]["checked"]
+
+
+def test_clock_far_ahead_cannot_lock_a_row(client, week):
+    import time
+    key = items(client.get("/api/shopping?today=2026-10-01").json())["løg"]["key"]
+    far = int(time.time() * 1000) + 10 * 365 * 86400 * 1000  # ur 10 år foran
+    client.post("/api/shopping/sync?today=2026-10-01", json={"plan_id": week["id"], "changes": [{"key": key, "checked": True, "ts": far}]})
+    now = int(time.time() * 1000) + 120_000
+    r = client.post("/api/shopping/sync?today=2026-10-01", json={"plan_id": week["id"], "changes": [{"key": key, "checked": False, "ts": now}]})
+    assert not items(r.json())["løg"]["checked"]
+    # Enorme tal giver ikke 500.
+    r = client.post("/api/shopping/sync?today=2026-10-01", json={"changes": [{"key": key, "checked": True, "ts": 2**70}]})
+    assert r.status_code == 200

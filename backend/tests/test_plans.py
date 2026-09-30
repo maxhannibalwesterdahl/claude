@@ -228,7 +228,7 @@ def test_distribute_wishes_to_free_days(client, plan, recipes):
     put(client, plan, date="2026-10-06", kind="fritekst", text="Tacos")
     for r in ("kødsovs", "lasagne", "suppe"):
         client.post(f"/api/plans/{plan['id']}/wishlist", json={"recipe_id": recipes[r]["id"]})
-    p = client.post(f"/api/plans/{plan['id']}/wishlist/distribute").json()
+    p = client.post(f"/api/plans/{plan['id']}/wishlist/distribute?today=2026-10-01").json()
     assert [d["meal"]["title"] if d["meal"] else None for d in p["days"]] == [
         "Pizza", "Kødsovs", "Tacos", "Lasagne", "Suppe", None, None]
     assert p["wishlist"] == []
@@ -238,6 +238,15 @@ def test_distribute_keeps_wishes_without_room(client, recipes):
     plan = client.post("/api/plans", json={"start_date": START, "days": 1}).json()
     for r in ("kødsovs", "lasagne"):
         client.post(f"/api/plans/{plan['id']}/wishlist", json={"recipe_id": recipes[r]["id"]})
-    p = client.post(f"/api/plans/{plan['id']}/wishlist/distribute").json()
+    p = client.post(f"/api/plans/{plan['id']}/wishlist/distribute?today=2026-10-01").json()
     assert p["days"][0]["meal"]["title"] == "Kødsovs"
     assert [w["title"] for w in p["wishlist"]] == ["Lasagne"]
+
+
+def test_distribute_skips_days_that_have_passed(client, plan, recipes):
+    for r in ("kødsovs", "lasagne"):
+        client.post(f"/api/plans/{plan['id']}/wishlist", json={"recipe_id": recipes[r]["id"]})
+    # Onsdag i planens uge: søn-tirs er gået.
+    p = client.post(f"/api/plans/{plan['id']}/wishlist/distribute?today=2026-10-07").json()
+    assert [d["meal"]["title"] if d["meal"] else None for d in p["days"]] == [
+        None, None, None, "Kødsovs", "Lasagne", None, None]

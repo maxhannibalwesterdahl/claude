@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..catalog import Catalog
 from ..ingredients.matcher import DEPARTMENTS, key as item_key
+from ..config import local_today
 from ..models import (
     Ingredient,
     Plan,
@@ -98,14 +99,20 @@ class ShoppingOut(BaseModel):
 
 
 class Change(BaseModel):
-    key: str = Field(max_length=120)
+    key: str = Field(max_length=300)
     checked: bool
-    ts: int  # klientens tidspunkt i ms
+    ts: int  # klientens tidspunkt i ms (rettet for urforskel, se frontend)
 
 
 class SyncIn(BaseModel):
     plan_id: int | None = None
-    changes: list[Change] = Field([], max_length=500)
+    # Valideres én ad gangen i sync(): en ugyldig ændring må ikke blokere resten,
+    # for telefonen sender ventende ændringer igen, indtil de bliver modtaget.
+    changes: list[dict] = Field([], max_length=2000)
+
+
+# En telefon med et ur, der går foran, må ikke kunne låse en vare for altid.
+MAX_CLOCK_AHEAD_MS = 60_000
 
 
 class ExtraIn(BaseModel):
@@ -138,7 +145,7 @@ def choose_plan(session: Session, plan_id: int | None, today: date | None = None
         if plan is None:
             raise HTTPException(status_code=404, detail="Planen findes ikke")
         return plan
-    today = today or date.today()
+    today = today or local_today()
     plans = session.scalars(select(Plan).order_by(Plan.start_date)).all()
     upcoming = [p for p in plans if p.start_date >= today]
     covering = [p for p in plans if p.start_date <= today <= _end(p)]
@@ -267,14 +274,23 @@ def get_shopping(session: DbSession, _: CurrentUser, plan_id: int | None = None,
 
 
 @router.post("/shopping/sync")
-def sync(body: SyncIn, session: DbSession, _: CurrentUser) -> ShoppingOut:
+def sync(body: SyncIn, session: DbSession, _: CurrentUser, today: date | None = None) -> ShoppingOut:
     """Modtag afkrydsninger (evt. lavet offline). Seneste ændring pr. række vinder.
 
     Ændringerne gemmes på den plan, telefonen viste, da de blev lavet. Svaret er
     altid listen til næste indkøb, så telefonen følger med, når en plan slettes,
     eller når næste uges plan oprettes."""
-    target = session.get(Plan, body.plan_id) if body.plan_id is not None else choose_plan(session, None)
-    for ch in body.changes:
+    target = session.get(Plan, body.plan_id) if body.plan_id is not None else choose_plan(session, None, today)
+    now_ms = int(time.time() * 1000)
+    changes = []
+    for raw in body.changes:
+        try:
+            ch = Change.model_validate(raw)
+        except ValueError:
+            continue  # ugyldig ændring springes over; resten gemmes
+        ch.ts = max(0, min(ch.ts, now_ms + MAX_CLOCK_AHEAD_MS))
+        changes.append(ch)
+    for ch in changes:
         if ch.key.startswith("e:"):
             extra = session.get(ShoppingExtra, int(ch.key[2:])) if ch.key[2:].isdigit() else None
             if extra and ch.ts > extra.updated_ms:
@@ -286,11 +302,11 @@ def sync(body: SyncIn, session: DbSession, _: CurrentUser) -> ShoppingOut:
             elif ch.ts > row.updated_ms:
                 row.checked, row.updated_ms = ch.checked, ch.ts
     session.commit()
-    return build(session, choose_plan(session, None))
+    return build(session, choose_plan(session, None, today))
 
 
 @router.post("/shopping/extras", status_code=201)
-def add_extra(body: ExtraIn, session: DbSession, _: CurrentUser, plan_id: int | None = None) -> ShoppingOut:
+def add_extra(body: ExtraIn, session: DbSession, _: CurrentUser, plan_id: int | None = None, today: date | None = None) -> ShoppingOut:
     """Egen vare ("bleer") eller "løbet tør" for en basisvare."""
     if body.ingredient_id is not None:
         ing = session.get(Ingredient, body.ingredient_id)
@@ -309,17 +325,17 @@ def add_extra(body: ExtraIn, session: DbSession, _: CurrentUser, plan_id: int | 
         ing = session.get(Ingredient, found.ingredient_id) if found.match_status == "sikker" else None
         session.add(ShoppingExtra(text=text, ingredient=ing, source="egen"))
     session.commit()
-    return build(session, choose_plan(session, plan_id))
+    return build(session, choose_plan(session, plan_id, today))
 
 
 @router.delete("/shopping/extras/{extra_id}")
-def delete_extra(extra_id: int, session: DbSession, _: CurrentUser, plan_id: int | None = None) -> ShoppingOut:
+def delete_extra(extra_id: int, session: DbSession, _: CurrentUser, plan_id: int | None = None, today: date | None = None) -> ShoppingOut:
     extra = session.get(ShoppingExtra, extra_id)
     if extra is None:
         raise HTTPException(status_code=404, detail="Varen findes ikke")
     session.delete(extra)
     session.commit()
-    return build(session, choose_plan(session, plan_id))
+    return build(session, choose_plan(session, plan_id, today))
 
 
 @router.post("/shopping/home")

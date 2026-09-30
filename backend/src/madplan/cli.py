@@ -8,7 +8,6 @@
 
 import argparse
 import getpass
-import sqlite3
 import sys
 from datetime import date
 from pathlib import Path
@@ -17,8 +16,8 @@ from sqlalchemy import select
 
 from .auth import MIN_PASSWORD, hash_password
 from .catalog import sync_seed
-from .config import load_settings
-from .db import Database, make_engine, migrate
+from .config import load_settings, local_today
+from .db import Database, copy_sqlite, make_engine, migrate
 from .models import User
 
 
@@ -49,7 +48,7 @@ def main(argv: list[str] | None = None) -> int:
         print(backup(settings.data_dir, args.keep))
         return 0
     engine = make_engine(settings.db_url)
-    migrate(engine)
+    migrate(engine, backup_dir=settings.data_dir / "backups")
     db = Database(engine)
     with db.sessionmaker() as s:
         sync_seed(s)
@@ -83,14 +82,7 @@ def backup(data_dir: Path, keep: int, today: date | None = None) -> Path:
     appen kører (SQLites backup-funktion). Ældre kopier end `keep` slettes."""
     folder = data_dir / "backups"
     folder.mkdir(exist_ok=True)
-    target = folder / f"madplan-{(today or date.today()).isoformat()}.db"
-    src = sqlite3.connect(data_dir / "madplan.db")
-    dst = sqlite3.connect(target)
-    try:
-        src.backup(dst)
-    finally:
-        dst.close()
-        src.close()
+    target = copy_sqlite(data_dir / "madplan.db", folder / f"madplan-{(today or local_today()).isoformat()}.db")
     for old in sorted(folder.glob("madplan-*.db"))[:-keep]:
         old.unlink()
     return target

@@ -5,7 +5,7 @@ Samme vare lægges sammen på tværs af dage og inden for samme opskrift:
   - Samme enhed summeres direkte: 1 dåse + 1 dåse = 2 dåse.
   - Forskellige enheder omregnes, hvis varen har omregninger:
     "2 løg" + "150 g løg" = 3 stk (150 g pr. stk).
-  - Stk rundes op til hele. Vægt vises i g/kg, rumfang i ml/dl/l.
+  - Stk, dåser, pakker osv. rundes op til hele. Vægt vises i g/kg, rumfang i ml/dl/l.
   - Kan det ikke omregnes, vises delene hver for sig: 1 bundt + 2 spsk.
   - Intervaller ("2-3 løg") bruger den højeste værdi, så der købes nok.
 """
@@ -13,9 +13,13 @@ Samme vare lægges sammen på tværs af dage og inden for samme opskrift:
 import math
 from dataclasses import dataclass
 
+from .planning import PIECE_UNITS
+
 MASS_G = {"g": 1.0, "kg": 1000.0}
 VOLUME_ML = {"ml": 1.0, "cl": 10.0, "dl": 100.0, "l": 1000.0, "tsk": 5.0, "spsk": 15.0}
-PIECE = {None, "stk"}
+PIECE = {None, "stk"}  # tælles som stk og kan omregnes med g/stk
+# Købes i hele enheder: 1,5 dåse bliver 2 dåser. Samme liste som madplanen bruger.
+WHOLE = PIECE_UNITS | PIECE
 
 
 @dataclass(frozen=True)
@@ -54,8 +58,8 @@ def combine(
         # Én enhed: summér direkte og behold enheden (3 spsk, 2 dåse).
         unit = units.pop()
         total = sum(q for q, _ in parts)
-        if unit is None:
-            return [Amount(float(math.ceil(total - 1e-9)), None)]
+        if unit in WHOLE:
+            return [Amount(float(math.ceil(total - 1e-9)), unit)]
         if unit in MASS_G:
             return [_mass(total * MASS_G[unit])]
         if unit in ("ml", "cl", "dl", "l"):
@@ -94,5 +98,5 @@ def combine(
         out.append(_mass(grams))
     if has_ml:
         out.append(_volume(ml))
-    out += [Amount(_nice(q), u) for u, q in sorted(other.items())]
+    out += [Amount(float(math.ceil(q - 1e-9)) if u in WHOLE else _nice(q), u) for u, q in sorted(other.items())]
     return out

@@ -7,6 +7,7 @@ APP_SECRET. Nyt kodeord øger sessionsversionen og logger alle enheder ud.
 
 import hashlib
 import hmac
+import threading
 import time
 from collections import defaultdict, deque
 
@@ -19,6 +20,9 @@ LOGIN_LIMIT = 5  # forsøg pr. minut pr. IP
 MIN_PASSWORD = 12
 
 _hasher = PasswordHasher()
+# Hvert tjek af et kodeord bruger 64 MB RAM (argon2). Højst to ad gangen, så en
+# flod af loginforsøg ikke kan fylde containerens hukommelse.
+HASH_GATE = threading.BoundedSemaphore(2)
 # Bruges, når brugernavnet ikke findes, så svartiden ikke afslører det.
 _DUMMY_HASH = _hasher.hash("ikke-et-rigtigt-kodeord")
 
@@ -82,3 +86,11 @@ class RateLimiter:
     def failed(self, key: str, now: float | None = None) -> None:
         now = time.monotonic() if now is None else now
         self._recent(key, now).append(now)
+
+    def succeeded(self, key: str) -> None:
+        """Fjern det seneste forsøg igen (det blev talt, før kodeordet var tjekket)."""
+        q = self._attempts.get(key)
+        if q:
+            q.pop()
+        if not q:
+            self._attempts.pop(key, None)

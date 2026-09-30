@@ -1,5 +1,6 @@
 """FastAPI-appen: JSON-API under /api og den byggede frontend på resten."""
 
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -13,6 +14,8 @@ from ..db import Database, make_engine, migrate
 from . import auth_routes, ingredients, plans, recipes, shopping
 from .deps import CurrentUser, get_settings  # noqa: F401  (bruges af ruterne)
 
+log = logging.getLogger("madplan")
+
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or load_settings()
@@ -21,12 +24,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI):
         settings.data_dir.mkdir(parents=True, exist_ok=True)
         engine = make_engine(settings.db_url)
-        migrate(engine)
+        migrate(engine, backup_dir=settings.data_dir / "backups")
         app.state.db = Database(engine)
         with app.state.db.sessionmaker() as s:
             sync_seed(s)
-            rematch_open_lines(s)
-            s.commit()
+            # Genmatch må aldrig forhindre appen i at starte.
+            try:
+                n = rematch_open_lines(s)
+                s.commit()
+                if n:
+                    log.info("genmatchede %d ingredienslinjer ved opstart", n)
+            except Exception:
+                s.rollback()
+                log.exception("genmatch ved opstart fejlede; appen starter alligevel")
         yield
         engine.dispose()
 

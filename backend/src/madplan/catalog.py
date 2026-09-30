@@ -35,6 +35,8 @@ def sync_seed(session: Session) -> int:
     """Læg manglende startvarer og aliaser ind. Returnerer antal nye varer."""
     existing = {i.name: i for i in session.scalars(select(Ingredient))}
     keys = set(session.scalars(select(IngredientAlias.key)))
+    # Nye startaliaser må ikke ramme navnet på en vare (også brugerens egne).
+    keys |= {m.key(name) for name in existing}
     conversions = load_conversions()
     added = 0
     table = m.load_table()
@@ -44,7 +46,7 @@ def sync_seed(session: Session) -> int:
     for seed in table:
         ing = existing.get(seed.name)
         if ing is None and m.key(seed.name) in keys:
-            continue  # omdøbt af brugeren; det gamle navn er et alias
+            continue  # omdøbt af brugeren (det gamle navn er et alias) eller navnet er optaget
         if ing is None:
             per_piece, per_dl = conversions.get(seed.name, (None, None))
             ing = Ingredient(
@@ -53,6 +55,7 @@ def sync_seed(session: Session) -> int:
             )
             session.add(ing)
             existing[seed.name] = ing
+            keys.add(m.key(seed.name))
             added += 1
         for alias in seed.aliases:
             k = m.key(alias)
@@ -70,15 +73,25 @@ class Catalog:
         rows = session.scalars(select(Ingredient).options(selectinload(Ingredient.aliases))).all()
         self.by_id = {i.id: i for i in rows}
         self._id_by_name = {i.name: i.id for i in rows}
-        table = [
-            m.Ingredient(i.name, i.department, i.pantry, tuple(a.alias for a in i.aliases if a.source == "seed"))
-            for i in rows
-        ]
+        # Et alias må aldrig være navnet på en anden vare, og hver nøgle bruges
+        # kun én gang. Konflikter i data springes over i stedet for at vælte
+        # appen (fx et nyt startalias, der er lig en vare, brugeren har oprettet).
+        owner = {m.key(i.name): i.id for i in rows}
+        used = set(owner)
+        table = []
+        for i in rows:
+            seed = []
+            for a in i.aliases:
+                k = a.key
+                if a.source == "seed" and k not in used:
+                    seed.append(a.alias)
+                    used.add(k)
+            table.append(m.Ingredient(i.name, i.department, i.pantry, tuple(seed)))
         self.matcher = m.RuleMatcher(table)
-        # Brugerens rettelser vinder over startdata.
+        # Brugerens rettelser vinder over startdata, men ikke over andre varers navne.
         for i in rows:
             for a in i.aliases:
-                if a.source == "user":
+                if a.source == "user" and owner.get(a.key, i.id) == i.id:
                     self.matcher.add_alias(a.alias, i.name)
 
     def parse(self, line: str) -> "ParsedLine":
@@ -109,21 +122,37 @@ class ParsedLine:
 
 
 def learn_alias(session: Session, item: str, ingredient: Ingredient) -> int:
-    """Brugeren har koblet `item` til en vare. Husk det, og ret alle andre
-    ubekræftede linjer med samme varenavn. Returnerer antal rettede linjer."""
+    """Brugeren har koblet `item` til en vare. Husk det som alias, og ret andre
+    ubekræftede linjer med samme varenavn. Returnerer antal rettede linjer.
+
+    Regler, så én bekræftelse aldrig kan omdøbe en vare i hele appen:
+    - Er `item` navnet på en ANDEN vare ("løg" bekræftet som rødløg), gælder
+      bekræftelsen kun den ene linje. Der laves intet alias.
+    - Er `item` navnet på den valgte vare, fjernes et tidligere bruger-alias
+      med samme navn (fortryder en gammel omdøbning).
+    """
     k = m.key(item)
     if not k:
         return 0
-    if k != m.key(ingredient.name):
-        alias = session.scalar(select(IngredientAlias).where(IngredientAlias.key == k))
-        if alias is None:
-            session.add(IngredientAlias(alias=item.lower().strip(), key=k, ingredient=ingredient, source="user"))
-        else:
-            alias.ingredient = ingredient
-            alias.source = "user"
+    owner = next((i for i in session.scalars(select(Ingredient)) if m.key(i.name) == k), None)
+    alias = session.scalar(select(IngredientAlias).where(IngredientAlias.key == k))
+    if owner is not None and owner.id != ingredient.id:
+        return 0
+    if owner is not None:
+        # Varens eget navn: fjern en gammel omdøbning og ret linjer, den har ramt.
+        if alias is not None and alias.source == "user":
+            session.delete(alias)
+    elif alias is None:
+        session.add(IngredientAlias(alias=" ".join(item.lower().split()), key=k, ingredient=ingredient, source="user"))
+    else:
+        alias.ingredient = ingredient
+        alias.source = "user"
+    # Alle ubekræftede linjer med samme varenavn følger aliaset. Bekræftede linjer
+    # er brugerens egne valg og røres ikke.
     changed = 0
     for line in session.scalars(select(RecipeIngredient).where(RecipeIngredient.match_status != "bekræftet")):
-        if m.key(line.item) == k:
+        already = line.ingredient_id == ingredient.id and line.match_status == "sikker"
+        if not already and m.key(line.item) == k:
             line.ingredient_id = ingredient.id
             line.match_status = "sikker"
             changed += 1

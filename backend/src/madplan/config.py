@@ -7,7 +7,21 @@
 
 import os
 from dataclasses import dataclass
+from datetime import date, datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
+
+# Husstanden bor i Danmark. Serveren kører i UTC, så "i dag" regnes altid i
+# dansk tid (ellers er det i går mellem kl. 00 og 02).
+TZ = ZoneInfo(os.environ.get("APP_TZ", "Europe/Copenhagen"))
+
+
+def local_now() -> datetime:
+    return datetime.now(TZ)
+
+
+def local_today() -> date:
+    return local_now().date()
 
 
 @dataclass(frozen=True)

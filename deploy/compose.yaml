@@ -17,6 +17,10 @@ services:
       - ./serve.json:/config/serve.json:ro
     networks: [madplan]
     restart: unless-stopped
+    mem_limit: 256m
+    logging: &logs
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
 
   app:
     build: ..
@@ -29,6 +33,11 @@ services:
     # ene container ikke tager netværket fra den anden.
     networks: [madplan]
     restart: unless-stopped
+    # Loft over hukommelse: går appen amok, er det kun appen, der genstartes,
+    # ikke tailscale eller Docker. Appen bruger normalt ca. 100 MB.
+    mem_limit: 512m
+    pids_limit: 256
+    logging: *logs
 
 networks:
   madplan:

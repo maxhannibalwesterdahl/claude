@@ -73,8 +73,8 @@ PRODUCT_PREFIXES = {
 FRACTIONS = {"½": 0.5, "¼": 0.25, "¾": 0.75, "⅓": 1 / 3, "⅔": 2 / 3, "⅛": 0.125}
 _FRAC_CHARS = "".join(FRACTIONS)
 
-# Et tal: "2", "1,5", "1.5", "1½", "½", "1/2", "1 1/2".
-_NUMBER = rf"(?:\d+\s+\d+/\d+|\d+/\d+|\d+(?:[.,]\d+)?[{_FRAC_CHARS}]?|[{_FRAC_CHARS}])"
+# Et tal: "2", "1,5", "1.5", "1½", "1 ½", "½", "1/2", "1 1/2".
+_NUMBER = rf"(?:\d+\s+\d+/\d+|\d+\s+[{_FRAC_CHARS}]|\d+/\d+|\d+(?:[.,]\d+)?[{_FRAC_CHARS}]?|[{_FRAC_CHARS}])"
 _QUANTITY_RE = re.compile(rf"^\s*(?P<a>{_NUMBER})(?:\s*[-–]\s*(?P<b>{_NUMBER}))?\s*")
 
 _PAREN_RE = re.compile(r"\(([^)]*)\)")

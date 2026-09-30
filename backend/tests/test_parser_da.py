@@ -69,3 +69,12 @@ def test_note_is_kept():
 def test_trailing_cut_without_comma():
     p = parse("2 bundter forårsløg i 3 cm skrå stykker (ca. 200 g)")
     assert (p.quantity, p.unit, p.item) == (2, "bundt", "forårsløg")
+
+
+def test_whole_number_space_fraction():
+    from madplan.ingredients import DanishRuleParser
+    p = DanishRuleParser()
+    r = p.parse("1 ½ dl Vand")
+    assert (r.quantity, r.unit, r.item) == (1.5, "dl", "vand")
+    r = p.parse("2 ½ spsk Paprika (eller efter smag)")
+    assert (r.quantity, r.unit, r.item, r.note) == (2.5, "spsk", "paprika", "eller efter smag")

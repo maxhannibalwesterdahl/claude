@@ -120,8 +120,9 @@ to handlinger.
 
 ## Tjekliste før første brug i hverdagen (efter fase 3)
 
-- [ ] Backup af LXC i Proxmox er sat op og en gendannelse er afprøvet
-- [ ] Daglig kopi af SQLite-filen
+- [x] Backup af LXC i Proxmox er sat op og en gendannelse er afprøvet (30-09-2026)
+- [x] Daglig kopi af SQLite-filen (30-09-2026)
+- [ ] Kopi uden for Proxmox-værten (afventer valg af sted)
 - [ ] Stærke kodeord for begge brugere
 - [ ] Rate limit på login er testet
 - [ ] Begge telefoner har appen på hjemmeskærmen

@@ -162,6 +162,7 @@ jordbær | fg | |
 # --- Kolonial ---
 pasta | kol | | pasta penne, penne, pastarør, spaghetti, linguine, fusilli, tagliatelle, suppehorn, tørret pasta
 lasagneplader | kol | |
+havregryn | kol | | havregryn fine, grovvalsede havregryn, fine havregryn
 ris | kol | | basmati ris, jasminris
 nudler | kol | | ramen nudler, ramennudler, ægnudler, udon nudler, hvedenudler
 risottoris | kol | |

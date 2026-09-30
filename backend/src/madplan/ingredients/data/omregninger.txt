@@ -51,6 +51,7 @@ flute | 250 |
 tortillas | 40 |
 
 ris | | 85
+havregryn | | 35
 risottoris | | 90
 røde linser | | 85
 hvedemel | | 60

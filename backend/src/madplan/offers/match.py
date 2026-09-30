@@ -72,9 +72,10 @@ def _candidates(phrase: str) -> list[tuple[str, bool]]:
         if cut in phrase:
             bases.append(phrase.split(cut, 1)[0])
     out = []
-    for base in bases:
+    for n, base in enumerate(bases):
         words = base.split()
-        out += [(" ".join(words[i:]), i == 0) for i in range(len(words))]
+        # Kun den uforkortede frase (n == 0) med alle ord er "hele frasen".
+        out += [(" ".join(words[i:]), n == 0 and i == 0) for i in range(len(words))]
     return out
 
 

@@ -170,6 +170,7 @@ export interface ShoppingItem {
 	kind: 'plan' | 'extra';
 	source: 'egen' | 'løbet tør' | null;
 	unknown: boolean;
+	ingredient_name: string | null;
 }
 
 export interface PantryItem {

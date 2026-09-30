@@ -1,6 +1,8 @@
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, HTTPException
+import uuid
+
+from fastapi import APIRouter, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
@@ -208,6 +210,53 @@ def update_recipe(recipe_id: int, body: RecipeIn, session: DbSession, _: Current
     apply_lines(session, recipe, body.ingredients, Catalog(session))
     session.commit()
     session.expire_all()
+    return recipe_out(load_recipe(session, recipe.id))
+
+
+# Billeder, man selv tager eller vælger. Telefonen gør dem mindre før upload,
+# men serveren tjekker alligevel størrelse og filtype (ud fra indholdet).
+MAX_UPLOAD = 8_000_000
+_IMAGE_MAGIC = [(b"\xff\xd8\xff", ".jpg"), (b"\x89PNG\r\n\x1a\n", ".png")]
+
+
+def _image_ext(head: bytes) -> str | None:
+    for magic, ext in _IMAGE_MAGIC:
+        if head.startswith(magic):
+            return ext
+    if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+        return ".webp"
+    return None
+
+
+@router.post("/recipes/{recipe_id}/image")
+async def upload_image(recipe_id: int, file: UploadFile, session: DbSession, settings: AppSettings, _: CurrentUser) -> RecipeOut:
+    """Sæt eller skift opskriftens billede (JPEG, PNG eller WebP)."""
+    recipe = load_recipe(session, recipe_id)
+    data = await file.read(MAX_UPLOAD + 1)
+    if len(data) > MAX_UPLOAD:
+        raise HTTPException(status_code=413, detail="Billedet er for stort (højst 8 MB)")
+    ext = _image_ext(data[:16])
+    if ext is None:
+        raise HTTPException(status_code=422, detail="Filen er ikke et billede (JPEG, PNG eller WebP)")
+    settings.image_dir.mkdir(parents=True, exist_ok=True)
+    name = uuid.uuid4().hex + ext
+    (settings.image_dir / name).write_bytes(data)
+    old = recipe.image_file
+    recipe.image_file = name
+    session.commit()
+    if old:
+        (settings.image_dir / old).unlink(missing_ok=True)
+    return recipe_out(load_recipe(session, recipe.id))
+
+
+@router.delete("/recipes/{recipe_id}/image")
+def delete_image(recipe_id: int, session: DbSession, settings: AppSettings, _: CurrentUser) -> RecipeOut:
+    recipe = load_recipe(session, recipe_id)
+    old = recipe.image_file
+    recipe.image_file = None
+    session.commit()
+    if old:
+        (settings.image_dir / old).unlink(missing_ok=True)
     return recipe_out(load_recipe(session, recipe.id))
 
 

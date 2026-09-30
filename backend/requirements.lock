@@ -81,6 +81,8 @@ pyparsing==3.3.3
     # via rdflib
 pyrdfa3==3.6.5
     # via extruct
+python-multipart==0.0.32
+    # via madplan (pyproject.toml)
 rdflib==7.6.0
     # via
     #   extruct

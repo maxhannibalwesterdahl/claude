@@ -252,6 +252,38 @@ def test_import_refuses_local_addresses(url):
         importer.check_url(url)
 
 
+JPEG = b"\xff\xd8\xff\xe0" + b"0" * 100
+PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 100
+
+
+def test_upload_replace_and_remove_image(app, client):
+    rec = client.post("/api/recipes", json={"title": "Grød"}).json()
+    assert rec["image_url"] is None
+    r = client.post(f"/api/recipes/{rec['id']}/image", files={"file": ("foto.jpg", JPEG, "image/jpeg")})
+    assert r.status_code == 200, r.text
+    first = r.json()["image_url"]
+    assert first.endswith(".jpg") and client.get(first).content == JPEG
+    # Nyt billede erstatter det gamle, og den gamle fil slettes.
+    second = client.post(f"/api/recipes/{rec['id']}/image", files={"file": ("x.png", PNG, "image/png")}).json()["image_url"]
+    assert second.endswith(".png") and client.get(first).status_code == 404
+    r = client.delete(f"/api/recipes/{rec['id']}/image")
+    assert r.json()["image_url"] is None and client.get(second).status_code == 404
+
+
+def test_upload_rejects_non_images_and_big_files(client, monkeypatch):
+    rec = client.post("/api/recipes", json={"title": "Grød"}).json()
+    r = client.post(f"/api/recipes/{rec['id']}/image", files={"file": ("x.jpg", b"<html>ikke et billede</html>", "image/jpeg")})
+    assert r.status_code == 422
+    from madplan.api import recipes as rmod
+    monkeypatch.setattr(rmod, "MAX_UPLOAD", 50)
+    r = client.post(f"/api/recipes/{rec['id']}/image", files={"file": ("x.jpg", JPEG, "image/jpeg")})
+    assert r.status_code == 413
+
+
+def test_upload_requires_login(anon):
+    assert anon.post("/api/recipes/1/image", files={"file": ("x.jpg", JPEG, "image/jpeg")}).status_code == 401
+
+
 def test_images_require_login(anon):
     assert anon.get("/api/images/abc.jpg").status_code == 401
 

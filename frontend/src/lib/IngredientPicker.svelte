@@ -9,12 +9,16 @@
 		initial: string;
 		onpick: (ing: IngredientRef | null) => void;
 		oncancel: () => void;
+		/** Appens bud (fx et usikkert match). Vises øverst. */
+		suggestion?: IngredientRef | null;
+		/** Afdeling, der er valgt på forhånd, når en ny vare oprettes. */
+		defaultDepartment?: string;
 	}
-	let { initial, onpick, oncancel }: Props = $props();
+	let { initial, onpick, oncancel, suggestion = null, defaultDepartment = 'fg' }: Props = $props();
 
 	let q = $state(untrack(() => initial));
 	let creating = $state(false);
-	let department = $state('fg');
+	let department = $state(untrack(() => defaultDepartment));
 	let error = $state('');
 	let input: HTMLInputElement | undefined = $state();
 
@@ -55,6 +59,9 @@
 		<input bind:this={input} bind:value={q} onkeydown={keydown} placeholder="Søg vare" aria-label="Søg vare" class="grow" />
 		<button type="button" onclick={oncancel}>Luk</button>
 	</div>
+	{#if suggestion}
+		<button type="button" class="primary suggestion" onclick={() => onpick(suggestion)}>✓ {suggestion.name}</button>
+	{/if}
 	<ul>
 		{#each results as ing (ing.id)}
 			<li>
@@ -107,6 +114,11 @@
 		border-bottom: 1px solid var(--line);
 		border-radius: 0;
 		min-height: 44px;
+	}
+	.suggestion {
+		width: 100%;
+		justify-content: center;
+		margin-top: 8px;
 	}
 	.extra {
 		display: flex;

@@ -26,6 +26,8 @@ DEPARTMENTS = {
     "kol": "Kolonial",
     "kry": "Krydderier",
     "dri": "Drikkevarer",
+    "baby": "Baby",
+    "hus": "Husholdning & pleje",
     "andet": "Andet",
 }
 

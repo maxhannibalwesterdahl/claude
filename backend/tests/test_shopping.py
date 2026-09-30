@@ -1,4 +1,5 @@
 import pytest
+from conftest import ingredient_id
 
 from madplan.shopping import Amount, combine
 
@@ -123,7 +124,7 @@ def test_extras(client, week):
     data = client.post("/api/shopping/extras?today=2026-10-01", json={"text": "bleer"}).json()
     data = client.post("/api/shopping/extras?today=2026-10-01", json={"text": "Kaffe"}).json()
     it = items(data)
-    assert it["bleer"]["kind"] == "extra" and it["bleer"]["department"] == "andet"
+    assert it["bleer"]["kind"] == "extra" and it["bleer"]["department"] == "baby"
     assert client.post("/api/shopping/extras?today=2026-10-01", json={"text": "  "}).status_code == 422
 
     # Kendt vare kommer i sin afdeling.
@@ -235,3 +236,26 @@ def test_clock_far_ahead_cannot_lock_a_row(client, week):
     # Enorme tal giver ikke 500.
     r = client.post("/api/shopping/sync?today=2026-10-01", json={"changes": [{"key": key, "checked": True, "ts": 2**70}]})
     assert r.status_code == 200
+
+
+def test_extra_with_chosen_ingredient_is_sorted_and_learned(client, week):
+    bleer = ingredient_id(client, "bleer")
+    # Appen kender ikke "pampers str 4"; brugeren vælger bleer i vare-vælgeren.
+    data = client.post("/api/shopping/extras?today=2026-10-01", json={"text": "2 pk Pampers str 4", "ingredient_id": bleer}).json()
+    it = items(data)["2 pk Pampers str 4"]
+    assert it["department"] == "baby" and it["ingredient_name"] == "bleer" and not it["unknown"]
+    # Næste gang genkendes "pampers" af sig selv.
+    data = client.post("/api/shopping/extras?today=2026-10-01", json={"text": "pampers"}).json()
+    assert items(data)["pampers"]["ingredient_name"] == "bleer"
+
+
+def test_change_ingredient_on_extra(client, week):
+    data = client.post("/api/shopping/extras?today=2026-10-01", json={"text": "gummiand"}).json()
+    it = items(data)["gummiand"]
+    assert it["unknown"] and it["department"] == "andet"
+    toy = client.post("/api/ingredients", json={"name": "legetøj", "department": "baby"}).json()
+    data = client.patch(f"/api/shopping/extras/{it['key'][2:]}?today=2026-10-01", json={"ingredient_id": toy["id"]}).json()
+    it = items(data)["gummiand"]
+    assert it["department"] == "baby" and it["ingredient_name"] == "legetøj"
+    data = client.patch(f"/api/shopping/extras/{it['key'][2:]}?today=2026-10-01", json={"ingredient_id": None}).json()
+    assert items(data)["gummiand"]["department"] == "andet"

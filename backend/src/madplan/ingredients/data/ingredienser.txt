@@ -1,7 +1,8 @@
 # Ingredienstabel. Én linje pr. vare, som den står på indkøbslisten.
 #   navn | afdeling | basis | aliaser
 # afdeling: fg=frugt & grønt, brod=brød, kod=kød & fisk, mej=mejeri & køl,
-#           frost, kol=kolonial, kry=krydderier, dri=drikkevarer, andet
+#           frost, kol=kolonial, kry=krydderier, dri=drikkevarer, baby,
+#           hus=husholdning & pleje, andet
 # basis: b = basisvare (kommer ikke på indkøbslisten automatisk)
 # Navnet er altid selv et alias. Flertal klares af matcheren, men uregelmæssige
 # former skrives her. Bygget ud fra testsæt 1+2 (ikke det blinde sæt 3).
@@ -271,3 +272,25 @@ rødvin | dri | |
 appelsinjuice | dri | |
 æblejuice | dri | |
 hyldeblomstsaft | dri | |
+kaffe | dri | | kaffebønner, formalet kaffe, filterkaffe
+te | dri | | tebreve
+
+# --- Baby (egne varer på indkøbslisten) ---
+bleer | baby | | ble, pampers, libero, natbleer
+vådservietter | baby | | vaskeklude, babyservietter
+babygrød | baby | | grød til baby, havregrød til baby
+babymos | baby | | mos til baby, klemmepose, klemmeposer
+
+# --- Husholdning & pleje ---
+toiletpapir | hus | | wc-papir, toiletrulle, toiletruller
+køkkenrulle | hus | | køkkenruller
+opvaskemiddel | hus | | sulfo
+opvasketabs | hus | | opvaskemaskine tabs, maskinopvask
+vaskemiddel | hus | | tøjvask
+skraldeposer | hus | | affaldsposer
+alufolie | hus | | sølvpapir
+bagepapir | hus | |
+fryseposer | hus | |
+tandpasta | hus | |
+shampoo | hus | |
+sæbe | hus | | håndsæbe

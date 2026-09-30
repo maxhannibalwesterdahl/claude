@@ -4,6 +4,7 @@
 	import { api, ApiError } from './api';
 	import { formatNumber, formatQuantity, parseNumber } from './format';
 	import IngredientPicker from './IngredientPicker.svelte';
+	import { shrinkImage, uploadRecipeImage } from './image';
 	import type { IngredientRef, Line, Recipe } from './types';
 
 	interface Props {
@@ -27,6 +28,11 @@
 	let steps = $state(start?.instructions.join('\n') ?? '');
 	let lines = $state<EditLine[]>(start?.ingredients.map(toEdit) ?? []);
 	let bulk = $state('');
+	// Billede: vises med det samme, gemmes først ved "Gem".
+	let imageUrl = $state<string | null>(start?.image_url ?? null);
+	let newImage = $state<Blob | null>(null);
+	let removeImage = $state(false);
+	let imageBusy = $state(false);
 	let picking = $state<number | null>(null);
 	let error = $state('');
 	let busy = $state(false);
@@ -135,7 +141,27 @@
 	// på en fane i menuen midt i redigeringen).
 	const startBody = untrack(() => JSON.stringify(currentBody()));
 	let leaving = false;
-	const dirty = () => !leaving && (bulk.trim() !== '' || JSON.stringify(currentBody()) !== startBody);
+	const dirty = () =>
+		!leaving && (bulk.trim() !== '' || newImage !== null || removeImage || JSON.stringify(currentBody()) !== startBody);
+
+	async function pickImage(e: Event & { currentTarget: HTMLInputElement }) {
+		const file = e.currentTarget.files?.[0];
+		e.currentTarget.value = '';
+		if (!file) return;
+		imageBusy = true;
+		newImage = await shrinkImage(file);
+		imageBusy = false;
+		if (imageUrl?.startsWith('blob:')) URL.revokeObjectURL(imageUrl);
+		imageUrl = URL.createObjectURL(newImage);
+		removeImage = false;
+	}
+
+	function clearImage() {
+		if (imageUrl?.startsWith('blob:')) URL.revokeObjectURL(imageUrl);
+		imageUrl = null;
+		newImage = null;
+		removeImage = !!start?.image_url;
+	}
 	beforeNavigate(({ cancel, type }) => {
 		if (type !== 'leave' && dirty() && !confirm('Du har ændringer, der ikke er gemt. Vil du forlade siden?')) cancel();
 	});
@@ -155,9 +181,11 @@
 		busy = true;
 		const body = currentBody();
 		try {
-			const saved = recipe
+			let saved = recipe
 				? await api<Recipe>(`/recipes/${recipe.id}`, { method: 'PUT', body })
 				: await api<Recipe>('/recipes', { method: 'POST', body });
+			if (newImage) saved = await uploadRecipeImage(saved.id, newImage);
+			else if (removeImage) saved = await api<Recipe>(`/recipes/${saved.id}/image`, { method: 'DELETE' });
 			leaving = true;
 			onsave(saved);
 		} catch (err) {
@@ -187,6 +215,23 @@
 </script>
 
 <form onsubmit={save}>
+	<div class="image">
+		{#if imageUrl}
+			<img src={imageUrl} alt="" />
+		{:else}
+			<div class="noimg" aria-hidden="true">
+				<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 15l5-5 4 4 3-3 6 6" /><circle cx="16" cy="9" r="1.5" /></svg>
+			</div>
+		{/if}
+		<div class="image-actions">
+			<label class="button">
+				<input type="file" accept="image/*" onchange={pickImage} hidden />
+				{imageBusy ? 'Behandler…' : imageUrl ? 'Skift billede' : 'Vælg billede'}
+			</label>
+			{#if imageUrl}<button type="button" class="danger" onclick={clearImage}>Fjern</button>{/if}
+		</div>
+	</div>
+
 	<label class="field">
 		<span>Titel</span>
 		<input bind:value={title} required maxlength="200" />
@@ -312,6 +357,42 @@
 	form {
 		display: grid;
 		gap: 12px;
+	}
+	.image {
+		display: flex;
+		gap: 12px;
+		align-items: center;
+	}
+	.image img,
+	.noimg {
+		width: 96px;
+		height: 96px;
+		border-radius: 12px;
+		object-fit: cover;
+		flex: none;
+	}
+	.noimg {
+		display: grid;
+		place-items: center;
+		background: var(--accent-soft);
+		color: var(--accent);
+	}
+	.noimg svg {
+		width: 36px;
+		height: 36px;
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 1.8;
+		stroke-linecap: round;
+		stroke-linejoin: round;
+	}
+	.image-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+	.image-actions .button {
+		cursor: pointer;
 	}
 	.two {
 		display: grid;

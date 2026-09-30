@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from ..catalog import Catalog
+from ..catalog import Catalog, learn_alias
 from ..ingredients.matcher import DEPARTMENTS, key as item_key
 from ..config import local_today
 from ..models import (
@@ -67,8 +67,10 @@ class ItemOut(BaseModel):
     checked: bool
     kind: Literal["plan", "extra"]
     source: Literal["egen", "løbet tør"] | None = None
-    # Linjer uden kendt vare (skal tjekkes)
+    # Linjer uden kendt vare (skal tjekkes). For egne varer: ingen vare valgt.
     unknown: bool = False
+    # Egne varer: den vare, teksten er koblet til (bestemmer afdelingen)
+    ingredient_name: str | None = None
 
 
 class PantryOut(BaseModel):
@@ -119,6 +121,11 @@ class ExtraIn(BaseModel):
     text: str = Field("", max_length=200)
     ingredient_id: int | None = None
     source: Literal["egen", "løbet tør"] = "egen"
+
+
+class ExtraPatch(BaseModel):
+    # null = ingen vare (kommer under "Andet")
+    ingredient_id: int | None
 
 
 class HomeIn(BaseModel):
@@ -253,6 +260,7 @@ def build(session: Session, plan: Plan | None, now_ms: int | None = None) -> Sho
         items.append(ItemOut(
             key=f"e:{e.id}", name=e.text, department=e.ingredient.department if e.ingredient else "andet",
             amounts=[], unquantified=False, days=[], sources=[], checked=e.checked, kind="extra", source=e.source,
+            unknown=e.ingredient is None, ingredient_name=e.ingredient.name if e.ingredient else None,
         ))
 
     rank = {c: i for i, c in enumerate(order)}
@@ -307,23 +315,58 @@ def sync(body: SyncIn, session: DbSession, _: CurrentUser, today: date | None = 
 
 @router.post("/shopping/extras", status_code=201)
 def add_extra(body: ExtraIn, session: DbSession, _: CurrentUser, plan_id: int | None = None, today: date | None = None) -> ShoppingOut:
-    """Egen vare ("bleer") eller "løbet tør" for en basisvare."""
+    """Egen vare ("2 pk bleer") eller "løbet tør" for en basisvare.
+
+    Egne varer kobles til en vare i ingredienstabellen, så de sorteres efter
+    afdeling. Frontend spørger brugeren (vare-vælgeren), når appen ikke er sikker,
+    og sender så `ingredient_id`. Valget huskes som alias ("pampers" -> bleer).
+    """
+    text = " ".join(body.text.split())
     if body.ingredient_id is not None:
         ing = session.get(Ingredient, body.ingredient_id)
         if ing is None:
             raise HTTPException(status_code=404, detail="Varen findes ikke")
-        already = session.scalar(select(ShoppingExtra).where(
-            ShoppingExtra.ingredient_id == ing.id, ShoppingExtra.checked.is_(False)))
-        if already is None:
-            session.add(ShoppingExtra(text=ing.name, ingredient=ing, source=body.source))
+        if body.source == "løbet tør":
+            already = session.scalar(select(ShoppingExtra).where(
+                ShoppingExtra.ingredient_id == ing.id, ShoppingExtra.checked.is_(False)))
+            if already is None:
+                session.add(ShoppingExtra(text=ing.name, ingredient=ing, source="løbet tør"))
+        else:
+            session.add(ShoppingExtra(text=text or ing.name, ingredient=ing, source="egen"))
+            if text:
+                _learn_from_extra(session, text, ing)
     else:
-        text = " ".join(body.text.split())
         if not text:
             raise HTTPException(status_code=422, detail="Skriv en vare")
         # Kendt vare? Så kommer den under den rigtige afdeling.
         found = Catalog(session).parse(text)
         ing = session.get(Ingredient, found.ingredient_id) if found.match_status == "sikker" else None
         session.add(ShoppingExtra(text=text, ingredient=ing, source="egen"))
+    session.commit()
+    return build(session, choose_plan(session, plan_id, today))
+
+
+def _learn_from_extra(session: Session, text: str, ing: Ingredient) -> None:
+    """Husk brugerens valg: varenavnet fra teksten ("2 pk pampers" -> "pampers")
+    bliver et alias for varen, ligesom når en opskriftslinje bekræftes."""
+    item = Catalog(session).parse(text).item
+    if item:
+        learn_alias(session, item, ing)
+
+
+@router.patch("/shopping/extras/{extra_id}")
+def update_extra(extra_id: int, body: ExtraPatch, session: DbSession, _: CurrentUser,
+                 plan_id: int | None = None, today: date | None = None) -> ShoppingOut:
+    """Skift den vare, en egen vare er koblet til (fx fra "Andet" til bleer)."""
+    extra = session.get(ShoppingExtra, extra_id)
+    if extra is None:
+        raise HTTPException(status_code=404, detail="Varen findes ikke")
+    ing = session.get(Ingredient, body.ingredient_id) if body.ingredient_id is not None else None
+    if body.ingredient_id is not None and ing is None:
+        raise HTTPException(status_code=404, detail="Varen findes ikke")
+    extra.ingredient = ing
+    if ing is not None and extra.source == "egen":
+        _learn_from_extra(session, extra.text, ing)
     session.commit()
     return build(session, choose_plan(session, plan_id, today))
 

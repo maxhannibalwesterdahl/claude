@@ -2,8 +2,9 @@
 	import { api, ApiError } from '$lib/api';
 	import { periodLabel, today, weekday } from '$lib/dates';
 	import { formatAmounts } from '$lib/format';
+	import IngredientPicker from '$lib/IngredientPicker.svelte';
 	import { shopping } from '$lib/shopping.svelte';
-	import type { Department, ShoppingData, ShoppingItem } from '$lib/types';
+	import type { Department, IngredientRef, ShoppingData, ShoppingItem } from '$lib/types';
 
 	let hideBought = $state(false);
 	let open = $state<string | null>(null);
@@ -53,13 +54,52 @@
 
 	const planQuery = () => `?today=${today()}` + (data?.plan ? `&plan_id=${data.plan.id}` : '');
 
-	function addItem(e: SubmitEvent) {
+	// Egne varer kobles til en rigtig vare, så de sorteres efter afdeling. Er
+	// appen ikke sikker, vælger man varen (eller opretter den) i vare-vælgeren.
+	type Picking = { mode: 'new'; text: string; initial: string; suggestion: IngredientRef | null } | { mode: 'change'; key: string; initial: string };
+	let picking = $state<Picking | null>(null);
+
+	async function addItem(e: SubmitEvent) {
 		e.preventDefault();
 		const text = newItem.trim();
 		if (!text) return;
+		actionError = '';
+		let parsed: { item: string; ingredient: IngredientRef | null; match_status: string };
+		try {
+			[parsed] = await api<(typeof parsed)[]>('/parse', { method: 'POST', body: { lines: [text] } });
+		} catch (err) {
+			actionError = err instanceof ApiError && err.status === 0 ? 'Kræver forbindelse. Prøv igen, når du har net.' : 'Kunne ikke læse varen';
+			return;
+		}
 		newItem = '';
-		action(() => api<ShoppingData>(`/shopping/extras${planQuery()}`, { method: 'POST', body: { text } }));
+		if (parsed.ingredient && parsed.match_status === 'sikker') {
+			saveExtra(text, parsed.ingredient.id);
+		} else {
+			picking = { mode: 'new', text, initial: parsed.item || text, suggestion: parsed.ingredient };
+		}
 	}
+
+	function saveExtra(text: string, ingredientId: number | null) {
+		action(() =>
+			api<ShoppingData>(`/shopping/extras${planQuery()}`, { method: 'POST', body: { text, ingredient_id: ingredientId } })
+		);
+	}
+
+	function picked(ing: IngredientRef | null) {
+		const p = picking;
+		picking = null;
+		if (!p) return;
+		if (p.mode === 'new') saveExtra(p.text, ing?.id ?? null);
+		else
+			action(() =>
+				api<ShoppingData>(`/shopping/extras/${p.key.slice(2)}${planQuery()}`, {
+					method: 'PATCH',
+					body: { ingredient_id: ing?.id ?? null }
+				})
+			);
+	}
+
+	const deptName = (code: string) => data?.departments.find((d) => d.code === code)?.name ?? code;
 
 	function setHome(key: string, home: boolean) {
 		if (!data?.plan) return;
@@ -128,6 +168,16 @@
 		<input bind:value={newItem} placeholder="Tilføj vare, fx bleer eller kaffe" aria-label="Tilføj vare" maxlength="200" />
 		<button disabled={!newItem.trim()}>Tilføj</button>
 	</form>
+	{#if picking?.mode === 'new'}
+		<p class="small muted">Hvilken vare er "{picking.text}"? Så kommer den under den rigtige afdeling.</p>
+		<IngredientPicker
+			initial={picking.initial}
+			suggestion={picking.suggestion}
+			defaultDepartment="andet"
+			onpick={picked}
+			oncancel={() => (picking = null)}
+		/>
+	{/if}
 
 	{#if data && !data.plan && !total}
 		<div class="empty">
@@ -171,7 +221,12 @@
 					</div>
 					{#if open === item.key}
 						<div class="details">
-							{#if item.unknown}
+							{#if item.kind === 'extra'}
+								<p class="small">
+									{#if item.ingredient_name}Vare: <strong>{item.ingredient_name}</strong> · {deptName(item.department)}
+									{:else}<span class="badge">ingen vare</span> Kommer under Andet{/if}
+								</p>
+							{:else if item.unknown}
 								<p class="small"><span class="badge">ukendt vare</span> <a href="/tjek">Vælg vare under Tjek</a></p>
 							{/if}
 							{#each item.sources as src}
@@ -181,9 +236,15 @@
 								{#if item.kind === 'plan'}
 									<button onclick={() => setHome(item.key, true)}>Har hjemme</button>
 								{:else}
+									<button onclick={() => (picking = { mode: 'change', key: item.key, initial: item.name })}>
+										{item.ingredient_name ? 'Skift vare' : 'Vælg vare'}
+									</button>
 									<button class="danger" onclick={() => removeExtra(item.key)}>Fjern fra listen</button>
 								{/if}
 							</div>
+							{#if picking?.mode === 'change' && picking.key === item.key}
+								<IngredientPicker initial={picking.initial} defaultDepartment="andet" onpick={picked} oncancel={() => (picking = null)} />
+							{/if}
 						</div>
 					{/if}
 				</li>

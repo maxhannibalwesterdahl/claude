@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from .. import importer
+from .. import importer, search_valdemarsro
 from ..catalog import Catalog, learn_alias, suggest_main
 from ..models import Ingredient, Recipe, RecipeIngredient
 from .deps import AppSettings, CurrentUser, DbSession
@@ -128,7 +128,10 @@ def _fill_recipe(recipe: Recipe, body: RecipeIn) -> None:
 def _check_duplicate(session: Session, url: str | None, own_id: int | None = None) -> None:
     if not url:
         return
-    other = session.scalar(select(Recipe).where(Recipe.source_url == url))
+    # Samme opskrift med og uden "/" til sidst er den samme.
+    want = url.strip().rstrip("/").lower()
+    other = next((r for r in session.scalars(select(Recipe).where(Recipe.source_url.is_not(None)))
+                  if r.source_url.strip().rstrip("/").lower() == want), None)
     if other and other.id != own_id:
         raise HTTPException(status_code=409, detail={"message": "Opskriften findes allerede", "id": other.id})
 
@@ -147,6 +150,7 @@ def list_recipes(session: DbSession, _: CurrentUser, q: str = "") -> list[Recipe
             image_url=image_url(r),
             source_host=urlparse(r.source_url).hostname.removeprefix("www.") if r.source_url else None,
             main_ingredients=[l.ingredient.name for l in r.ingredients if l.is_main and l.ingredient],
+            ingredients=sorted({l.ingredient.name if l.ingredient else l.item for l in r.ingredients}),
             to_review=sum(1 for l in r.ingredients if l.match_status in NEEDS_REVIEW),
         ))
     return out
@@ -276,6 +280,33 @@ def delete_recipe(recipe_id: int, session: DbSession, settings: AppSettings, _: 
     session.commit()
     if image:
         (settings.image_dir / image).unlink(missing_ok=True)
+
+
+# --- Søgning på Valdemarsro -------------------------------------------------
+
+class ExternalHit(BaseModel):
+    title: str
+    url: str
+    image_url: str
+    # Opskriften er allerede importeret (id på vores egen opskrift)
+    recipe_id: int | None = None
+
+
+def _norm_url(url: str) -> str:
+    return url.strip().rstrip("/").lower()
+
+
+@router.get("/search/valdemarsro")
+def search_valdemarsro_route(session: DbSession, _: CurrentUser, q: str = "") -> list[ExternalHit]:
+    """Søg på valdemarsro.dk. Resultater, vi allerede har, markeres med recipe_id."""
+    if len(q.strip()) < 3:
+        return []
+    try:
+        hits = search_valdemarsro.search(q)
+    except search_valdemarsro.SearchError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from None
+    have = {_norm_url(u): i for i, u in session.execute(select(Recipe.id, Recipe.source_url).where(Recipe.source_url.is_not(None)))}
+    return [ExternalHit(title=h.title, url=h.url, image_url=h.image_url, recipe_id=have.get(_norm_url(h.url))) for h in hits]
 
 
 # --- Tjek af ingredienser på tværs af opskrifter -----------------------------

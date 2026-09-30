@@ -3,22 +3,35 @@
 	import { api, ApiError } from '$lib/api';
 	import { searchKey } from '$lib/format';
 	import { refreshReviewCount } from '$lib/review.svelte';
+	import ValdemarsroResults from '$lib/ValdemarsroResults.svelte';
 	import type { RecipeSummary } from '$lib/types';
 
 	let recipes = $state<RecipeSummary[] | null>(null);
 	let error = $state('');
 	let q = $state('');
 
+	// Søger i titel og alle varer, så "kylling" også finder retter med kylling i.
 	const shown = $derived(
-		recipes?.filter((r) => searchKey(r.title + ' ' + r.main_ingredients.join(' ')).includes(searchKey(q))) ?? []
+		recipes?.filter((r) => searchKey([r.title, ...r.ingredients].join(' ')).includes(searchKey(q))) ?? []
 	);
 
-	$effect(() => {
-		api<RecipeSummary[]>('/recipes')
+	function loadRecipes() {
+		return api<RecipeSummary[]>('/recipes')
 			.then((r) => (recipes = r))
 			.catch((e) => (error = e instanceof ApiError ? e.message : 'Kunne ikke hente opskrifter'));
+	}
+
+	$effect(() => {
+		loadRecipes();
 		refreshReviewCount().catch(() => {});
 	});
+
+	// Fra Valdemarsro: ny import bliver på listen (og dukker op i jeres egne); en,
+	// vi allerede har, åbnes.
+	function picked(id: number, imported: boolean) {
+		if (imported) loadRecipes();
+		else goto(`/opskrift/${id}`);
+	}
 
 	async function logout() {
 		await api('/logout', { method: 'POST' }).catch(() => {});
@@ -35,8 +48,16 @@
 
 	{#if error}<p class="error">{error}</p>{/if}
 
+	{#if recipes}
+		<input
+			type="search"
+			placeholder={recipes.length ? `Søg i ${recipes.length} opskrifter og på Valdemarsro` : 'Søg på Valdemarsro'}
+			bind:value={q}
+			aria-label="Søg"
+		/>
+	{/if}
+
 	{#if recipes && recipes.length > 0}
-		<input type="search" placeholder="Søg i {recipes.length} opskrifter" bind:value={q} aria-label="Søg" />
 		<ul>
 			{#each shown as r (r.id)}
 				<li>
@@ -60,10 +81,14 @@
 					</a>
 				</li>
 			{:else}
-				<li class="empty">Ingen opskrifter matcher "{q}"</li>
+				<li class="empty">Ingen af jeres opskrifter matcher "{q}"</li>
 			{/each}
 		</ul>
-	{:else if recipes}
+	{/if}
+
+	<ValdemarsroResults {q} onpick={picked} />
+
+	{#if recipes && recipes.length === 0 && q.trim().length < 3}
 		<div class="empty">
 			<p>Ingen opskrifter endnu.</p>
 			<p><a class="button primary" href="/importer">Importér fra et link</a></p>

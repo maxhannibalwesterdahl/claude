@@ -3,6 +3,7 @@
 	import { shortDate, weekdayName } from './dates';
 	import { searchKey } from './format';
 	import type { Meal, Plan, RecipeSummary, SlotChoice } from './types';
+	import ValdemarsroResults from './ValdemarsroResults.svelte';
 
 	interface Props {
 		plan: Plan;
@@ -40,7 +41,7 @@
 	);
 
 	const shown = $derived(
-		(recipes ?? []).filter((r) => searchKey(r.title + ' ' + r.main_ingredients.join(' ')).includes(searchKey(q)))
+		(recipes ?? []).filter((r) => searchKey([r.title, ...r.ingredients].join(' ')).includes(searchKey(q)))
 	);
 
 	$effect(() => {
@@ -92,7 +93,7 @@
 		{#if error}<p class="error">{error}</p>{/if}
 
 		{#if tab === 'opskrift'}
-			<input type="search" bind:value={q} placeholder="Søg opskrift eller ingrediens" aria-label="Søg" />
+			<input type="search" bind:value={q} placeholder="Søg i jeres opskrifter og på Valdemarsro" aria-label="Søg" />
 			<ul>
 				{#each shown as r (r.id)}
 					<li>
@@ -111,9 +112,18 @@
 						</button>
 					</li>
 				{:else}
-					{#if recipes}<li class="muted empty-row">Ingen opskrifter matcher.</li>{/if}
+					{#if recipes}<li class="muted empty-row">Ingen af jeres opskrifter matcher.</li>{/if}
 				{/each}
 			</ul>
+			<!-- Ikke i jeres samling? Find den på Valdemarsro og vælg den med ét tryk. -->
+			<ValdemarsroResults
+				{q}
+				haveLabel="Vælg"
+				onpick={(id) => {
+					if (!(wishMode && wished.has(id))) onchoose({ kind: 'opskrift', recipe_id: id });
+					api<RecipeSummary[]>('/recipes').then((r) => (recipes = r)).catch(() => {});
+				}}
+			/>
 		{:else if tab === 'ønske'}
 			<ul>
 				{#each plan.wishlist as w (w.id)}

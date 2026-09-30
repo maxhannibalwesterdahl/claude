@@ -49,6 +49,7 @@ export interface RecipeSummary {
 	image_url: string | null;
 	source_host: string | null;
 	main_ingredients: string[];
+	ingredients: string[];
 	to_review: number;
 }
 

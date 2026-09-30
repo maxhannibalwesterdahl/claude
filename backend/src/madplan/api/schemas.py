@@ -90,6 +90,8 @@ class RecipeSummary(BaseModel):
     image_url: str | None
     source_host: str | None
     main_ingredients: list[str]
+    # Alle varer i opskriften, så søgningen også finder "kylling" i ingredienserne
+    ingredients: list[str] = []
     to_review: int
 
 

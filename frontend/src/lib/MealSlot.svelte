@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { ApiError } from './api';
 	import { shortDate, weekday, weekdayName } from './dates';
 	import { formatQuantity } from './format';
@@ -17,6 +18,15 @@
 	let { plan, date, forChild, meal, onplan }: Props = $props();
 
 	let choosing = $state(false);
+	// Ingredienslisten husker selv, om den er åben. Den må ikke lukke, når planen
+	// opdateres efter et flueben. Den åbner af sig selv, når retten får en rest-kilde.
+	let linesOpen = $state(untrack(() => !!meal?.leftover_from));
+	let lastSource = untrack(() => meal?.leftover_from?.id ?? null);
+	$effect(() => {
+		const source = meal?.leftover_from?.id ?? null;
+		if (source !== null && source !== lastSource) linesOpen = true;
+		lastSource = source;
+	});
 	let busy = $state(false);
 	let error = $state('');
 
@@ -149,7 +159,7 @@
 
 		{#if meal.lines.length}
 			<!-- Sammenklappet som standard: dagen handler om retten. Åben, når rester skal markeres. -->
-			<details class="lines" open={!!meal.leftover_from}>
+			<details class="lines" bind:open={linesOpen}>
 				<summary>
 					<span class="grow">Ingredienser</span>
 					<span class="muted small">{toBuy} skal købes</span>

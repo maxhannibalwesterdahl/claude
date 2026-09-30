@@ -1,11 +1,14 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { api, ApiError } from '$lib/api';
-	import { addDays, isoDate, nextWeekday, parseDate, periodLabel, shortDate, today, weekday, weekdayName } from '$lib/dates';
+	import { addDays, isoDate, nextWeekday, parseDate, periodLabel, shortDate, weekday, weekdayName } from '$lib/dates';
 	import MealChooser from '$lib/MealChooser.svelte';
 	import MealSlot from '$lib/MealSlot.svelte';
+	import { sequencer } from '$lib/ordered';
 	import { planApi } from '$lib/planApi';
+	import { clock, onResume } from '$lib/resume.svelte';
 	import { refreshReviewCount } from '$lib/review.svelte';
+	import { untrack } from 'svelte';
 	import type { Plan, PlanBrief } from '$lib/types';
 
 	let plan = $state<Plan | null>(null);
@@ -21,7 +24,8 @@
 
 	const day = $derived(plan?.days.find((d) => d.date === selected) ?? plan?.days[0] ?? null);
 	const index = $derived(plan && day ? plan.days.indexOf(day) : 0);
-	const freeDays = $derived(plan?.days.filter((d) => !d.meal).length ?? 0);
+	// Kun dage, der ikke er gået, kan få ønsker fordelt.
+	const freeDays = $derived(plan?.days.filter((d) => !d.meal && d.date >= clock.today).length ?? 0);
 	const planIndex = $derived(plan ? plans.findIndex((p) => p.id === plan!.id) : -1);
 
 	function show(p: Plan) {
@@ -29,16 +33,21 @@
 		if (!p.days.some((d) => d.date === selected)) {
 			// ?dag=ÅÅÅÅ-MM-DD (fra Madplan) vælger dagen. Ellers i dag eller første dag.
 			const wanted = page.url.searchParams.get('dag');
-			const t = today();
+			const t = clock.today;
 			selected = p.days.some((d) => d.date === wanted) ? wanted! : p.days.some((d) => d.date === t) ? t : p.days[0].date;
 		}
 	}
+
+	// Alle svar med en hel plan går gennem samme rækkefølge, så et gammelt svar
+	// aldrig overskriver et nyere (fx hurtige flueben eller en genindlæsning).
+	const ordered = sequencer<Plan>(show);
+	const mutate = (fn: () => Promise<Plan>) => ordered(fn);
 
 	async function load(id?: number) {
 		error = '';
 		try {
 			plans = await api<PlanBrief[]>('/plans');
-			show(await api<Plan>(id ? `/plans/${id}` : '/plans/current'));
+			await ordered(() => api<Plan>(id ? `/plans/${id}` : `/plans/current?today=${clock.today}`));
 			creating = false;
 		} catch (e) {
 			if (e instanceof ApiError && e.status === 404) {
@@ -54,14 +63,16 @@
 	$effect(() => {
 		// ?plan=ID (fra Madplan) åbner den plan, ellers den aktuelle.
 		const wanted = Number(page.url.searchParams.get('plan')) || undefined;
-		load(wanted);
+		untrack(() => load(wanted));
 		refreshReviewCount().catch(() => {});
+		// Åbnes appen igen efter et stykke tid, hentes planen igen (den anden kan have ændret den).
+		return onResume(() => untrack(() => load(plan?.id ?? wanted)));
 	});
 
 	function suggestedStart(): string {
 		const latest = plans[0];
-		if (latest && latest.end_date >= today()) return isoDate(addDays(parseDate(latest.end_date), 1));
-		return today();
+		if (latest && latest.end_date >= clock.today) return isoDate(addDays(parseDate(latest.end_date), 1));
+		return clock.today;
 	}
 
 	function newPlan() {
@@ -93,7 +104,7 @@
 	async function run(fn: () => Promise<Plan>) {
 		error = '';
 		try {
-			show(await fn());
+			await mutate(fn);
 		} catch (e) {
 			error = e instanceof ApiError ? e.message : 'Noget gik galt';
 		}
@@ -179,7 +190,7 @@
 		<!-- Telefon: én dag ad gangen -->
 		<nav class="strip" aria-label="Dage">
 			{#each plan.days as d (d.date)}
-				<button class:on={d.date === day.date} class:today={d.date === today()} onclick={() => (selected = d.date)}>
+				<button class:on={d.date === day.date} class:today={d.date === clock.today} onclick={() => (selected = d.date)}>
 					<span class="wd">{weekday(d.date)}</span>
 					<span class="dn">{parseDate(d.date).getDate()}</span>
 					<span class="dot" class:filled={!!d.meal}></span>
@@ -205,7 +216,7 @@
 					ondragleave={() => (dragOver = '')}
 					ondrop={(e) => drop(e, d.date)}
 				>
-					<div class="cell-head" class:today={d.date === today()}>{weekday(d.date)} {parseDate(d.date).getDate()}.</div>
+					<div class="cell-head" class:today={d.date === clock.today}>{weekday(d.date)} {parseDate(d.date).getDate()}.</div>
 					{#if d.meal}
 						<div class="mini" draggable="true" ondragstart={(e) => dragstart(e, `meal:${d.meal!.id}`)} role="listitem">
 							{#if d.meal.recipe?.image_url}<img src={d.meal.recipe.image_url} alt="" draggable="false" />{/if}
@@ -226,10 +237,10 @@
 				{weekdayName(day.date)} <span class="muted">{shortDate(day.date)}</span>
 			</h2>
 			{#key day.date}
-				<MealSlot {plan} date={day.date} forChild={false} meal={day.meal} onplan={show} />
+				<MealSlot {plan} date={day.date} forChild={false} meal={day.meal} {mutate} />
 				{#if day.child || childOpen[day.date]}
 					<div class="child-slot">
-						<MealSlot {plan} date={day.date} forChild={true} meal={day.child} onplan={show} />
+						<MealSlot {plan} date={day.date} forChild={true} meal={day.child} {mutate} />
 					</div>
 				{:else}
 					<button class="plain child-toggle" onclick={() => (childOpen[day.date] = true)}>+ Barnet får noget andet</button>
@@ -253,8 +264,9 @@
 						<div class="place" role="group" aria-label="Læg {w.title} på en dag">
 							{#each plan.days as d (d.date)}
 								<button
-									class:free={!d.meal}
-									title={d.meal ? `Erstatter ${d.meal.title}` : 'Ledig'}
+									class:free={!d.meal && d.date >= clock.today}
+									disabled={d.date < clock.today}
+									title={d.date < clock.today ? 'Dagen er gået' : d.meal ? `Erstatter ${d.meal.title}` : 'Ledig'}
 									onclick={() => {
 										if (!d.meal || confirm(`Erstat ${d.meal.title} ${weekdayName(d.date).toLowerCase()}?`))
 											run(() => planApi.setSlot(plan!, d.date, false, { kind: 'ønske', wish_id: w.id }));
@@ -266,7 +278,7 @@
 				{/each}
 			</ul>
 			{#if plan.wishlist.length && freeDays > 0}
-				<button class="primary distribute" onclick={() => run(() => api<Plan>(`/plans/${plan!.id}/wishlist/distribute`, { method: 'POST' }))}>
+				<button class="primary distribute" onclick={() => run(() => api<Plan>(`/plans/${plan!.id}/wishlist/distribute?today=${clock.today}`, { method: 'POST' }))}>
 					Fordel {Math.min(plan.wishlist.length, freeDays)} {Math.min(plan.wishlist.length, freeDays) === 1 ? 'ønske' : 'ønsker'} på ledige dage
 				</button>
 			{/if}

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { api, ApiError } from '$lib/api';
-	import { periodLabel, weekday } from '$lib/dates';
+	import { periodLabel, today, weekday } from '$lib/dates';
 	import { formatAmounts } from '$lib/format';
 	import { shopping } from '$lib/shopping.svelte';
 	import type { Department, ShoppingData, ShoppingItem } from '$lib/types';
@@ -51,7 +51,7 @@
 		}
 	}
 
-	const planQuery = () => (data?.plan ? `?plan_id=${data.plan.id}` : '');
+	const planQuery = () => `?today=${today()}` + (data?.plan ? `&plan_id=${data.plan.id}` : '');
 
 	function addItem(e: SubmitEvent) {
 		e.preventDefault();

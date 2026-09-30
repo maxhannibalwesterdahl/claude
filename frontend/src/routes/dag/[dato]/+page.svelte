@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import { untrack } from 'svelte';
 	import { api, ApiError } from '$lib/api';
+	import { onResume } from '$lib/resume.svelte';
 	import { shortDate, weekday, weekdayName } from '$lib/dates';
 	import { formatQuantity } from '$lib/format';
 	import { groupLines } from '$lib/lines';
@@ -21,21 +23,27 @@
 	const main = $derived(day?.meal ?? null);
 	const recipe = $derived(main?.recipe ? recipes[main.recipe.id] : undefined);
 
-	/** Planen, der dækker datoen. Genbruges, når man bladrer mellem dage i samme plan. */
-	async function load(d: string) {
+	/** Planen, der dækker datoen. Genbruges, når man bladrer mellem dage i samme
+	 *  plan, medmindre `fresh` (appen er åbnet igen, og planen kan være ændret). */
+	async function load(d: string, fresh = false) {
 		error = '';
 		try {
-			if (!plan || !plan.days.some((x) => x.date === d)) {
+			let current = untrack(() => plan);
+			if (fresh || !current || !current.days.some((x) => x.date === d)) {
 				const plans = await api<PlanBrief[]>('/plans');
 				const hit = plans.find((p) => p.start_date <= d && d <= p.end_date);
-				plan = hit ? await api<Plan>(`/plans/${hit.id}`) : null;
+				current = hit ? await api<Plan>(`/plans/${hit.id}`) : null;
+				// Brugeren kan have bladret videre imens: vis kun svaret for den dag, der vises nu.
+				if (d !== untrack(() => date)) return;
+				plan = current;
 			}
-			const meals = plan?.days.find((x) => x.date === d);
-			for (const m of [meals?.meal, meals?.child]) {
-				if (m?.recipe && !recipes[m.recipe.id]) {
-					recipes[m.recipe.id] = await api<Recipe>(`/recipes/${m.recipe.id}`);
-				}
-			}
+			const meals = current?.days.find((x) => x.date === d);
+			const known = untrack(() => recipes);
+			const missing = [meals?.meal, meals?.child]
+				.map((m) => m?.recipe?.id)
+				.filter((id): id is number => !!id && (fresh || !known[id]));
+			const fetched = await Promise.all(missing.map((id) => api<Recipe>(`/recipes/${id}`)));
+			for (const r of fetched) recipes[r.id] = r;
 		} catch (e) {
 			error = e instanceof ApiError ? e.message : 'Kunne ikke hente dagen';
 		} finally {
@@ -44,8 +52,11 @@
 	}
 
 	$effect(() => {
-		load(date);
+		const d = date;
+		untrack(() => load(d));
 	});
+
+	$effect(() => onResume(() => untrack(() => load(date, true))));
 
 	// Hold skærmen tændt, mens man laver mad (hvor browseren understøtter det).
 	$effect(() => {

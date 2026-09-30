@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { beforeNavigate } from '$app/navigation';
 	import { untrack } from 'svelte';
 	import { api, ApiError } from './api';
 	import { formatNumber, formatQuantity, parseNumber } from './format';
@@ -35,9 +36,10 @@
 	}
 
 	/** Tekst fra feltet "Tilføj": én linje pr. ingrediens, "Afsnit:" starter et afsnit. */
-	async function addBulk() {
+	/** Returnerer false, hvis linjerne ikke kunne læses (så "Gem" stopper). */
+	async function addBulk(): Promise<boolean> {
 		const raw = bulk.split('\n').map((s) => s.trim()).filter(Boolean);
-		if (!raw.length) return;
+		if (!raw.length) return true;
 		let group = lines.at(-1)?.group ?? '';
 		const entries: { raw: string; group: string }[] = [];
 		for (const r of raw) {
@@ -50,8 +52,10 @@
 				...parsed.map((p, i) => toEdit({ ...p, id: null, group: entries[i].group, is_main: false }))
 			);
 			bulk = '';
+			return true;
 		} catch (e) {
 			error = e instanceof ApiError ? e.message : 'Kunne ikke læse linjerne';
+			return false;
 		}
 	}
 
@@ -104,12 +108,8 @@
 	});
 	const hasGroups = $derived(lines.some((l) => l.group));
 
-	async function save(e: SubmitEvent) {
-		e.preventDefault();
-		error = '';
-		if (bulk.trim()) await addBulk();
-		busy = true;
-		const body = {
+	function currentBody() {
+		return {
 			title: title.trim(),
 			servings: servings.trim() ? Number(servings) : null,
 			source_url: sourceUrl.trim() || null,
@@ -129,10 +129,36 @@
 				is_main: l.is_main
 			}))
 		};
+	}
+
+	// Advar, hvis man forlader siden med ændringer, der ikke er gemt (fx trykker
+	// på en fane i menuen midt i redigeringen).
+	const startBody = untrack(() => JSON.stringify(currentBody()));
+	let leaving = false;
+	const dirty = () => !leaving && (bulk.trim() !== '' || JSON.stringify(currentBody()) !== startBody);
+	beforeNavigate(({ cancel, type }) => {
+		if (type !== 'leave' && dirty() && !confirm('Du har ændringer, der ikke er gemt. Vil du forlade siden?')) cancel();
+	});
+	$effect(() => {
+		const warn = (e: BeforeUnloadEvent) => {
+			if (dirty()) e.preventDefault();
+		};
+		addEventListener('beforeunload', warn);
+		return () => removeEventListener('beforeunload', warn);
+	});
+
+	async function save(e: SubmitEvent) {
+		e.preventDefault();
+		error = '';
+		// Kan indsatte linjer ikke læses, gemmes der ikke (ellers gik de tabt).
+		if (bulk.trim() && !(await addBulk())) return;
+		busy = true;
+		const body = currentBody();
 		try {
 			const saved = recipe
 				? await api<Recipe>(`/recipes/${recipe.id}`, { method: 'PUT', body })
 				: await api<Recipe>('/recipes', { method: 'POST', body });
+			leaving = true;
 			onsave(saved);
 		} catch (err) {
 			error = err instanceof ApiError ? err.message : 'Kunne ikke gemme';
@@ -148,7 +174,13 @@
 	async function suggestMain() {
 		if (!recipe) return;
 		// Forslaget laves af serveren ud fra de gemte linjer.
-		const r = await api<Recipe>(`/recipes/${recipe.id}/suggest-main`, { method: 'POST' });
+		let r: Recipe;
+		try {
+			r = await api<Recipe>(`/recipes/${recipe.id}/suggest-main`, { method: 'POST' });
+		} catch (e) {
+			error = e instanceof ApiError ? e.message : 'Kunne ikke foreslå hovedingredienser';
+			return;
+		}
 		const main = new Set(r.ingredients.filter((l) => l.is_main).map((l) => l.id));
 		for (const l of lines) l.is_main = l.id !== null && main.has(l.id);
 	}

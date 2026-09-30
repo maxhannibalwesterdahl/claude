@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { api, ApiError } from '$lib/api';
-	import { parseDate, periodLabel, shortDate, today, weekdayName } from '$lib/dates';
+	import { parseDate, periodLabel, shortDate, weekdayName } from '$lib/dates';
+	import { clock, onResume } from '$lib/resume.svelte';
+	import { untrack } from 'svelte';
 	import { refreshReviewCount } from '$lib/review.svelte';
 	import type { Plan, PlanBrief } from '$lib/types';
 
@@ -17,7 +19,7 @@
 		error = '';
 		try {
 			plans = await api<PlanBrief[]>('/plans');
-			plan = await api<Plan>(id ? `/plans/${id}` : '/plans/current');
+			plan = await api<Plan>(id ? `/plans/${id}` : `/plans/current?today=${clock.today}`);
 		} catch (e) {
 			if (e instanceof ApiError && e.status === 404) plan = null;
 			else error = e instanceof ApiError ? e.message : 'Kunne ikke hente madplanen';
@@ -27,7 +29,10 @@
 	}
 
 	$effect(() => {
-		load(Number(page.url.searchParams.get('plan')) || undefined);
+		const wanted = Number(page.url.searchParams.get('plan')) || undefined;
+		untrack(() => load(wanted));
+		// Åbnes appen igen efter et stykke tid, hentes planen igen.
+		return onResume(() => untrack(() => load(plan?.id ?? wanted)));
 		refreshReviewCount().catch(() => {});
 	});
 
@@ -64,8 +69,8 @@
 		{/if}
 		<ul class="days">
 			{#each plan.days as d (d.date)}
-				{@const isToday = d.date === today()}
-				{@const past = d.date < today()}
+				{@const isToday = d.date === clock.today}
+				{@const past = d.date < clock.today}
 				<li>
 					<a href="/dag/{d.date}" class="card day" class:today={isToday} class:past>
 						{#if d.meal?.recipe?.image_url}

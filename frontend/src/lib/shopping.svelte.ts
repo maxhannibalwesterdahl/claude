@@ -1,4 +1,5 @@
 import { api, ApiError } from './api';
+import { today } from './dates';
 import type { ShoppingData } from './types';
 
 // Listen og ventende afkrydsninger gemmes på telefonen, så listen kan bruges
@@ -15,7 +16,7 @@ export interface Change {
 
 type Status = 'loading' | 'synced' | 'offline' | 'error';
 
-function read(): { data: ShoppingData | null; pending: Change[] } {
+function read(): { data: ShoppingData | null; pending: Change[]; offset?: number } {
 	try {
 		const raw = localStorage.getItem(STORAGE);
 		if (raw) return JSON.parse(raw);
@@ -30,6 +31,9 @@ class ShoppingStore {
 	pending = $state<Change[]>([]);
 	status = $state<Status>('loading');
 	syncedAt = $state<Date | null>(null);
+	// Forskel mellem serverens og telefonens ur (ms). "Seneste ændring vinder"
+	// sammenligner tidsstempler fra to telefoner, så de skal regnes i samme tid.
+	#offset = 0;
 	error = $state('');
 	#syncing = false;
 	// Nye ændringer, mens en synkronisering kører, sendes lige bagefter.
@@ -40,11 +44,12 @@ class ShoppingStore {
 		const saved = read();
 		this.data = saved.data;
 		this.pending = saved.pending;
+		this.#offset = saved.offset ?? 0;
 	}
 
 	#save() {
 		try {
-			localStorage.setItem(STORAGE, JSON.stringify({ data: this.data, pending: this.pending }));
+			localStorage.setItem(STORAGE, JSON.stringify({ data: this.data, pending: this.pending, offset: this.#offset }));
 		} catch {
 			/* fuld eller blokeret lagring: listen virker stadig, indtil siden lukkes */
 		}
@@ -57,7 +62,7 @@ class ShoppingStore {
 	}
 
 	toggle(key: string, current: boolean) {
-		this.pending = [...this.pending.filter((c) => c.key !== key), { key, checked: !current, ts: Date.now() }];
+		this.pending = [...this.pending.filter((c) => c.key !== key), { key, checked: !current, ts: Date.now() + this.#offset }];
 		this.#save();
 		this.sync();
 	}
@@ -72,7 +77,7 @@ class ShoppingStore {
 		this.#again = false;
 		const sending = $state.snapshot(this.pending);
 		try {
-			const data = await api<ShoppingData>('/shopping/sync', {
+			const data = await api<ShoppingData>(`/shopping/sync?today=${today()}`, {
 				method: 'POST',
 				body: { plan_id: this.data?.plan?.id ?? null, changes: sending }
 			});
@@ -94,6 +99,7 @@ class ShoppingStore {
 	/** Nyt svar fra serveren (fx efter "har hjemme" eller en ny vare). */
 	set(data: ShoppingData) {
 		this.data = data;
+		this.#offset = data.server_ms - Date.now();
 		this.status = 'synced';
 		this.syncedAt = new Date();
 		this.error = '';

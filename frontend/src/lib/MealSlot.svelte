@@ -6,16 +6,17 @@
 	import { groupLines } from './lines';
 	import MealChooser from './MealChooser.svelte';
 	import { planApi } from './planApi';
-	import type { Meal, MealLine, Plan, SlotChoice } from './types';
+	import type { LineState, Meal, MealLine, Plan, SlotChoice } from './types';
 
 	interface Props {
 		plan: Plan;
 		date: string;
 		forChild: boolean;
 		meal: Meal | null;
-		onplan: (plan: Plan) => void;
+		/** Kører en ændring. Siden viser kun svaret, hvis det er det nyeste (se ordered.ts). */
+		mutate: (fn: () => Promise<Plan>) => Promise<Plan>;
 	}
-	let { plan, date, forChild, meal, onplan }: Props = $props();
+	let { plan, date, forChild, meal, mutate }: Props = $props();
 
 	let choosing = $state(false);
 	// Ingredienslisten husker selv, om den er åben. Den må ikke lukke, når planen
@@ -49,7 +50,7 @@
 		busy = true;
 		error = '';
 		try {
-			onplan(await fn());
+			await mutate(fn);
 		} catch (e) {
 			error = e instanceof ApiError ? e.message : 'Noget gik galt';
 		} finally {
@@ -62,16 +63,20 @@
 		run(() => planApi.setSlot(plan, date, forChild, choice));
 	}
 
-	function toggleHome(line: MealLine) {
+	/** Flueben vises med det samme og rulles tilbage, hvis serveren afviser dem.
+	 *  Den ønskede tilstand sendes (ikke "skift"), så gentagne tryk ikke vender om. */
+	async function setLine(line: MealLine, state: LineState) {
 		if (!meal) return;
 		const id = meal.id;
-		run(() => planApi.setLine(id, line.line_id, line.state ? null : 'hjemme'));
-	}
-
-	function toggleRest(line: MealLine) {
-		if (!meal) return;
-		const id = meal.id;
-		run(() => planApi.setLine(id, line.line_id, line.state === 'rest' ? null : 'rest'));
+		const before = line.state;
+		line.state = state;
+		error = '';
+		try {
+			await mutate(() => planApi.setLine(id, line.line_id, state));
+		} catch (e) {
+			line.state = before;
+			error = e instanceof ApiError ? e.message : 'Kunne ikke gemme';
+		}
 	}
 
 	function moveTo(target: string) {
@@ -174,7 +179,11 @@
 						{#each g.lines as l (l.line_id)}
 							<li class:done={!!l.state} class:pantry={l.ingredient?.pantry}>
 								<label>
-									<input type="checkbox" checked={!!l.state} disabled={busy} onchange={() => toggleHome(l)} />
+									<input
+										type="checkbox"
+										checked={!!l.state}
+										onchange={(e) => setLine(l, e.currentTarget.checked ? 'hjemme' : null)}
+									/>
 									<span class="qty">{formatQuantity(l.quantity, l.quantity_max, l.unit)}</span>
 									<span class="grow">
 										{l.item}{#if l.is_main}<span class="star">★</span>{/if}
@@ -184,7 +193,7 @@
 									</span>
 								</label>
 								{#if meal.leftover_from}
-									<button class="plain rest" class:on={l.state === 'rest'} disabled={busy} onclick={() => toggleRest(l)}>rest</button>
+									<button class="plain rest" class:on={l.state === 'rest'} onclick={() => setLine(l, l.state === 'rest' ? null : 'rest')}>rest</button>
 								{/if}
 							</li>
 						{/each}

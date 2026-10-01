@@ -113,7 +113,7 @@ venter sammen med fase 4.
 ## Flere familier (ikke bygget)
 
 Design med delte opskrifter og delte rettelser: [flere-familier.md](flere-familier.md).
-Ca. 5½-7 dage. Afventer beslutninger (se afsnit 11 i dokumentet).
+Ca. 7-9 dage. Beslutningerne er truffet (afsnit 11).
 
 ## Fase 6 – Senere (ingen rækkefølge)
 

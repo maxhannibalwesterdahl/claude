@@ -1,6 +1,6 @@
 # Flere familier – design (ikke bygget)
 
-Status: gennemtænkt 30-09-2026, ikke bygget. Krav fra jer:
+Status: gennemtænkt 30-09-2026, opdateret med jeres svar 01-10-2026. Ikke bygget. Krav fra jer:
 
 - Flere familier (husstande) bruger samme app.
 - **Opskrifterne deles** på tværs af familier.
@@ -63,25 +63,58 @@ Beskyttelser, i prioriteret rækkefølge:
 4. **Familiens egne bekræftede linjer røres aldrig** af andres rettelser (som i
    dag: `bekræftet` er brugerens valg).
 
-## 4. Redigering af delte opskrifter (skal besluttes)
+## 4. Redigering af delte opskrifter: fælles opskrift og familiens tilpasninger
 
-| Model | Sådan virker det | For | Imod |
-|---|---|---|---|
-| **A. Alle redigerer (wiki)** med historik | Alle kan rette alt; hver version gemmes | Enkelt, alle hjælper | Én ændring rammer alles planer |
-| **B. Ejeren redigerer**, andre "kopierer og tilpasser" | Kun den familie, der oprettede/importerede, retter indhold. Andre får en kopi, de selv ejer | Ingen overraskelser | Dubletter over tid |
+Besluttet 01-10-2026. "Kopiér og tilpas" er fravalgt: hver stavefejl eller lille
+ændring ville give en ny, næsten ens opskrift.
 
-Anbefaling: **B for indhold** (titel, linjer, fremgangsmåde) og **fælles for
-varekobling** (Tjek), så rettelser stadig deles som ønsket.
+**Fælles (alle kan rette, med historik):** titel, ingredienslinjer, mængder,
+fremgangsmåde, billede, stjerner og varekobling. Rettelser gavner alle. Hver
+ændring gemmes i `recipe_version` (hvem, hvornår, hele den gamle udgave) og kan
+fortrydes. Planer peger på linjernes id'er, der bevares ved redigering, så "har
+hjemme" og rester overlever rettelser.
+
+**Familiens tilpasninger (kun for den familie, lagt oven på):**
+
+| Tilpasning | Eksempel |
+|---|---|
+| Note om barnet | "Tag barnets portion fra før chili" |
+| Egen note | "Vi bruger halv chili" |
+| Spring en linje over | "Vi bruger ikke svampe" (kommer ikke på listen) |
+| Egen mængde på en linje | 600 g hakket oksekød i stedet for 500 g |
+| Ekstra linje | "1 dåse majs" |
+
+Tabel: `household_recipe_adjustment` (household_id, recipe_id, line_id eller
+ny linje, type, værdi). Dagssiden, ingredienserne i Planlæg og indkøbslisten
+bruger familiens tilpasninger. Opskriftssiden viser "Jeres udgave" med de
+fælles linjer + tilpasninger, og "Vis original" for den fælles.
 
 Sletning: en opskrift, der bruges i en anden families plan eller samling,
-kan ikke slettes, kun fjernes fra "vores samling".
+kan ikke slettes, kun fjernes fra "vores samling". Importerer to familier samme
+ret fra Valdemarsro, genbruges den (samme `source_url`).
 
 ## 5. Login, invitationer og roller
 
-- Én bruger hører til én familie (flere familier pr. bruger venter).
-- **Kun invitation:** en admin i familien laver et link (gyldigt 7 dage), den
-  nye opretter selv brugernavn og kodeord. Du (drift) opretter nye familier fra
-  kommandolinjen: `madplan-admin create-household "Navn" --admin <bruger>`.
+- **Én bruger hører til præcis én familie** (besluttet 01-10-2026).
+- **Kun systemadmin opretter familier** (besluttet 01-10-2026). Det kræver en
+  **admin-side** (se afsnit 5a). På sigt: man kan skrive sig op, og admin
+  godkender.
+- **Invitation til en familie:** familiens egen admin laver et link (gyldigt 7
+  dage); den nye opretter selv brugernavn og kodeord.
+
+### 5a. Admin-side (systemadmin)
+
+`user.is_system_admin` (i dag: Max). Siden `/admin`, kun for systemadmin:
+
+- Liste over familier: navn, medlemmer, antal opskrifter i samlingen, seneste aktivitet.
+- **Opret familie** → giver et invitationslink til familiens første admin.
+- Nulstil kodeord for en bruger, deaktivér en bruger eller familie.
+- Seneste rettelser i den fælles opskrifts- og varebase med fortryd (afsnit 3),
+  så misbrug eller fejl kan rulles tilbage.
+- Senere: **ansøgninger** fra folk, der har skrevet sig op, med godkend/afvis.
+
+Ruterne under `/api/admin/*` kræver `is_system_admin`. Test-matrixen (afsnit 6)
+tjekker, at almindelige brugere får 404.
 - **Glemt kodeord:** familiens admin kan nulstille et medlem i appen. Du kan
   nulstille en admin fra kommandolinjen. Ingen mail i første omgang (kræver
   mailserver).
@@ -105,7 +138,8 @@ samlingen.
 
 ## 8. Drift og ansvar
 
-- **Backup uden for huset bliver et krav**, ikke et ønske: andre familiers data.
+- **Backup uden for huset bliver et krav, før familie nr. 2 kommer ind**
+  (besluttet 01-10-2026: ikke nødvendig, så længe det kun er jer).
 - **Persondata** er minimale (brugernavne, madplaner), men en familie skal kunne
   få sine data udleveret og slettet. Kort privatlivstekst i appen.
 - SQLite holder fint til nogle dusin familier. Billeder: grænse pr. familie.
@@ -128,16 +162,22 @@ Migrationen tager en kopi først og kører uden fremmednøgler (som i dag).
 |---|---|---|
 | 1 | Datamodel, migration, `CurrentHousehold` | 1 dag |
 | 2 | Alle ruter afgrænset til familien + test-matrix | 1-2 dage |
-| 3 | Invitationer, familieindstillinger (medlemmer, navn), nulstil kodeord | 1 dag |
-| 4 | Vores samling, basisvarer og barnenote pr. familie, ejerskab/kopi | 1 dag |
-| 5 | Historik og fortryd for rettelser, "uenighed" i Tjek | 1 dag |
-| 6 | Backup uden for huset, dataudlevering/sletning, privatlivstekst | ½-1 dag |
+| 3 | Admin-side: familier, opret med invitation, nulstil kodeord | 1 dag |
+| 4 | Invitationer i familien, familieindstillinger (medlemmer, navn) | ½ dag |
+| 5 | Vores samling, basisvarer og barnenote pr. familie | 1 dag |
+| 6 | Familiens tilpasninger (spring over, egen mængde, ekstra linje, note) | 1-1½ dag |
+| 7 | Historik og fortryd for opskrifter og rettelser, "uenighed" i Tjek | 1 dag |
+| 8 | Backup uden for huset, dataudlevering/sletning, privatlivstekst | ½-1 dag |
+| Senere | Tilmelding med godkendelse på admin-siden | 1 dag |
 
-**I alt ca. 5½-7 dage.** Trin 1-2 er forudsætningen og bør laves samlet.
+**I alt ca. 7-9 dage** (uden tilmelding). Trin 1-2 er forudsætningen og bør
+laves samlet. Trin 8 skal være færdigt, før familie nr. 2 kommer ind.
 
-## 11. Beslutninger, der mangler
+## 11. Beslutninger
 
-1. Redigering af delte opskrifter: model A eller B (anbefaling: B)?
-2. Skal en bruger kunne være i flere familier (fx bedsteforældre)?
-3. Hvem må oprette nye familier: kun du, eller familier via invitation?
-4. Hvor skal backup uden for huset ligge?
+| Spørgsmål | Svar (01-10-2026) |
+|---|---|
+| Redigering af delte opskrifter | Fælles opskrift, alle kan rette med historik; personlige ændringer som familiens tilpasninger (afsnit 4) |
+| Kan en bruger være i flere familier? | Nej, præcis én |
+| Hvem opretter familier? | Kun systemadmin via admin-side. Senere tilmelding med godkendelse |
+| Backup uden for huset | Ikke nu. Krav, før familie nr. 2 kommer ind |

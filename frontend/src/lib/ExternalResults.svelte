@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { api, ApiError } from './api';
+	import Fold from './Fold.svelte';
 	import Thumb from './Thumb.svelte';
 	import type { Recipe } from './types';
 
@@ -10,7 +11,15 @@
 		recipe_id: number | null;
 	}
 
+	// Opskriftssider, vi kan søge på. `path` er vores eget API under /search.
+	const SITES = {
+		valdemarsro: { name: 'Valdemarsro', domain: 'valdemarsro.dk', home: 'https://www.valdemarsro.dk' },
+		nemlig: { name: 'nemlig.com', domain: 'nemlig.com', home: 'https://www.nemlig.com/opskrifter' }
+	};
+
 	interface Props {
+		/** Siden, der søges på. */
+		site: keyof typeof SITES;
 		/** Søgeteksten. Der søges fra 3 tegn, lidt efter man er holdt op med at skrive. */
 		q: string;
 		/** Knaptekst for en opskrift, vi allerede har ("Åbn" eller "Vælg"). */
@@ -18,7 +27,8 @@
 		/** Kaldes med opskriftens id, når den er importeret eller allerede fandtes. */
 		onpick: (recipeId: number, imported: boolean) => void;
 	}
-	let { q, haveLabel = 'Åbn', onpick }: Props = $props();
+	let { site, q, haveLabel = 'Åbn', onpick }: Props = $props();
+	const where = $derived(SITES[site]);
 
 	let hits = $state<Hit[]>([]);
 	let loading = $state(false);
@@ -38,13 +48,13 @@
 		let stale = false;
 		const timer = setTimeout(async () => {
 			try {
-				const res = await api<Hit[]>(`/search/valdemarsro?q=${encodeURIComponent(term)}`);
+				const res = await api<Hit[]>(`/search/${site}?q=${encodeURIComponent(term)}`);
 				if (!stale) {
 					hits = res;
 					searched = term;
 				}
 			} catch (e) {
-				if (!stale) error = e instanceof ApiError ? e.message : 'Kunne ikke søge på Valdemarsro';
+				if (!stale) error = e instanceof ApiError ? e.message : `Kunne ikke søge på ${where.name}`;
 			} finally {
 				if (!stale) loading = false;
 			}
@@ -76,14 +86,11 @@
 </script>
 
 {#if q.trim().length >= 3}
-	<section class="ext" aria-live="polite">
-		<h2 class="section-title">
-			Fra Valdemarsro
-			{#if loading}<span class="muted small">søger…</span>{/if}
-		</h2>
+	<!-- Søgningen giver højst 24; så mange betyder "der er nok flere". -->
+	<Fold title={where.name} count={loading ? 'søger…' : error && !hits.length ? 'fejl' : hits.length >= 24 ? '24+' : hits.length}>
 		{#if error}<p class="error" role="alert">{error}</p>{/if}
 		{#if !loading && searched && !hits.length && !error}
-			<p class="muted small">Ingen opskrifter på Valdemarsro matcher "{searched}".</p>
+			<p class="muted small">Ingen opskrifter på {where.name} matcher "{searched}".</p>
 		{/if}
 		<ul>
 			{#each hits as hit (hit.url)}
@@ -103,22 +110,13 @@
 		</ul>
 		{#if hits.length}
 			<p class="muted small credit">
-				Opskrifter fra <a href="https://www.valdemarsro.dk" target="_blank" rel="noopener noreferrer">valdemarsro.dk</a>. Import gemmer opskriften i jeres egen samling.
+				Opskrifter fra <a href={where.home} target="_blank" rel="noopener noreferrer">{where.domain}</a>. Import gemmer opskriften i jeres egen samling.
 			</p>
 		{/if}
-	</section>
+	</Fold>
 {/if}
 
 <style>
-	.ext {
-		margin-top: 16px;
-	}
-	h2 {
-		margin: 0 0 8px;
-		display: flex;
-		gap: 8px;
-		align-items: baseline;
-	}
 	ul {
 		list-style: none;
 		padding: 0;
@@ -132,7 +130,7 @@
 		gap: 12px;
 		padding: 6px;
 		border-radius: var(--radius-seg);
-		background: var(--card);
+		background: var(--bg);
 		border: 1px solid var(--line);
 	}
 	.title {

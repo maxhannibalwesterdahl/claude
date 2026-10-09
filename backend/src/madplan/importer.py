@@ -2,9 +2,11 @@
 
 Virker for sider med egen læser i recipe-scrapers (Valdemarsro, Madens Verden,
 DR, ...) og for sider med generiske schema.org/Recipe-data (fx Arla).
+nemlig.com læses fra sidens egne JSON-data, fordi kun de har mængderne med.
 """
 
 import ipaddress
+import json
 import re
 import socket
 import uuid
@@ -13,6 +15,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import httpx
+from bs4 import BeautifulSoup
 from recipe_scrapers import scrape_html
 
 HEADERS = {
@@ -20,6 +23,9 @@ HEADERS = {
     "(KHTML, like Gecko) Chrome/140.0 Safari/537.36",
     "Accept-Language": "da,en;q=0.8",
 }
+# nemlig.com sender browsere i kø (Queue-it), men lader andre klienter hente
+# siderne direkte. Vi siger derfor ærligt, hvem vi er.
+NEMLIG_HEADERS = {"User-Agent": "madplan/1.0 (privat madplan; opskriftsimport)", "Accept-Language": "da"}
 MAX_PAGE = 5_000_000
 MAX_IMAGE = 8_000_000
 IMAGE_TYPES = {"image/jpeg": ".jpg", "image/jpg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/avif": ".avif"}
@@ -90,9 +96,9 @@ def _get(client: httpx.Client, url: str, limit: int) -> _Fetched:
     raise RecipeImportError("For mange omdirigeringer")
 
 
-def fetch(url: str, client: httpx.Client | None = None) -> str:
+def fetch(url: str, client: httpx.Client | None = None, headers: dict[str, str] = HEADERS) -> str:
     own = client is None
-    client = client or httpx.Client(headers=HEADERS, timeout=15, follow_redirects=False)
+    client = client or httpx.Client(headers=headers, timeout=15, follow_redirects=False)
     try:
         page = _get(client, url, MAX_PAGE)
         return page.body.decode(page.charset or "utf-8", errors="replace")
@@ -148,6 +154,65 @@ def scrape(html: str, url: str) -> ScrapedRecipe:
         source_url=url,
         warnings=warnings,
     )
+
+
+def is_nemlig(url: str) -> bool:
+    return (urlparse(url).hostname or "").lower() in ("nemlig.com", "www.nemlig.com")
+
+
+def _nemlig_line(ing: dict) -> str:
+    """Saml nemligs adskilte mængde, enhed og navn til en linje: "2 stk. løg"."""
+    text = " ".join((ing.get("Text") or "").split())
+    amount = (ing.get("Amount") or "").strip().replace(".", ",")
+    if not text or amount in ("", "0"):
+        return text
+    unit = (ing.get("Unit") or "").strip()
+    return " ".join(x for x in (amount, unit, text[0].lower() + text[1:]) if x)
+
+
+def scrape_nemlig(page: str, url: str) -> ScrapedRecipe:
+    """Læs en opskrift fra nemlig.coms sidedata (`?GetAsJson=1`)."""
+    try:
+        spots = json.loads(page)["content"]
+        spot = next(c for c in spots if c.get("TemplateName") == "recipedetailspot")
+    except (ValueError, KeyError, TypeError, AttributeError, StopIteration):
+        raise RecipeImportError("Siden har ingen opskriftsdata, som kan læses") from None
+
+    title = (spot.get("Header") or "").strip()
+    groups = []
+    for g in spot.get("IngredientGroups") or []:
+        lines = [l for l in map(_nemlig_line, g.get("Ingredients") or []) if l]
+        if lines:
+            groups.append(ScrapedGroup((g.get("Name") or "").strip(), lines))
+    if not title or not groups:
+        raise RecipeImportError("Siden har ingen opskrift med ingredienser")
+    if len(groups) == 1:
+        groups[0].name = ""
+
+    # Trinene står som punkter; tips og mellemrubrikker udenom tages ikke med.
+    soup = BeautifulSoup(spot.get("Instructions") or "", "html.parser")
+    steps = [x.get_text(" ", strip=True) for x in soup.find_all("li")] or [x.get_text(" ", strip=True) for x in soup.find_all("p")]
+    instructions = [" ".join(x.split()) for x in steps if x.strip()]
+
+    image = next((m.get("Url") for m in spot.get("Media") or [] if m.get("MediaType") == "image" and m.get("Url")), None)
+    persons = spot.get("NumberOfPersons")
+    return ScrapedRecipe(
+        title=title,
+        servings=persons if isinstance(persons, int) and persons > 0 else None,
+        groups=groups,
+        instructions=instructions,
+        # Originalen er ofte flere MB; 1200 px er rigeligt.
+        image_url=f"{image}&w=1200" if image and "?" in image else image,
+        source_url=url,
+        warnings=[] if instructions else ["Fremgangsmåden kunne ikke læses"],
+    )
+
+
+def load(url: str) -> ScrapedRecipe:
+    """Hent og læs opskriften bag et link."""
+    if is_nemlig(url):
+        return scrape_nemlig(fetch(url.split("?")[0].split("#")[0] + "?GetAsJson=1", headers=NEMLIG_HEADERS), url)
+    return scrape(fetch(url), url)
 
 
 def download_image(url: str, image_dir: Path, client: httpx.Client | None = None) -> str | None:

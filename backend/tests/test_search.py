@@ -76,3 +76,80 @@ def test_recipe_summary_lists_ingredients(client):
     client.post("/api/recipes", json={"title": "Aftensmad", "ingredients": [{"raw": "500 g kyllingebryst"}, {"raw": "1 dragefrugt"}]})
     s = client.get("/api/recipes").json()[0]
     assert s["ingredients"] == ["dragefrugt", "kyllingebryst"]
+
+
+# --- nemlig.com ---------------------------------------------------------------
+
+NEMLIG = {
+    "Products": {"Products": [{"Name": "Lasagne Bolognese", "Url": "lasagne-bolognese-5067470"}]},
+    "Recipes": [
+        {"Name": "Lasagne med rodfrugter", "Url": "/opskrifter/maries-magiske-lasagne-98000520",
+         "PrimaryImage": "https://www.nemlig.com/scommerce/images/a.jpg?i={DCFC}&v=AOi"},
+        {"Name": "Lasagne med rodfrugter", "Url": "/opskrifter/maries-magiske-lasagne-98000520", "PrimaryImage": ""},
+        {"Name": "Dumpling lasagne", "Url": "/opskrifter/dumpling-lasagne-98004560", "PrimaryImage": None},
+        {"Name": "En vare", "Url": "/en-vare-5067470", "PrimaryImage": ""},
+    ],
+}
+
+NEMLIG_RECIPE = {
+    "content": [
+        {"TemplateName": "ribbon"},
+        {
+            "TemplateName": "recipedetailspot",
+            "Header": "Lasagne med rodfrugter",
+            "NumberOfPersons": 4,
+            "Media": [{"MediaType": "image", "Url": "https://www.nemlig.com/scommerce/images/a.jpg?i={DCFC}&v=AOi"}],
+            "IngredientGroups": [
+                {"Name": "Kødsovs", "Ingredients": [
+                    {"Text": "Løg", "Amount": "2", "Unit": "stk."},
+                    {"Text": "Salt og peber", "Amount": "", "Unit": ""},
+                ]},
+                {"Name": "Bechamel", "Ingredients": [{"Text": "Mælk", "Amount": "0.5", "Unit": "l"}]},
+            ],
+            "Instructions": "<h4>K&oslash;dsovs</h4><ul><li>\n<p>Pil l&oslash;g</p>\n</li><li><p>Brun k&oslash;det</p></li></ul>"
+                            "<p><strong>Tips:</strong></p><p>Lav dobbelt portion</p>",
+        },
+    ]
+}
+
+
+def test_nemlig_parse_takes_only_recipes():
+    from madplan import search_nemlig as sn
+
+    hits = sn.parse(NEMLIG)
+    assert [h.title for h in hits] == ["Lasagne med rodfrugter", "Dumpling lasagne"]
+    assert hits[0].url == "https://www.nemlig.com/opskrifter/maries-magiske-lasagne-98000520"
+    assert hits[0].image_url.endswith("&w=120&h=120&mode=crop") and hits[1].image_url == ""
+    assert sn.parse({"Recipes": None}) == []
+
+
+def test_nemlig_search_endpoint(client, monkeypatch):
+    from madplan import search_nemlig as sn
+
+    monkeypatch.setattr(sn, "search", lambda q: sn.parse(NEMLIG))
+    rec = client.post("/api/recipes", json={"title": "Lasagne", "source_url": "https://www.nemlig.com/opskrifter/maries-magiske-lasagne-98000520/"}).json()
+    hits = client.get("/api/search/nemlig?q=lasagne").json()
+    assert [(h["title"], h["recipe_id"]) for h in hits] == [("Lasagne med rodfrugter", rec["id"]), ("Dumpling lasagne", None)]
+
+    def fail(q):
+        raise sv.SearchError("nemlig.com svarer ikke lige nu")
+    monkeypatch.setattr(sn, "search", fail)
+    assert client.get("/api/search/nemlig?q=lasagne").status_code == 502
+
+
+def test_nemlig_recipe_is_read_from_page_json():
+    import json
+
+    from madplan import importer
+
+    url = "https://www.nemlig.com/opskrifter/maries-magiske-lasagne-98000520"
+    r = importer.scrape_nemlig(json.dumps(NEMLIG_RECIPE), url)
+    assert (r.title, r.servings) == ("Lasagne med rodfrugter", 4)
+    assert [(g.name, g.lines) for g in r.groups] == [("Kødsovs", ["2 stk. løg", "Salt og peber"]), ("Bechamel", ["0,5 l mælk"])]
+    assert r.instructions == ["Pil løg", "Brun kødet"]
+    assert r.image_url.endswith("&w=1200") and r.warnings == []
+    assert importer.is_nemlig(url) and not importer.is_nemlig("https://nemlig.com.example.dk/opskrifter/x")
+    with pytest.raises(importer.RecipeImportError):
+        importer.scrape_nemlig('{"content": [{"TemplateName": "ribbon"}]}', url)
+    with pytest.raises(importer.RecipeImportError):
+        importer.scrape_nemlig("<html>", url)

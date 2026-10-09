@@ -4,7 +4,8 @@
 	import { searchKey } from '$lib/format';
 	import { refreshReviewCount } from '$lib/review.svelte';
 	import Thumb from '$lib/Thumb.svelte';
-	import ValdemarsroResults from '$lib/ValdemarsroResults.svelte';
+	import ExternalResults from '$lib/ExternalResults.svelte';
+	import Fold from '$lib/Fold.svelte';
 	import type { RecipeSummary } from '$lib/types';
 
 	let recipes = $state<RecipeSummary[] | null>(null);
@@ -27,7 +28,7 @@
 		refreshReviewCount().catch(() => {});
 	});
 
-	// Fra Valdemarsro: ny import bliver på listen (og dukker op i jeres egne); en,
+	// Fra Valdemarsro og nemlig.com: ny import bliver på listen (og dukker op i jeres egne); en,
 	// vi allerede har, åbnes.
 	function picked(id: number, imported: boolean) {
 		if (imported) loadRecipes();
@@ -47,13 +48,13 @@
 	{#if recipes}
 		<input
 			type="search"
-			placeholder={recipes.length ? `Søg i ${recipes.length} opskrifter og på Valdemarsro` : 'Søg på Valdemarsro'}
+			placeholder={recipes.length ? `Søg i ${recipes.length} opskrifter, på Valdemarsro og nemlig.com` : 'Søg på Valdemarsro og nemlig.com'}
 			bind:value={q}
 			aria-label="Søg"
 		/>
 	{/if}
 
-	{#if recipes && recipes.length > 0}
+	{#snippet own()}
 		<ul>
 			{#each shown as r (r.id)}
 				<li>
@@ -76,9 +77,19 @@
 				<li class="empty">Ingen af jeres opskrifter matcher "{q}"</li>
 			{/each}
 		</ul>
+	{/snippet}
+
+	<!-- Under søgning: tre lukkede afsnit med antal, der foldes ud ved tryk. -->
+	{#if recipes && recipes.length > 0}
+		{#if q.trim()}
+			<Fold title="Egne opskrifter" count={shown.length}>{@render own()}</Fold>
+		{:else}
+			{@render own()}
+		{/if}
 	{/if}
 
-	<ValdemarsroResults {q} onpick={picked} />
+	<ExternalResults site="valdemarsro" {q} onpick={picked} />
+	<ExternalResults site="nemlig" {q} onpick={picked} />
 
 	{#if recipes && recipes.length === 0 && q.trim().length < 3}
 		<div class="empty">

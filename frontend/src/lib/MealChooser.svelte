@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { api } from './api';
+	import ExternalResults from './ExternalResults.svelte';
+	import Fold from './Fold.svelte';
 	import { shortDate, weekdayName } from './dates';
 	import { mult, searchKey } from './format';
 	import Thumb from './Thumb.svelte';
 	import type { Meal, Plan, RecipeSummary, SlotChoice } from './types';
-	import ValdemarsroResults from './ValdemarsroResults.svelte';
 
 	interface Props {
 		plan: Plan;
@@ -70,6 +71,11 @@
 			if (opener instanceof HTMLElement && opener.isConnected) opener.focus();
 		};
 	});
+
+	function pickExternal(id: number) {
+		if (!(wishMode && wished.has(id))) onchoose({ kind: 'opskrift', recipe_id: id });
+		api<RecipeSummary[]>('/recipes').then((r) => (recipes = r)).catch(() => {});
+	}
 </script>
 
 <!-- Klik på den mørke baggrund (dialogen selv, uden for indholdet) lukker. Tastaturet har Escape og Luk-knappen. -->
@@ -113,7 +119,8 @@
 		{#if error}<p class="error" role="alert">{error}</p>{/if}
 
 		{#if tab === 'opskrift'}
-			<input type="search" bind:value={q} placeholder="Søg i jeres opskrifter og på Valdemarsro" aria-label="Søg" />
+			<input type="search" bind:value={q} placeholder="Søg i jeres opskrifter, på Valdemarsro og nemlig.com" aria-label="Søg" />
+			{#snippet own()}
 			<ul>
 				{#each shown as r (r.id)}
 					<li>
@@ -135,15 +142,16 @@
 					{#if recipes}<li class="muted empty-row">Ingen af jeres opskrifter matcher.</li>{/if}
 				{/each}
 			</ul>
-			<!-- Ikke i jeres samling? Find den på Valdemarsro og vælg den med ét tryk. -->
-			<ValdemarsroResults
-				{q}
-				haveLabel="Vælg"
-				onpick={(id) => {
-					if (!(wishMode && wished.has(id))) onchoose({ kind: 'opskrift', recipe_id: id });
-					api<RecipeSummary[]>('/recipes').then((r) => (recipes = r)).catch(() => {});
-				}}
-			/>
+			{/snippet}
+			<!-- Under søgning: tre lukkede afsnit med antal, der foldes ud ved tryk. -->
+			{#if q.trim()}
+				<Fold title="Egne opskrifter" count={shown.length}>{@render own()}</Fold>
+			{:else}
+				{@render own()}
+			{/if}
+			<!-- Ikke i jeres samling? Find den på Valdemarsro eller nemlig.com og vælg den med ét tryk. -->
+			<ExternalResults site="valdemarsro" {q} haveLabel="Vælg" onpick={pickExternal} />
+			<ExternalResults site="nemlig" {q} haveLabel="Vælg" onpick={pickExternal} />
 		{:else if tab === 'ønske'}
 			<ul>
 				{#each plan.wishlist as w (w.id)}

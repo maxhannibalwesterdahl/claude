@@ -243,6 +243,7 @@ App-container
 | Valdemarsro, Madens Verden, Arla | Import | Testet i fase 0: 92 opskrifter importeret uden fejl | Lav |
 | Spis Bedre | Import | Virker ikke: 0 af 204 sider har opskriftsdata | – |
 | valdemarsro.dk `/?s=` | Søgning | Returnerer links, blandet med artikler | Mellem. Uofficielt, kan ændres |
+| nemlig.com `/webapi/.../Search/Search` og `?GetAsJson=1` | Søgning i opskrifter (ikke varer) og import med mængder | Returnerer JSON. Kræver en ærlig User-Agent: browser-UA sendes i kø (Queue-it) | Mellem. Uofficielt, kan ændres |
 | Tjek API (`squid-api.tjek.com/v2`) | Bilka-tilbud | Testet: Bilka = dealer `93f13`, 644 tilbud i uge 40, heraf 191 i madvareavisen. Pris, mængde, enhed og gyldighed. Ingen kategorier | Mellem. Uofficielt, ingen aftale |
 | Salling Group API | – | Har ikke priser eller tilbud. Ikke brugbar | – |
 | Bilka ToGo | Normalpriser | Ikke efterprøvet | Udskudt |

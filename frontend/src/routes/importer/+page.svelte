@@ -9,7 +9,7 @@
 	let existing = $state<number | null>(null);
 	let busy = $state(false);
 
-	const sites = ['valdemarsro.dk', 'madensverden.dk', 'arla.dk', 'dr.dk/mad', 'sundpaabudget.dk', 'hellofresh.dk'];
+	const sites = ['valdemarsro.dk', 'nemlig.com', 'madensverden.dk', 'arla.dk', 'dr.dk/mad', 'sundpaabudget.dk', 'hellofresh.dk'];
 
 	async function submit(e: SubmitEvent) {
 		e.preventDefault();

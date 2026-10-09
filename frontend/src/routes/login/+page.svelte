@@ -29,7 +29,7 @@
 	<svg viewBox="0 0 64 64" class="logo" aria-hidden="true">
 		<rect width="64" height="64" rx="14" fill="var(--accent)" />
 		<path d="M14 30h36a18 18 0 0 1-36 0z" fill="var(--accent-fg)" />
-		<path d="M24 22c0-4 4-4 4-8M34 22c0-4 4-4 4-8" stroke="var(--accent-fg)" stroke-width="3" stroke-linecap="round" fill="none" />
+		<path d="M25 22c0-4 4-4 4-8M35 22c0-4 4-4 4-8" stroke="var(--accent-fg)" stroke-width="3" stroke-linecap="round" fill="none" />
 	</svg>
 	<h1>Madplan</h1>
 	<form onsubmit={submit}>

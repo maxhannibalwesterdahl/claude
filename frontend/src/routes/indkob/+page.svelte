@@ -20,8 +20,8 @@
 
 	const data = $derived(shopping.data);
 
-	// Uge-vælger: listen viser næste indkøb, men andre uger kan vælges (fx den
-	// igangværende). Planerne hentes igen, når listen viser en ukendt plan.
+	// Uge-vælger: listen viser den igangværende uge (som Planlæg), men andre uger
+	// kan vælges (fx næste uges indkøb). Planerne hentes igen, når listen viser en ukendt plan.
 	let plans = $state<PlanBrief[]>([]);
 	const planIndex = $derived(data?.plan ? plans.findIndex((p) => p.id === data.plan!.id) : -1);
 	$effect(() => {
@@ -184,7 +184,7 @@
 			<div class="muted small">
 				<span class:warn={shopping.status === 'offline' || shopping.status === 'error'}>{statusText}</span>
 				{#if shopping.selected !== null}
-					· <button class="plain link" onclick={() => shopping.show(null)}>Næste indkøb</button>
+					· <button class="plain link" onclick={() => shopping.show(null)}>Denne uge</button>
 				{/if}
 			</div>
 		</div>

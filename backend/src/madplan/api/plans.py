@@ -255,6 +255,16 @@ def _clear_slot(session: Session, plan: Plan, d: date, for_child: bool) -> None:
 
 # --- Planer -----------------------------------------------------------------------
 
+def pick_current(session: Session, today: date | None = None) -> Plan | None:
+    """Planen, der dækker i dag. Ellers den næste, ellers den seneste.
+    Bruges af både Planlæg og Indkøb, så de åbner på samme uge."""
+    today = today or local_today()
+    plans = session.scalars(select(Plan).order_by(Plan.start_date)).all()
+    covering = [p for p in plans if p.start_date <= today <= _end(p)]
+    upcoming = [p for p in plans if p.start_date > today]
+    return covering[-1] if covering else upcoming[0] if upcoming else plans[-1] if plans else None
+
+
 @router.get("/plans")
 def list_plans(session: DbSession, _: CurrentUser) -> list[PlanBrief]:
     plans = session.scalars(select(Plan).order_by(Plan.start_date.desc()))
@@ -263,14 +273,9 @@ def list_plans(session: DbSession, _: CurrentUser) -> list[PlanBrief]:
 
 @router.get("/plans/current")
 def current_plan(session: DbSession, _: CurrentUser, today: date | None = None) -> PlanOut:
-    """Planen, der dækker i dag. Ellers den næste, ellers den seneste."""
-    today = today or local_today()
-    plans = session.scalars(select(Plan).order_by(Plan.start_date)).all()
-    if not plans:
+    chosen = pick_current(session, today)
+    if chosen is None:
         raise HTTPException(status_code=404, detail="Ingen madplan endnu")
-    covering = [p for p in plans if p.start_date <= today <= _end(p)]
-    upcoming = [p for p in plans if p.start_date > today]
-    chosen = covering[-1] if covering else upcoming[0] if upcoming else plans[-1]
     return plan_out(load_plan(session, chosen.id))
 
 

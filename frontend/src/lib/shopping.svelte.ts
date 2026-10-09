@@ -33,8 +33,8 @@ class ShoppingStore {
 	pending = $state<Change[]>([]);
 	status = $state<Status>('loading');
 	syncedAt = $state<Date | null>(null);
-	// Den uge, der er valgt med uge-vælgeren. null = listen til næste indkøb.
-	// Gemmes ikke, så appen åbner på næste indkøb igen.
+	// Den uge, der er valgt med uge-vælgeren. null = den igangværende uge.
+	// Gemmes ikke, så appen åbner på den igangværende uge igen.
 	selected = $state<number | null>(null);
 	// Forskel mellem serverens og telefonens ur (ms). "Seneste ændring vinder"
 	// sammenligner tidsstempler fra to telefoner, så de skal regnes i samme tid.
@@ -105,7 +105,7 @@ class ShoppingStore {
 			this.pending = this.pending.filter((c) => !sending.some((s) => s.key === c.key && s.ts === c.ts));
 			// Skiftet uge undervejs: svaret er for den gamle uge, og en ny hentning følger.
 			if (view === this.selected) {
-				// Er den valgte plan slettet, svarer serveren med næste indkøb.
+				// Er den valgte plan slettet, svarer serveren med den igangværende uge.
 				if (view !== null && data.plan?.id !== view) this.selected = null;
 				this.set(data);
 			}
@@ -131,7 +131,7 @@ class ShoppingStore {
 		this.#save();
 	}
 
-	/** Vis en anden uge (null = næste indkøb). */
+	/** Vis en anden uge (null = den igangværende uge). */
 	show(planId: number | null) {
 		this.selected = planId;
 		this.status = 'loading';

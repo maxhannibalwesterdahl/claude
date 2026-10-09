@@ -219,14 +219,27 @@
 		max-height: inherit;
 		padding: 12px max(16px, env(safe-area-inset-right)) env(safe-area-inset-bottom) max(16px, env(safe-area-inset-left));
 	}
+	/* Tastaturet fremme: arket fylder pladsen over det, så søgefeltet og de
+	   fundne retter kan ses. Uden dette ligger et kort ark gemt bag tastaturet. */
+	:global(html.kb-open) .sheet {
+		top: calc(env(safe-area-inset-top) + 8px);
+		bottom: var(--kb);
+		max-height: none;
+		padding-bottom: 0;
+	}
 	@media (min-width: 700px) {
 		/* iPad og computer: dialog midt på skærmen. */
 		.sheet {
 			inset: 8dvh auto auto 50%;
 			width: min(560px, 92vw);
-			max-height: 84dvh;
+			max-height: calc(92dvh - var(--kb, 0px));
 			transform: translateX(-50%);
 			border-radius: var(--radius-sheet);
+		}
+		:global(html.kb-open) .sheet {
+			top: 8dvh;
+			bottom: auto;
+			max-height: calc(92dvh - var(--kb));
 		}
 	}
 	header {
@@ -242,7 +255,14 @@
 	.tabs {
 		margin-bottom: 4px;
 	}
+	/* Kun listen giver sig, når arket bliver lavt (fx over tastaturet). */
+	header,
+	.tabs {
+		flex: none;
+	}
 	.body {
+		flex: 1 1 auto;
+		min-height: 0;
 		overflow-y: auto;
 		padding: 12px 0 16px;
 		overscroll-behavior: contain;

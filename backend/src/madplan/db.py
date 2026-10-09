@@ -35,7 +35,8 @@ log = logging.getLogger("madplan")
 def alembic_config(url: str, script_location: str | None = None) -> Config:
     cfg = Config()
     cfg.set_main_option("script_location", script_location or str(resources.files("madplan").joinpath("migrations")))
-    cfg.set_main_option("sqlalchemy.url", url)
+    # configparser læser "%" som en henvisning; Windows-stier giver "%5C" i adressen.
+    cfg.set_main_option("sqlalchemy.url", url.replace("%", "%%"))
     return cfg
 
 

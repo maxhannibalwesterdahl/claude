@@ -104,10 +104,16 @@ class Change(BaseModel):
     key: str = Field(max_length=300)
     checked: bool
     ts: int  # klientens tidspunkt i ms (rettet for urforskel, se frontend)
+    # Planen, der blev vist, da rækken blev krydset af. Mangler den, gælder
+    # SyncIn.plan_id (ældre telefoner).
+    plan_id: int | None = None
 
 
 class SyncIn(BaseModel):
     plan_id: int | None = None
+    # Den uge, brugeren har valgt at se. Mangler den (eller er planen slettet),
+    # svares med listen til næste indkøb.
+    view_plan_id: int | None = None
     # Valideres én ad gangen i sync(): en ugyldig ændring må ikke blokere resten,
     # for telefonen sender ventende ændringer igen, indtil de bliver modtaget.
     changes: list[dict] = Field([], max_length=2000)
@@ -286,9 +292,10 @@ def sync(body: SyncIn, session: DbSession, _: CurrentUser, today: date | None = 
     """Modtag afkrydsninger (evt. lavet offline). Seneste ændring pr. række vinder.
 
     Ændringerne gemmes på den plan, telefonen viste, da de blev lavet. Svaret er
-    altid listen til næste indkøb, så telefonen følger med, når en plan slettes,
-    eller når næste uges plan oprettes."""
+    den valgte uge, ellers listen til næste indkøb, så telefonen følger med, når
+    en plan slettes, eller når næste uges plan oprettes."""
     target = session.get(Plan, body.plan_id) if body.plan_id is not None else choose_plan(session, None, today)
+    plans: dict[int, Plan | None] = {}
     now_ms = int(time.time() * 1000)
     changes = []
     for raw in body.changes:
@@ -303,14 +310,23 @@ def sync(body: SyncIn, session: DbSession, _: CurrentUser, today: date | None = 
             extra = session.get(ShoppingExtra, int(ch.key[2:])) if ch.key[2:].isdigit() else None
             if extra and ch.ts > extra.updated_ms:
                 extra.checked, extra.updated_ms = ch.checked, ch.ts
-        elif target is not None and ch.key[:2] in ("i:", "t:"):
-            row = session.scalar(select(ShoppingCheck).where(ShoppingCheck.plan_id == target.id, ShoppingCheck.key == ch.key))
+        elif ch.key[:2] in ("i:", "t:"):
+            if ch.plan_id is None:
+                plan = target
+            else:
+                if ch.plan_id not in plans:
+                    plans[ch.plan_id] = session.get(Plan, ch.plan_id)
+                plan = plans[ch.plan_id]
+            if plan is None:
+                continue
+            row = session.scalar(select(ShoppingCheck).where(ShoppingCheck.plan_id == plan.id, ShoppingCheck.key == ch.key))
             if row is None:
-                session.add(ShoppingCheck(plan_id=target.id, key=ch.key, checked=ch.checked, updated_ms=ch.ts))
+                session.add(ShoppingCheck(plan_id=plan.id, key=ch.key, checked=ch.checked, updated_ms=ch.ts))
             elif ch.ts > row.updated_ms:
                 row.checked, row.updated_ms = ch.checked, ch.ts
     session.commit()
-    return build(session, choose_plan(session, None, today))
+    view = session.get(Plan, body.view_plan_id) if body.view_plan_id is not None else None
+    return build(session, view or choose_plan(session, None, today))
 
 
 @router.post("/shopping/extras", status_code=201)

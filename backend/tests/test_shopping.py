@@ -215,6 +215,25 @@ def test_list_follows_to_next_plan(client, app, week):
         assert [(c.plan_id, c.key) for c in s.scalars(select(ShoppingCheck))] == [(old["id"], "i:1")]
 
 
+def test_view_chosen_week(client, app, week):
+    # Næste uges plan findes, så listen viser den som standard.
+    nxt = client.post("/api/plans", json={"start_date": "2026-10-11"}).json()
+    assert client.post("/api/shopping/sync?today=2026-10-07", json={"changes": []}).json()["plan"]["id"] == nxt["id"]
+    # Den igangværende uge kan vælges, også ved senere synkroniseringer.
+    r = client.post("/api/shopping/sync?today=2026-10-07", json={"view_plan_id": week["id"], "changes": []})
+    assert r.json()["plan"]["id"] == week["id"] and "løg" in items(r.json())
+    # En afkrydsning gemmes på planen, den blev lavet på, selv om telefonen
+    # nu viser en anden uge.
+    r = client.post("/api/shopping/sync?today=2026-10-07", json={
+        "plan_id": nxt["id"], "view_plan_id": week["id"],
+        "changes": [{"key": items(r.json())["løg"]["key"], "checked": True, "ts": 5, "plan_id": week["id"]}]})
+    assert items(r.json())["løg"]["checked"]
+    # Slettes den valgte plan, vises listen til næste indkøb igen.
+    client.delete(f"/api/plans/{week['id']}")
+    r = client.post("/api/shopping/sync?today=2026-10-07", json={"view_plan_id": week["id"], "changes": []})
+    assert r.json()["plan"]["id"] == nxt["id"]
+
+
 def test_one_invalid_change_does_not_block_the_rest(client, week):
     key = items(client.get("/api/shopping?today=2026-10-01").json())["løg"]["key"]
     r = client.post("/api/shopping/sync?today=2026-10-01", json={"plan_id": week["id"], "changes": [

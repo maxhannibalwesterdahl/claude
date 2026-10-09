@@ -4,7 +4,7 @@
 	import { formatAmounts } from '$lib/format';
 	import IngredientPicker from '$lib/IngredientPicker.svelte';
 	import { shopping } from '$lib/shopping.svelte';
-	import type { Department, IngredientRef, ShoppingData, ShoppingItem } from '$lib/types';
+	import type { Department, IngredientRef, PlanBrief, ShoppingData, ShoppingItem } from '$lib/types';
 
 	let hideBought = $state(false);
 	let open = $state<string | null>(null);
@@ -19,6 +19,26 @@
 	});
 
 	const data = $derived(shopping.data);
+
+	// Uge-vælger: listen viser næste indkøb, men andre uger kan vælges (fx den
+	// igangværende). Planerne hentes igen, når listen viser en ukendt plan.
+	let plans = $state<PlanBrief[]>([]);
+	const planIndex = $derived(data?.plan ? plans.findIndex((p) => p.id === data.plan!.id) : -1);
+	$effect(() => {
+		const id = data?.plan?.id;
+		if (id !== undefined && !plans.some((p) => p.id === id)) loadPlans();
+	});
+	async function loadPlans() {
+		try {
+			plans = await api<PlanBrief[]>('/plans');
+		} catch {
+			/* offline: vælgeren vises ikke */
+		}
+	}
+	function showPlan(i: number) {
+		open = null;
+		shopping.show(plans[i].id);
+	}
 	const isChecked = (i: ShoppingItem) => shopping.checked(i.key, i.checked);
 	const total = $derived(data?.items.length ?? 0);
 	const done = $derived(data?.items.filter(isChecked).length ?? 0);
@@ -149,9 +169,23 @@
 	<header class="top">
 		<div class="grow">
 			<h1>Indkøb</h1>
+			{#if data?.plan}
+				<!-- Skift mellem planer (uger), som i Planlæg -->
+				<div class="period">
+					{#if plans.length > 1}
+						<button class="plain" aria-label="Forrige plan" disabled={planIndex < 0 || planIndex >= plans.length - 1} onclick={() => showPlan(planIndex + 1)}>‹</button>
+					{/if}
+					<span>{periodLabel(data.plan.start_date, data.plan.end_date)}</span>
+					{#if plans.length > 1}
+						<button class="plain" aria-label="Næste plan" disabled={planIndex <= 0} onclick={() => showPlan(planIndex - 1)}>›</button>
+					{/if}
+				</div>
+			{/if}
 			<div class="muted small">
-				{#if data?.plan}{periodLabel(data.plan.start_date, data.plan.end_date)} · {/if}
 				<span class:warn={shopping.status === 'offline' || shopping.status === 'error'}>{statusText}</span>
+				{#if shopping.selected !== null}
+					· <button class="plain link" onclick={() => shopping.show(null)}>Næste indkøb</button>
+				{/if}
 			</div>
 		</div>
 		{#if total}<div class="progress"><b>{done}</b>/{total}</div>{/if}
@@ -307,6 +341,32 @@
 </main>
 
 <style>
+	.period {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		font-size: 0.9rem;
+		color: var(--muted);
+		margin-left: -6px;
+	}
+	.period span {
+		padding: 0 6px;
+	}
+	.period button {
+		min-height: 28px;
+		padding: 0 8px;
+		font-size: 1.1rem;
+		color: var(--accent);
+	}
+	.period button:disabled {
+		visibility: hidden;
+	}
+	.link {
+		padding: 0;
+		min-height: 0;
+		font-size: inherit;
+		color: var(--accent);
+	}
 	.progress {
 		font-size: 1.1rem;
 		color: var(--muted);

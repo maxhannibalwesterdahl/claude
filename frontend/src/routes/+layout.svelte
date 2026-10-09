@@ -28,6 +28,26 @@
 	}
 
 	const showNav = $derived(page.url.pathname !== '/login');
+
+	// Skærmtastaturet lægger sig oven på siden uden at gøre den lavere (iPhone).
+	// --kb er højden, det dækker i bunden, så ark kan holde sig fri af det.
+	$effect(() => {
+		const vv = window.visualViewport;
+		if (!vv) return;
+		const root = document.documentElement;
+		const update = () => {
+			const kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+			root.style.setProperty('--kb', `${kb}px`);
+			root.classList.toggle('kb-open', kb > 100);
+		};
+		update();
+		vv.addEventListener('resize', update);
+		vv.addEventListener('scroll', update);
+		return () => {
+			vv.removeEventListener('resize', update);
+			vv.removeEventListener('scroll', update);
+		};
+	});
 </script>
 
 {@render children()}

@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from ..catalog import Catalog, learn_alias
+from ..config import local_today
 from ..ingredients.matcher import DEPARTMENTS, key as item_key
 from ..models import (
     Ingredient,
@@ -219,16 +220,35 @@ def _amounts(parts: list[_Part], ing: Ingredient | None) -> list[AmountOut]:
     return [AmountOut(quantity=a.quantity, unit=a.unit) for a in combined]
 
 
-def build(session: Session, plan: Plan | None, now_ms: int | None = None) -> ShoppingOut:
+def plan_extras(session: Session, plan: Plan | None, today: date | None = None) -> list[ShoppingExtra]:
+    """Egne varer på planens liste: dem, der er skrevet på den uge.
+
+    En vare, der ikke blev købt, før ugen var slut (eller hvis plan er slettet),
+    følger med til den igangværende uge, så den bliver på listen, til den er købt."""
+    today = today or local_today()
+    current = pick_current(session, today)
+    extras = session.scalars(
+        select(ShoppingExtra)
+        .options(selectinload(ShoppingExtra.ingredient), selectinload(ShoppingExtra.plan))
+        .order_by(ShoppingExtra.id)
+    ).all()
+
+    def belongs_to(e: ShoppingExtra) -> Plan | None:
+        if e.plan is not None and (e.checked or _end(e.plan) >= today):
+            return e.plan
+        return current
+
+    return [e for e in extras if belongs_to(e) is plan]
+
+
+def build(session: Session, plan: Plan | None, now_ms: int | None = None, today: date | None = None) -> ShoppingOut:
     now_ms = now_ms or int(time.time() * 1000)
     order = department_order(session)
     items: list[ItemOut] = []
     pantry: list[PantryOut] = []
     home: list[HomeOut] = []
 
-    extras = session.scalars(
-        select(ShoppingExtra).options(selectinload(ShoppingExtra.ingredient)).order_by(ShoppingExtra.id)
-    ).all()
+    extras = plan_extras(session, plan, today)
     requested = {e.ingredient_id for e in extras if e.source == "løbet tør" and not e.checked}
 
     if plan is not None:
@@ -278,7 +298,7 @@ def build(session: Session, plan: Plan | None, now_ms: int | None = None) -> Sho
 
 @router.get("/shopping")
 def get_shopping(session: DbSession, _: CurrentUser, plan_id: int | None = None, today: date | None = None) -> ShoppingOut:
-    return build(session, choose_plan(session, plan_id, today))
+    return build(session, choose_plan(session, plan_id, today), today=today)
 
 
 @router.post("/shopping/sync")
@@ -320,29 +340,31 @@ def sync(body: SyncIn, session: DbSession, _: CurrentUser, today: date | None = 
                 row.checked, row.updated_ms = ch.checked, ch.ts
     session.commit()
     view = session.get(Plan, body.view_plan_id) if body.view_plan_id is not None else None
-    return build(session, view or choose_plan(session, None, today))
+    return build(session, view or choose_plan(session, None, today), today=today)
 
 
 @router.post("/shopping/extras", status_code=201)
 def add_extra(body: ExtraIn, session: DbSession, _: CurrentUser, plan_id: int | None = None, today: date | None = None) -> ShoppingOut:
     """Egen vare ("2 pk bleer") eller "løbet tør" for en basisvare.
 
+    Varen kommer på listen for den uge, der vises (`plan_id`), ikke på de andre uger.
+
     Egne varer kobles til en vare i ingredienstabellen, så de sorteres efter
     afdeling. Frontend spørger brugeren (vare-vælgeren), når appen ikke er sikker,
     og sender så `ingredient_id`. Valget huskes som alias ("pampers" -> bleer).
     """
     text = " ".join(body.text.split())
+    plan = choose_plan(session, plan_id, today)
     if body.ingredient_id is not None:
         ing = session.get(Ingredient, body.ingredient_id)
         if ing is None:
             raise HTTPException(status_code=404, detail="Varen findes ikke")
         if body.source == "løbet tør":
-            already = session.scalar(select(ShoppingExtra).where(
-                ShoppingExtra.ingredient_id == ing.id, ShoppingExtra.checked.is_(False)))
-            if already is None:
-                session.add(ShoppingExtra(text=ing.name, ingredient=ing, source="løbet tør"))
+            already = any(e.ingredient_id == ing.id and not e.checked for e in plan_extras(session, plan, today))
+            if not already:
+                session.add(ShoppingExtra(text=ing.name, ingredient=ing, source="løbet tør", plan=plan))
         else:
-            session.add(ShoppingExtra(text=text or ing.name, ingredient=ing, source="egen"))
+            session.add(ShoppingExtra(text=text or ing.name, ingredient=ing, source="egen", plan=plan))
             if text:
                 _learn_from_extra(session, text, ing)
     else:
@@ -351,9 +373,9 @@ def add_extra(body: ExtraIn, session: DbSession, _: CurrentUser, plan_id: int | 
         # Kendt vare? Så kommer den under den rigtige afdeling.
         found = Catalog(session).parse(text)
         ing = session.get(Ingredient, found.ingredient_id) if found.match_status == "sikker" else None
-        session.add(ShoppingExtra(text=text, ingredient=ing, source="egen"))
+        session.add(ShoppingExtra(text=text, ingredient=ing, source="egen", plan=plan))
     session.commit()
-    return build(session, choose_plan(session, plan_id, today))
+    return build(session, plan, today=today)
 
 
 def _learn_from_extra(session: Session, text: str, ing: Ingredient) -> None:
@@ -378,7 +400,7 @@ def update_extra(extra_id: int, body: ExtraPatch, session: DbSession, _: Current
     if ing is not None and extra.source == "egen":
         _learn_from_extra(session, extra.text, ing)
     session.commit()
-    return build(session, choose_plan(session, plan_id, today))
+    return build(session, choose_plan(session, plan_id, today), today=today)
 
 
 @router.delete("/shopping/extras/{extra_id}")
@@ -388,7 +410,7 @@ def delete_extra(extra_id: int, session: DbSession, _: CurrentUser, plan_id: int
         raise HTTPException(status_code=404, detail="Varen findes ikke")
     session.delete(extra)
     session.commit()
-    return build(session, choose_plan(session, plan_id, today))
+    return build(session, choose_plan(session, plan_id, today), today=today)
 
 
 @router.post("/shopping/home")

@@ -146,11 +146,46 @@ def test_bought_extras_disappear_later(client, app, week):
     assert "bleer" not in items(data)
 
 
-def test_unbought_extras_follow_to_next_plan(client, week):
-    client.post("/api/shopping/extras?today=2026-10-01", json={"text": "bleer"})
+def test_extras_belong_to_the_week_they_were_added_to(client, week):
     nxt = client.post("/api/plans", json={"start_date": "2026-10-11"}).json()
-    data = client.get(f"/api/shopping?plan_id={nxt['id']}&today=2026-10-01").json()
-    assert "bleer" in items(data)
+    client.post("/api/shopping/extras?today=2026-10-05", json={"text": "bleer"})
+    client.post(f"/api/shopping/extras?today=2026-10-05&plan_id={nxt['id']}", json={"text": "kaffe"})
+    this_week = items(client.get("/api/shopping?today=2026-10-05").json())
+    next_week = items(client.get(f"/api/shopping?plan_id={nxt['id']}&today=2026-10-05").json())
+    assert "bleer" in this_week and "kaffe" not in this_week
+    assert "kaffe" in next_week and "bleer" not in next_week
+    # Samme svar fra synkroniseringen, som telefonen bruger.
+    synced = client.post("/api/shopping/sync?today=2026-10-05", json={"view_plan_id": nxt["id"], "changes": []}).json()
+    assert "bleer" not in items(synced) and "kaffe" in items(synced)
+
+
+def test_unbought_extras_follow_to_next_plan(client, week):
+    client.post("/api/shopping/extras?today=2026-10-05", json={"text": "bleer"})
+    data = client.post("/api/shopping/extras?today=2026-10-05", json={"text": "kaffe"}).json()
+    client.post("/api/shopping/sync?today=2026-10-05", json={"changes": [{"key": items(data)["kaffe"]["key"], "checked": True, "ts": 10**13}]})
+    nxt = client.post("/api/plans", json={"start_date": "2026-10-11"}).json()
+    # Så længe ugen er i gang, står varen kun på dens egen liste.
+    assert "bleer" not in items(client.get(f"/api/shopping?plan_id={nxt['id']}&today=2026-10-10").json())
+    # Ugen er slut, og bleerne blev ikke købt: de følger med til den nye uge.
+    data = client.get("/api/shopping?today=2026-10-11").json()
+    assert data["plan"]["id"] == nxt["id"] and "bleer" in items(data)
+    assert "bleer" not in items(client.get(f"/api/shopping?plan_id={week['id']}&today=2026-10-11").json())
+    # Den købte vare bliver på ugen, den blev købt i.
+    assert "kaffe" not in items(data)
+
+
+def test_out_of_stock_is_per_week(client, week):
+    nxt = client.post("/api/plans", json={"start_date": "2026-10-11"}).json()
+    put = {"date": "2026-10-11", "kind": "opskrift", "recipe_id": next(r["id"] for r in client.get("/api/recipes").json() if r["title"] == "Kødsovs")}
+    client.put(f"/api/plans/{nxt['id']}/slots", json=put)
+    salt = client.get("/api/shopping?today=2026-10-05").json()["pantry"][0]
+    body = {"ingredient_id": salt["ingredient_id"], "source": "løbet tør"}
+    client.post("/api/shopping/extras?today=2026-10-05", json=body)
+    data = client.get(f"/api/shopping?plan_id={nxt['id']}&today=2026-10-05").json()
+    assert "salt og peber" not in items(data) and not any(p["requested"] for p in data["pantry"])
+    # Kan bestilles på næste uge for sig.
+    data = client.post(f"/api/shopping/extras?today=2026-10-05&plan_id={nxt['id']}", json=body).json()
+    assert "salt og peber" in items(data)
 
 
 def test_out_of_stock_pantry_item(client, week):

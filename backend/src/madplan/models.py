@@ -207,6 +207,8 @@ class ShoppingExtra(Base):
     __tablename__ = "shopping_extra"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    # Ugen, varen blev skrevet på. Tom = ingen plan (eller planen er slettet).
+    plan_id: Mapped[int | None] = mapped_column(ForeignKey("plan.id", ondelete="SET NULL"), index=True)
     text: Mapped[str] = mapped_column(String(200))
     ingredient_id: Mapped[int | None] = mapped_column(ForeignKey("ingredient.id", ondelete="SET NULL"))
     # "egen" eller "løbet tør"
@@ -216,6 +218,7 @@ class ShoppingExtra(Base):
     updated_ms: Mapped[int] = mapped_column(BigInteger, default=0)
 
     ingredient: Mapped[Ingredient | None] = relationship()
+    plan: Mapped[Plan | None] = relationship()
 
 
 class Setting(Base):

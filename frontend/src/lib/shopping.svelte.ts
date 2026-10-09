@@ -12,6 +12,8 @@ export interface Change {
 	key: string;
 	checked: boolean;
 	ts: number;
+	// Planen, der blev vist, da rækken blev krydset af (mangler i ældre gemte ændringer)
+	plan_id?: number | null;
 }
 
 type Status = 'loading' | 'synced' | 'offline' | 'error';
@@ -31,6 +33,9 @@ class ShoppingStore {
 	pending = $state<Change[]>([]);
 	status = $state<Status>('loading');
 	syncedAt = $state<Date | null>(null);
+	// Den uge, der er valgt med uge-vælgeren. null = den igangværende uge.
+	// Gemmes ikke, så appen åbner på den igangværende uge igen.
+	selected = $state<number | null>(null);
 	// Forskel mellem serverens og telefonens ur (ms). "Seneste ændring vinder"
 	// sammenligner tidsstempler fra to telefoner, så de skal regnes i samme tid.
 	#offset = 0;
@@ -57,12 +62,26 @@ class ShoppingStore {
 
 	/** Afkrydset, med ventende ændringer lagt oveni serverens udgave. */
 	checked(key: string, serverValue: boolean): boolean {
-		for (let i = this.pending.length - 1; i >= 0; i--) if (this.pending[i].key === key) return this.pending[i].checked;
+		const planId = this.data?.plan?.id ?? null;
+		for (let i = this.pending.length - 1; i >= 0; i--) {
+			const c = this.pending[i];
+			if (c.key === key && this.#samePlan(c, planId)) return c.checked;
+		}
 		return serverValue;
 	}
 
+	// Egne varer ("e:") hører ikke til en plan. Plan-rækker med samme nøgle findes i
+	// flere uger, så en afkrydsning i én uge må ikke vises i en anden.
+	#samePlan(c: Change, planId: number | null) {
+		return c.key.startsWith('e:') || c.plan_id == null || c.plan_id === planId;
+	}
+
 	toggle(key: string, current: boolean) {
-		this.pending = [...this.pending.filter((c) => c.key !== key), { key, checked: !current, ts: Date.now() + this.#offset }];
+		const planId = this.data?.plan?.id ?? null;
+		this.pending = [
+			...this.pending.filter((c) => !(c.key === key && this.#samePlan(c, planId))),
+			{ key, checked: !current, ts: Date.now() + this.#offset, plan_id: key.startsWith('e:') ? null : planId }
+		];
 		this.#save();
 		this.sync();
 	}
@@ -76,14 +95,20 @@ class ShoppingStore {
 		this.#syncing = true;
 		this.#again = false;
 		const sending = $state.snapshot(this.pending);
+		const view = this.selected;
 		try {
 			const data = await api<ShoppingData>(`/shopping/sync?today=${today()}`, {
 				method: 'POST',
-				body: { plan_id: this.data?.plan?.id ?? null, changes: sending }
+				body: { plan_id: this.data?.plan?.id ?? null, view_plan_id: view, changes: sending }
 			});
 			// Ændringer lavet, mens vi ventede på svar, bliver liggende.
 			this.pending = this.pending.filter((c) => !sending.some((s) => s.key === c.key && s.ts === c.ts));
-			this.set(data);
+			// Skiftet uge undervejs: svaret er for den gamle uge, og en ny hentning følger.
+			if (view === this.selected) {
+				// Er den valgte plan slettet, svarer serveren med den igangværende uge.
+				if (view !== null && data.plan?.id !== view) this.selected = null;
+				this.set(data);
+			}
 		} catch (e) {
 			if (e instanceof ApiError && e.status === 0) this.status = 'offline';
 			else if (e instanceof ApiError && e.status !== 401) {
@@ -104,6 +129,13 @@ class ShoppingStore {
 		this.syncedAt = new Date();
 		this.error = '';
 		this.#save();
+	}
+
+	/** Vis en anden uge (null = den igangværende uge). */
+	show(planId: number | null) {
+		this.selected = planId;
+		this.status = 'loading';
+		return this.sync();
 	}
 
 	start() {

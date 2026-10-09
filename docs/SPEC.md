@@ -120,6 +120,7 @@ Planen fra idéfasen er gennemgået. Følgende er ændret eller præciseret:
 
 ### 3.5 Indkøbsliste
 - Samler alle ikke-afkrydsede linjer i planen, minus basisvarer.
+- Åbner på den igangværende uge (som Planlæg). Andre uger vælges med ‹ ›.
 - **Sammenlægning:** samme vare + omregnelig enhed lægges sammen
   ("2 løg" + "150 g løg" → "3 løg"). Kan det ikke omregnes, vises linjerne under
   samme vare ("løg: 2 stk + 1 dl hakket").

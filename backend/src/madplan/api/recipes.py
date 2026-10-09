@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from .. import importer, search_valdemarsro
+from .. import importer, search_nemlig, search_valdemarsro
 from ..catalog import Catalog, learn_alias, suggest_main
 from ..models import Ingredient, Recipe, RecipeIngredient
 from .deps import AppSettings, CurrentUser, DbSession
@@ -176,7 +176,7 @@ def import_recipe(body: ImportIn, session: DbSession, settings: AppSettings, _: 
     _check_duplicate(session, url)
     try:
         importer.check_url(url)
-        scraped = importer.scrape(importer.fetch(url), url)
+        scraped = importer.load(url)
     except importer.RecipeImportError as e:
         raise HTTPException(status_code=422, detail=str(e)) from None
 
@@ -282,7 +282,7 @@ def delete_recipe(recipe_id: int, session: DbSession, settings: AppSettings, _: 
         (settings.image_dir / image).unlink(missing_ok=True)
 
 
-# --- Søgning på Valdemarsro -------------------------------------------------
+# --- Søgning på Valdemarsro og nemlig.com ------------------------------------
 
 class ExternalHit(BaseModel):
     title: str
@@ -296,17 +296,27 @@ def _norm_url(url: str) -> str:
     return url.strip().rstrip("/").lower()
 
 
-@router.get("/search/valdemarsro")
-def search_valdemarsro_route(session: DbSession, _: CurrentUser, q: str = "") -> list[ExternalHit]:
-    """Søg på valdemarsro.dk. Resultater, vi allerede har, markeres med recipe_id."""
+def _external_hits(session: Session, q: str, search) -> list[ExternalHit]:
+    """Søg på en opskriftsside. Resultater, vi allerede har, markeres med recipe_id."""
     if len(q.strip()) < 3:
         return []
     try:
-        hits = search_valdemarsro.search(q)
+        hits = search(q)
     except search_valdemarsro.SearchError as e:
         raise HTTPException(status_code=502, detail=str(e)) from None
     have = {_norm_url(u): i for i, u in session.execute(select(Recipe.id, Recipe.source_url).where(Recipe.source_url.is_not(None)))}
     return [ExternalHit(title=h.title, url=h.url, image_url=h.image_url, recipe_id=have.get(_norm_url(h.url))) for h in hits]
+
+
+@router.get("/search/valdemarsro")
+def search_valdemarsro_route(session: DbSession, _: CurrentUser, q: str = "") -> list[ExternalHit]:
+    return _external_hits(session, q, search_valdemarsro.search)
+
+
+@router.get("/search/nemlig")
+def search_nemlig_route(session: DbSession, _: CurrentUser, q: str = "") -> list[ExternalHit]:
+    """Kun nemlig.coms opskrifter, ikke deres varer."""
+    return _external_hits(session, q, search_nemlig.search)
 
 
 # --- Tjek af ingredienser på tværs af opskrifter -----------------------------

@@ -20,7 +20,7 @@
 		<a class="button" href="/opskrift/{page.params.id}" aria-label="Tilbage">‹</a>
 		<h1>Rediger</h1>
 	</header>
-	{#if error}<p class="error">{error}</p>{/if}
+	{#if error}<p class="error" role="alert">{error}</p>{/if}
 	{#if recipe}
 		{#key recipe.id}
 			<RecipeEditor {recipe} onsave={(r) => goto(`/opskrift/${r.id}`)} />

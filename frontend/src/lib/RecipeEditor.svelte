@@ -1,10 +1,12 @@
 <script lang="ts">
-	import { beforeNavigate } from '$app/navigation';
+	import { beforeNavigate, goto } from '$app/navigation';
 	import { untrack } from 'svelte';
 	import { api, ApiError } from './api';
+	import { confirmDialog } from './confirm.svelte';
 	import { formatNumber, formatQuantity, parseNumber } from './format';
 	import IngredientPicker from './IngredientPicker.svelte';
 	import { shrinkImage, uploadRecipeImage } from './image';
+	import Thumb from './Thumb.svelte';
 	import type { IngredientRef, Line, Recipe } from './types';
 
 	interface Props {
@@ -162,8 +164,19 @@
 		newImage = null;
 		removeImage = !!start?.image_url;
 	}
-	beforeNavigate(({ cancel, type }) => {
-		if (type !== 'leave' && dirty() && !confirm('Du har ændringer, der ikke er gemt. Vil du forlade siden?')) cancel();
+	// Navigationen stoppes, mens der spørges, og gentages, hvis svaret er ja.
+	// (Lukkes fanen, spørger browseren selv: se beforeunload nedenfor.)
+	beforeNavigate((nav) => {
+		if (nav.type === 'leave' || !dirty()) return;
+		nav.cancel();
+		const delta = nav.type === 'popstate' ? nav.delta : 0;
+		const url = nav.to?.url;
+		confirmDialog('I har ændringer, der ikke er gemt. Vil I forlade siden?', 'Forlad siden', false).then((ok) => {
+			if (!ok) return;
+			leaving = true;
+			if (delta) history.go(delta);
+			else if (url) goto(url);
+		});
 	});
 	$effect(() => {
 		const warn = (e: BeforeUnloadEvent) => {
@@ -216,13 +229,9 @@
 
 <form onsubmit={save}>
 	<div class="image">
-		{#if imageUrl}
-			<img src={imageUrl} alt="" />
-		{:else}
-			<div class="noimg" aria-hidden="true">
-				<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 15l5-5 4 4 3-3 6 6" /><circle cx="16" cy="9" r="1.5" /></svg>
-			</div>
-		{/if}
+		<Thumb src={imageUrl} size="lg">
+			<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 15l5-5 4 4 3-3 6 6" /><circle cx="16" cy="9" r="1.5" /></svg>
+		</Thumb>
 		<div class="image-actions">
 			<label class="button">
 				<input type="file" accept="image/*" onchange={pickImage} hidden />
@@ -253,10 +262,10 @@
 		<input bind:value={childNote} placeholder="Fx: tag barnets portion fra før chili" />
 	</label>
 
-	<h2>Ingredienser</h2>
+	<h2 class="section-title">Ingredienser</h2>
 	<p class="muted small">
 		Tryk ☆ ud for en ingrediens for at gøre den til hovedingrediens (★). Appen kigger efter tilbud på dem, og der må gerne være flere. Tryk på varen for at rette, hvad der skal købes.
-		{#if recipe}<button type="button" class="plain small" onclick={suggestMain}>Foreslå ★ igen</button>{/if}
+		{#if recipe}<button type="button" class="plain small inline" onclick={suggestMain}>Foreslå ★ igen</button>{/if}
 	</p>
 
 	{#each groups as g}
@@ -340,7 +349,7 @@
 	</label>
 	{#if bulk.trim()}<button type="button" onclick={addBulk}>Læs linjerne</button>{/if}
 
-	<h2>Fremgangsmåde</h2>
+	<h2 class="section-title">Fremgangsmåde</h2>
 	<label class="field">
 		<span class="muted">Ét trin pr. linje</span>
 		<textarea bind:value={steps} rows="8"></textarea>
@@ -363,29 +372,6 @@
 		gap: 12px;
 		align-items: center;
 	}
-	.image img,
-	.noimg {
-		width: 96px;
-		height: 96px;
-		border-radius: 12px;
-		object-fit: cover;
-		flex: none;
-	}
-	.noimg {
-		display: grid;
-		place-items: center;
-		background: var(--accent-soft);
-		color: var(--accent);
-	}
-	.noimg svg {
-		width: 36px;
-		height: 36px;
-		fill: none;
-		stroke: currentColor;
-		stroke-width: 1.8;
-		stroke-linecap: round;
-		stroke-linejoin: round;
-	}
 	.image-actions {
 		display: flex;
 		flex-wrap: wrap;
@@ -401,6 +387,11 @@
 	}
 	h2 {
 		margin-bottom: 0;
+	}
+	/* Knap i en tekstlinje: undtaget fra knappernes mindste trykflade. */
+	.inline {
+		min-width: 0;
+		min-height: 0;
 	}
 	.group {
 		font-weight: 700;
@@ -421,8 +412,6 @@
 	.star {
 		font-size: 1.4rem;
 		color: var(--muted);
-		width: 36px;
-		justify-content: center;
 	}
 	.star.on {
 		color: var(--star);
@@ -432,7 +421,7 @@
 		align-items: center;
 		gap: 6px;
 		flex-wrap: wrap;
-		padding-left: 44px;
+		padding-left: 52px;
 		margin-top: 2px;
 	}
 	.parsed .qty {
@@ -450,7 +439,7 @@
 		display: grid;
 		grid-template-columns: repeat(3, minmax(0, 1fr));
 		gap: 8px;
-		padding: 8px 0 0 44px;
+		padding: 8px 0 0 52px;
 	}
 	@media (max-width: 380px) {
 		/* Smalle telefoner: brug hele bredden til felterne. */

@@ -3,6 +3,7 @@
 	import { api, ApiError } from '$lib/api';
 	import { searchKey } from '$lib/format';
 	import { refreshReviewCount } from '$lib/review.svelte';
+	import Thumb from '$lib/Thumb.svelte';
 	import ValdemarsroResults from '$lib/ValdemarsroResults.svelte';
 	import type { RecipeSummary } from '$lib/types';
 
@@ -32,11 +33,6 @@
 		if (imported) loadRecipes();
 		else goto(`/opskrift/${id}`);
 	}
-
-	async function logout() {
-		await api('/logout', { method: 'POST' }).catch(() => {});
-		await goto('/login');
-	}
 </script>
 
 <main>
@@ -46,7 +42,7 @@
 		<a class="button primary" href="/importer">Importér</a>
 	</header>
 
-	{#if error}<p class="error">{error}</p>{/if}
+	{#if error}<p class="error" role="alert">{error}</p>{/if}
 
 	{#if recipes}
 		<input
@@ -62,13 +58,9 @@
 			{#each shown as r (r.id)}
 				<li>
 					<a href="/opskrift/{r.id}" class="card">
-						{#if r.image_url}
-							<img src={r.image_url} alt="" loading="lazy" />
-						{:else}
-							<div class="noimg" aria-hidden="true">
-								<svg viewBox="0 0 24 24"><path d="M4 11h16a8 8 0 0 1-16 0zM9 7c0-2 2-2 2-4M14 7c0-2 2-2 2-4" /></svg>
-							</div>
-						{/if}
+						<Thumb src={r.image_url} lazy>
+							<svg viewBox="0 0 24 24"><path d="M4 11h16a8 8 0 0 1-16 0zM9 7c0-2 2-2 2-4M14 7c0-2 2-2 2-4" /></svg>
+						</Thumb>
 						<div class="grow">
 							<strong>{r.title}</strong>
 							<div class="muted small">
@@ -95,8 +87,6 @@
 			<p><a href="/ny">eller skriv en selv</a></p>
 		</div>
 	{/if}
-
-	<p class="footer"><button class="plain muted small" onclick={logout}>Log ud</button></p>
 </main>
 
 <style>
@@ -124,34 +114,8 @@
 		color: inherit;
 		text-decoration: none;
 	}
-	img,
-	.noimg {
-		width: 72px;
-		height: 72px;
-		border-radius: 8px;
-		object-fit: cover;
-		flex: none;
-	}
-	.noimg {
-		display: grid;
-		place-items: center;
-		background: var(--accent-soft);
-		color: var(--accent);
-	}
-	.noimg svg {
-		width: 32px;
-		height: 32px;
-		fill: none;
-		stroke: currentColor;
-		stroke-width: 1.8;
-		stroke-linecap: round;
-	}
 	strong {
 		display: block;
 		line-height: 1.25;
-	}
-	.footer {
-		text-align: center;
-		margin-top: 32px;
 	}
 </style>

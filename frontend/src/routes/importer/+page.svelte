@@ -64,10 +64,10 @@
 		</p>
 	{/if}
 
-	<h2>Virker med</h2>
+	<h2 class="section-title">Virker med</h2>
 	<p class="muted small">
 		{sites.join(', ')} og de fleste andre sider med opskriftsdata. Spis Bedre virker ikke. Ingredienserne læses
-		automatisk, og du kan rette dem bagefter.
+		automatisk, og I kan rette dem bagefter.
 	</p>
 </main>
 

@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { api } from './api';
 	import { shortDate, weekdayName } from './dates';
-	import { searchKey } from './format';
+	import { mult, searchKey } from './format';
+	import Thumb from './Thumb.svelte';
 	import type { Meal, Plan, RecipeSummary, SlotChoice } from './types';
 	import ValdemarsroResults from './ValdemarsroResults.svelte';
 
@@ -56,22 +57,41 @@
 		text = '';
 	}
 
-	function keydown(e: KeyboardEvent) {
-		if (e.key === 'Escape') oncancel();
-	}
+	// showModal() flytter fokus ind i arket, holder Tab inde i det og lukker på
+	// Escape. Når arket lukkes, får knappen, der åbnede det, fokus igen.
+	let dialog: HTMLDialogElement | undefined = $state();
+	$effect(() => {
+		const el = dialog;
+		if (!el) return;
+		const opener = document.activeElement;
+		el.showModal();
+		return () => {
+			el.close();
+			if (opener instanceof HTMLElement && opener.isConnected) opener.focus();
+		};
+	});
 </script>
 
-<svelte:window onkeydown={keydown} />
-
-<div class="backdrop" onclick={oncancel} aria-hidden="true"></div>
-<div class="sheet" role="dialog" aria-modal="true" aria-label="Vælg ret">
+<!-- Klik på den mørke baggrund (dialogen selv, uden for indholdet) lukker. Tastaturet har Escape og Luk-knappen. -->
+<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
+<dialog
+	bind:this={dialog}
+	class="sheet"
+	aria-labelledby="chooser-title"
+	onclick={(e) => e.target === dialog && oncancel()}
+	oncancel={(e) => {
+		e.preventDefault();
+		oncancel();
+	}}
+>
+	<div class="inner">
 	<header>
 		<div class="grow">
 			{#if wishMode}
-				<strong>Tilføj til ønskelisten</strong>
+				<h2 id="chooser-title">Tilføj til ønskelisten</h2>
 				<div class="muted small">Vælg alle de retter, I vil have i perioden</div>
 			{:else}
-				<strong>{forChild ? 'Barnets ret' : 'Aftensmad'}</strong>
+				<h2 id="chooser-title">{forChild ? 'Barnets ret' : 'Aftensmad'}</h2>
 				<div class="muted small">{weekdayName(date)} {shortDate(date)}</div>
 			{/if}
 		</div>
@@ -90,7 +110,7 @@
 	</div>
 
 	<div class="body">
-		{#if error}<p class="error">{error}</p>{/if}
+		{#if error}<p class="error" role="alert">{error}</p>{/if}
 
 		{#if tab === 'opskrift'}
 			<input type="search" bind:value={q} placeholder="Søg i jeres opskrifter og på Valdemarsro" aria-label="Søg" />
@@ -102,7 +122,7 @@
 							disabled={wishMode && wished.has(r.id)}
 							onclick={() => onchoose({ kind: 'opskrift', recipe_id: r.id })}
 						>
-							{#if r.image_url}<img src={r.image_url} alt="" loading="lazy" />{:else}<span class="noimg"></span>{/if}
+							<Thumb src={r.image_url} size="sm" lazy />
 							<span class="grow">
 								<span class="title">{r.title}{#if wishMode && wished.has(r.id)} <span class="badge ok">på listen</span>{/if}</span>
 								<span class="muted small">
@@ -129,7 +149,7 @@
 				{#each plan.wishlist as w (w.id)}
 					<li>
 						<button class="option" onclick={() => onchoose({ kind: 'ønske', wish_id: w.id })}>
-							{#if w.recipe?.image_url}<img src={w.recipe.image_url} alt="" />{:else}<span class="noimg"></span>{/if}
+							<Thumb src={w.recipe?.image_url} size="sm" />
 							<span class="grow title">{w.title}</span>
 						</button>
 					</li>
@@ -143,7 +163,7 @@
 						<button class="option" onclick={() => onchoose({ kind: 'rester', leftover_from_id: m.id })}>
 							<span class="grow">
 								<span class="title">Rester: {m.title}</span>
-								<span class="muted small">{weekdayName(m.date)} · ×{m.multiplier === 0.5 ? '½' : m.multiplier}</span>
+								<span class="muted small">{weekdayName(m.date)} · {mult(m.multiplier)}</span>
 							</span>
 						</button>
 					</li>
@@ -162,40 +182,43 @@
 			<p class="muted small">{wishMode ? 'Fritekst er en idé uden opskrift og giver ingen indkøb.' : 'Fritekst giver ingen indkøb.'}</p>
 		{/if}
 	</div>
-</div>
+	</div>
+</dialog>
 
 <style>
-	.backdrop {
-		position: fixed;
-		inset: 0;
-		z-index: 20;
-		background: rgb(0 0 0 / 0.4);
-	}
+	/* Telefon: ark fra bunden af skærmen. Browserens egne dialog-mål nulstilles. */
 	.sheet {
 		position: fixed;
-		z-index: 21;
-		left: 0;
-		right: 0;
-		bottom: 0;
+		inset: auto 0 0 0;
+		width: 100%;
+		max-width: none;
 		max-height: 88dvh;
+		margin: 0;
+		padding: 0;
+		border: none;
+		overflow: hidden;
+		color: var(--fg);
+		background: var(--bg);
+		border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
+		box-shadow: var(--shadow-sheet);
+	}
+	.sheet::backdrop {
+		background: var(--scrim);
+	}
+	.inner {
 		display: flex;
 		flex-direction: column;
-		background: var(--bg);
-		border-radius: 16px 16px 0 0;
+		max-height: inherit;
 		padding: 12px max(16px, env(safe-area-inset-right)) env(safe-area-inset-bottom) max(16px, env(safe-area-inset-left));
-		box-shadow: 0 -8px 32px rgb(0 0 0 / 0.25);
 	}
 	@media (min-width: 700px) {
 		/* iPad og computer: dialog midt på skærmen. */
 		.sheet {
-			left: 50%;
-			right: auto;
-			bottom: auto;
-			top: 8dvh;
+			inset: 8dvh auto auto 50%;
 			width: min(560px, 92vw);
 			max-height: 84dvh;
 			transform: translateX(-50%);
-			border-radius: 16px;
+			border-radius: var(--radius-sheet);
 		}
 	}
 	header {
@@ -203,6 +226,10 @@
 		align-items: center;
 		gap: 12px;
 		padding-bottom: 8px;
+	}
+	h2 {
+		margin: 0;
+		font-size: 1rem;
 	}
 	.tabs {
 		margin-bottom: 4px;
@@ -227,16 +254,14 @@
 		gap: 12px;
 		min-height: 56px;
 	}
-	.option img,
-	.noimg {
-		width: 48px;
-		height: 48px;
-		border-radius: 8px;
-		object-fit: cover;
-		flex: none;
-		background: var(--accent-soft);
-	}
+	/* "Allerede på listen" er stadig oplysning: teksten dæmpes, men kan læses. */
 	.option:disabled {
+		opacity: 1;
+	}
+	.option:disabled .title {
+		color: var(--muted);
+	}
+	.option:disabled :global(img) {
 		opacity: 0.6;
 	}
 	.option .grow {

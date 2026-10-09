@@ -73,11 +73,11 @@
 	<VarerTabs active="tjek" />
 
 	<p class="muted small">
-		Ingredienser, hvor appen ikke er sikker på, hvilken vare der skal købes. Dit valg huskes og bruges i alle
+		Ingredienser, hvor appen ikke er sikker på, hvilken vare der skal købes. Jeres valg huskes og bruges i alle
 		opskrifter.
 	</p>
 
-	{#if error}<p class="error">{error}</p>{/if}
+	{#if error}<p class="error" role="alert">{error}</p>{/if}
 
 	{#if lines && items.length === 0}
 		<div class="empty">

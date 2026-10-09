@@ -1,7 +1,11 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { api, ApiError } from '$lib/api';
-	import { parseDate, periodLabel, shortDate, weekdayName } from '$lib/dates';
+	import { parseDate, shortDate, weekdayName } from '$lib/dates';
+	import { mult } from '$lib/format';
+	import PeriodNav from '$lib/PeriodNav.svelte';
+	import Thumb from '$lib/Thumb.svelte';
 	import { clock, onResume } from '$lib/resume.svelte';
 	import { untrack } from 'svelte';
 	import { refreshReviewCount } from '$lib/review.svelte';
@@ -12,7 +16,6 @@
 	let loaded = $state(false);
 	let error = $state('');
 
-	const planIndex = $derived(plan ? plans.findIndex((p) => p.id === plan!.id) : -1);
 	const planned = $derived(plan?.days.filter((d) => d.meal).length ?? 0);
 
 	async function load(id?: number) {
@@ -31,29 +34,22 @@
 	$effect(() => {
 		const wanted = Number(page.url.searchParams.get('plan')) || undefined;
 		untrack(() => load(wanted));
+		refreshReviewCount().catch(() => {});
 		// Åbnes appen igen efter et stykke tid, hentes planen igen.
 		return onResume(() => untrack(() => load(plan?.id ?? wanted)));
-		refreshReviewCount().catch(() => {});
 	});
 
-	const mult = (m: number) => (m === 0.5 ? '×½' : `×${m}`);
+	async function logout() {
+		await api('/logout', { method: 'POST' }).catch(() => {});
+		await goto('/login');
+	}
 </script>
 
 <main>
 	<header class="top">
 		<div class="grow">
 			<h1>Madplan</h1>
-			{#if plan}
-				<div class="period">
-					{#if plans.length > 1}
-						<button class="plain" aria-label="Forrige plan" disabled={planIndex >= plans.length - 1} onclick={() => load(plans[planIndex + 1].id)}>‹</button>
-					{/if}
-					<span>{periodLabel(plan.start_date, plan.end_date)}</span>
-					{#if plans.length > 1}
-						<button class="plain" aria-label="Næste plan" disabled={planIndex <= 0} onclick={() => load(plans[planIndex - 1].id)}>›</button>
-					{/if}
-				</div>
-			{/if}
+			{#if plan}<PeriodNav {plan} {plans} onselect={load} />{/if}
 		</div>
 		{#if plan}<a class="button" href="/planlaeg?plan={plan.id}">Planlæg</a>{/if}
 	</header>
@@ -73,13 +69,9 @@
 				{@const past = d.date < clock.today}
 				<li>
 					<a href="/dag/{d.date}" class="card day" class:today={isToday} class:past>
-						{#if d.meal?.recipe?.image_url}
-							<img src={d.meal.recipe.image_url} alt="" loading="lazy" />
-						{:else}
-							<div class="noimg" aria-hidden="true">
-								<span class="dn">{parseDate(d.date).getDate()}</span>
-							</div>
-						{/if}
+						<Thumb src={d.meal?.recipe?.image_url} lazy>
+							<span class="dn">{parseDate(d.date).getDate()}</span>
+						</Thumb>
 						<div class="grow body">
 							<div class="when">
 								{weekdayName(d.date)} <span class="muted">{shortDate(d.date)}</span>
@@ -105,29 +97,11 @@
 			<p><a class="button primary" href="/planlaeg">Lav en madplan</a></p>
 		</div>
 	{/if}
+
+	{#if loaded}<p class="footer"><button class="plain muted small" onclick={logout}>Log ud</button></p>{/if}
 </main>
 
 <style>
-	.period {
-		display: flex;
-		align-items: center;
-		gap: 2px;
-		font-size: 0.9rem;
-		color: var(--muted);
-		margin-left: -6px;
-	}
-	.period span {
-		padding: 0 6px;
-	}
-	.period button {
-		min-height: 28px;
-		padding: 0 8px;
-		font-size: 1.1rem;
-		color: var(--accent);
-	}
-	.period button:disabled {
-		visibility: hidden;
-	}
 	.days {
 		list-style: none;
 		padding: 0;
@@ -149,22 +123,18 @@
 		border-color: var(--accent);
 		box-shadow: 0 0 0 1px var(--accent), var(--shadow);
 	}
+	/* Dage, der er gået, træder tilbage uden at teksten bliver sværere at læse:
+	   fladt kort, dæmpet tekst og billede. */
 	.day.past {
+		background: transparent;
+		box-shadow: none;
+	}
+	.day.past .when,
+	.day.past .title {
+		color: var(--muted);
+	}
+	.day.past :global(img) {
 		opacity: 0.6;
-	}
-	img,
-	.noimg {
-		width: 64px;
-		height: 64px;
-		border-radius: 10px;
-		object-fit: cover;
-		flex: none;
-	}
-	.noimg {
-		display: grid;
-		place-items: center;
-		background: var(--accent-soft);
-		color: var(--accent);
 	}
 	.dn {
 		font-size: 1.5rem;
@@ -199,5 +169,9 @@
 		font-size: 1.5rem;
 		color: var(--muted);
 		flex: none;
+	}
+	.footer {
+		text-align: center;
+		margin-top: 32px;
 	}
 </style>

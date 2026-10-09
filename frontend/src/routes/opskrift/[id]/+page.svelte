@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { api, ApiError } from '$lib/api';
+	import { confirmDialog } from '$lib/confirm.svelte';
 	import { formatQuantity } from '$lib/format';
 	import { groupLines } from '$lib/lines';
 	import { groupSteps } from '$lib/steps';
@@ -36,9 +37,10 @@
 	}
 
 	async function remove() {
-		if (!recipe || !confirm(`Slet "${recipe.title}"?`)) return;
+		const id = recipe?.id;
+		if (!recipe || !(await confirmDialog(`Slet "${recipe.title}"?`, 'Slet'))) return;
 		try {
-			await api(`/recipes/${recipe.id}`, { method: 'DELETE' });
+			await api(`/recipes/${id}`, { method: 'DELETE' });
 			await goto('/opskrifter');
 		} catch (e) {
 			error = e instanceof ApiError ? e.message : 'Kunne ikke slette';
@@ -49,14 +51,16 @@
 <main>
 	<header class="top">
 		<BackButton fallback="/opskrifter" />
-		<h1>{recipe?.title ?? ''}</h1>
+		<span class="grow"></span>
 		{#if recipe}<a class="button" href="/opskrift/{recipe.id}/rediger">Rediger</a>{/if}
 	</header>
 
-	{#if error}<p class="error">{error}</p>{/if}
-	{#if warning}<p class="error">{warning}</p>{/if}
+	{#if error}<p class="error" role="alert">{error}</p>{/if}
+	{#if warning}<p class="error" role="alert">{warning}</p>{/if}
 
 	{#if recipe}
+		<!-- Titlen står i siden og ikke i den faste top, så lange navne kan læses helt. -->
+		<h1 class="title">{recipe.title}</h1>
 		{#if recipe.image_url}
 			<img class="hero" src={recipe.image_url} alt="" />
 		{/if}
@@ -75,7 +79,7 @@
 
 		<div class="columns">
 		<section>
-		<h2>Ingredienser</h2>
+		<h2 class="section-title">Ingredienser</h2>
 		<p class="muted small hint">Tryk ☆ for at markere hovedingredienser. Appen holder øje med tilbud på dem.</p>
 		{#if toReview}
 			<p class="small">
@@ -96,7 +100,7 @@
 							title={l.is_main ? 'Hovedingrediens (fjern stjernen)' : 'Gør til hovedingrediens'}
 							onclick={() => toggleMain(l)}>{l.is_main ? '★' : '☆'}</button
 						>
-						<span class="qty">{formatQuantity(l.quantity, l.quantity_max, l.unit)}</span>
+						<span class="ing-qty">{formatQuantity(l.quantity, l.quantity_max, l.unit)}</span>
 						<span class="grow">
 							{l.item}{#if l.note}<span class="muted">, {l.note}</span>{/if}
 							{#if l.match_status === 'usikker'}
@@ -115,7 +119,7 @@
 		</section>
 		<section>
 		{#if recipe.instructions.length}
-			<h2>Fremgangsmåde</h2>
+			<h2 class="section-title">Fremgangsmåde</h2>
 			{#each stepGroups as sg}
 				{#if sg.title}<h3>{sg.title}</h3>{/if}
 				<ol class="steps">
@@ -134,65 +138,32 @@
 </main>
 
 <style>
-	/* iPad på tværs og computer: ingredienser ved siden af fremgangsmåden. */
-	@media (min-width: 900px) {
-		.columns {
-			display: grid;
-			grid-template-columns: minmax(280px, 2fr) 3fr;
-			gap: 40px;
-			align-items: start;
-		}
-		.columns > section:first-child {
-			position: sticky;
-			top: 80px;
-		}
-	}
-	.hero {
-		width: 100%;
-		max-height: min(320px, 40vh);
-		object-fit: cover;
-		border-radius: var(--radius);
+	.title {
+		margin-bottom: 12px;
 	}
 	.servings {
 		color: var(--fg);
 	}
 	.child {
 		background: var(--accent-soft);
-		border-radius: 10px;
+		border-radius: var(--radius-control);
 		padding: 10px 12px;
 	}
 	h3 {
 		font-size: 1rem;
 		margin: 16px 0 4px;
 	}
-	.ingredients {
-		list-style: none;
-		padding: 0;
-		margin: 0;
-	}
 	.ingredients li {
-		display: flex;
 		align-items: center;
 		gap: 8px;
-		padding: 7px 0;
-		border-bottom: 1px solid var(--line);
-	}
-	.qty {
-		flex: 0 0 auto;
-		min-width: 64px;
-		max-width: 40%;
-		text-align: right;
-		font-variant-numeric: tabular-nums;
-		color: var(--muted);
 	}
 	.main .grow {
 		font-weight: 600;
 	}
+	/* Trykfladen er 44px, men må ikke gøre linjen højere: den rækker ud over den. */
 	.star {
 		flex: none;
-		width: 32px;
-		min-height: 32px;
-		justify-content: center;
+		margin: -6px;
 		font-size: 1.2rem;
 		line-height: 1;
 		color: var(--muted);

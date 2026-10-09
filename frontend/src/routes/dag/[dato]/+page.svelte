@@ -5,7 +5,7 @@
 	import { api, ApiError } from '$lib/api';
 	import { onResume } from '$lib/resume.svelte';
 	import { shortDate, weekday, weekdayName } from '$lib/dates';
-	import { formatQuantity } from '$lib/format';
+	import { formatQuantity, mult } from '$lib/format';
 	import { groupLines } from '$lib/lines';
 	import { groupSteps } from '$lib/steps';
 	import type { Meal, Plan, PlanBrief, Recipe } from '$lib/types';
@@ -88,7 +88,6 @@
 		if (target) goto(`/dag/${target}`, { replaceState: true, noScroll: false });
 	}
 
-	const mult = (m: number) => (m === 0.5 ? '×½' : `×${m}`);
 	const persons = (m: Meal) =>
 		m.recipe?.servings ? `${Math.round(m.recipe.servings * m.multiplier)} pers.` : '';
 </script>
@@ -97,7 +96,7 @@
 	<header class="top">
 		<div class="grow">
 			<h1>{date ? weekdayName(date) : ''}</h1>
-			<div class="muted small">{date ? shortDate(date) : ''}</div>
+			<div class="sub">{date ? shortDate(date) : ''}</div>
 		</div>
 		<!-- Bladr mellem dage. Ugedagen står på knappen, så det ikke forveksles med "tilbage". -->
 		<a class="button daynav" class:disabled={!prev} href={prev ? `/dag/${prev}` : undefined} aria-label="Forrige dag" data-sveltekit-replacestate>‹ {prev ? weekday(prev) : ''}</a>
@@ -140,13 +139,13 @@
 
 				<div class="columns">
 					<section>
-						<h3>Ingredienser</h3>
+						<h3 class="section-title">Ingredienser</h3>
 						{#each groupLines(main.lines) as g}
 							{#if g.name}<h4>{g.name}</h4>{/if}
 							<ul class="ingredients">
 								{#each g.lines as l (l.line_id)}
 									<li class:dim={l.state === 'rest'}>
-										<span class="qty">{formatQuantity(l.quantity, l.quantity_max, l.unit)}</span>
+										<span class="ing-qty">{formatQuantity(l.quantity, l.quantity_max, l.unit)}</span>
 										<span class="grow">
 											{l.item}{#if l.note}<span class="muted">, {l.note}</span>{/if}
 											{#if l.state === 'rest'}<span class="badge ok">rest</span>{/if}
@@ -162,7 +161,7 @@
 
 					<section>
 						{#if recipe?.instructions.length}
-							<h3>Fremgangsmåde</h3>
+							<h3 class="section-title">Fremgangsmåde</h3>
 							{#if main.multiplier !== 1}
 								<p class="muted small">Teksten er fra opskriften. Brug mængderne til venstre.</p>
 							{/if}
@@ -194,7 +193,7 @@
 
 		{#if day?.child}
 			<section class="child-meal card">
-				<div class="label">Barnet får</div>
+				<h2 class="section-title label">Barnet får</h2>
 				<div class="dish-sm">
 					{#if day.child.recipe}<a href="/opskrift/{day.child.recipe.id}">{day.child.title}</a>{:else}{day.child.title}{/if}
 				</div>
@@ -219,19 +218,10 @@
 		display: grid;
 		gap: 12px;
 	}
-	.hero {
-		width: 100%;
-		max-height: min(300px, 38vh);
-		object-fit: cover;
-		border-radius: var(--radius);
-	}
 	.dish {
 		font-size: 1.5rem;
 		line-height: 1.25;
 		margin: 4px 0 0;
-		text-transform: none;
-		letter-spacing: 0;
-		color: var(--fg);
 	}
 	.dish a {
 		color: inherit;
@@ -251,42 +241,25 @@
 	.note {
 		margin: 0;
 		background: var(--accent-soft);
-		border-radius: 10px;
+		border-radius: var(--radius-control);
 		padding: 10px 12px;
 	}
 	h3 {
-		font-size: 0.8rem;
-		text-transform: uppercase;
-		letter-spacing: 0.06em;
-		color: var(--muted);
 		margin: 16px 0 6px;
 	}
 	h4 {
 		margin: 12px 0 4px;
 		font-size: 1rem;
 	}
-	.ingredients {
-		list-style: none;
-		padding: 0;
-		margin: 0;
-	}
+	/* Større tekst og bredere mængdekolonne end på opskriftssiden: læses på afstand. */
 	.ingredients li {
-		display: flex;
-		gap: 12px;
-		padding: 8px 0;
-		border-bottom: 1px solid var(--line);
 		font-size: 1.05rem;
 	}
 	.ingredients li.dim .grow {
 		color: var(--muted);
 	}
-	.qty {
-		flex: 0 0 auto;
+	.ing-qty {
 		min-width: 72px;
-		max-width: 40%;
-		text-align: right;
-		color: var(--muted);
-		font-variant-numeric: tabular-nums;
 	}
 	.badge {
 		margin-left: 6px;
@@ -300,18 +273,6 @@
 	.steps li {
 		margin-bottom: 12px;
 	}
-	@media (min-width: 900px) {
-		.columns {
-			display: grid;
-			grid-template-columns: minmax(280px, 2fr) 3fr;
-			gap: 40px;
-			align-items: start;
-		}
-		.columns > section:first-child {
-			position: sticky;
-			top: 80px;
-		}
-	}
 	.plain-meal {
 		padding: 20px;
 	}
@@ -322,10 +283,7 @@
 		padding: 12px 14px;
 	}
 	.label {
-		font-size: 0.75rem;
-		font-weight: 700;
-		text-transform: uppercase;
-		letter-spacing: 0.06em;
+		margin: 0;
 		color: var(--accent);
 	}
 	.dish-sm {

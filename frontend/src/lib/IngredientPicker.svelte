@@ -89,14 +89,14 @@
 		{/if}
 		<button type="button" onclick={() => onpick(null)}>Ingen vare</button>
 	</div>
-	{#if error}<p class="error">{error}</p>{/if}
+	{#if error}<p class="error" role="alert">{error}</p>{/if}
 </div>
 
 <style>
 	.picker {
 		padding: 10px;
 		margin: 6px 0 10px;
-		box-shadow: 0 6px 24px rgb(0 0 0 / 0.12);
+		box-shadow: var(--shadow-float);
 	}
 	ul {
 		list-style: none;
@@ -109,6 +109,7 @@
 		width: 100%;
 		display: flex;
 		gap: 8px;
+		justify-content: flex-start;
 		text-align: left;
 		padding: 10px 6px;
 		border-bottom: 1px solid var(--line);

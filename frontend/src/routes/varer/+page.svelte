@@ -107,7 +107,7 @@
 			<label class="field"><span>Gram pr. dl</span><input bind:value={form.perDl} inputmode="decimal" /></label>
 		</div>
 		<p class="muted small">Basisvarer er altid hjemme og kommer ikke på indkøbslisten. Gram bruges til at lægge fx "2 løg" og "150 g løg" sammen.</p>
-		{#if error}<p class="error">{error}</p>{/if}
+		{#if error}<p class="error" role="alert">{error}</p>{/if}
 		<div class="row">
 			<button type="button" onclick={() => (editing = null)}>Annullér</button>
 			<button class="primary">Gem</button>
@@ -122,7 +122,7 @@
 	</header>
 
 	{#if editing === 'ny'}{@render editor()}{/if}
-	{#if error && editing === null}<p class="error">{error}</p>{/if}
+	{#if error && editing === null}<p class="error" role="alert">{error}</p>{/if}
 
 	<VarerTabs active={tab} {pantryCount} />
 
@@ -138,7 +138,7 @@
 	/>
 
 	{#if addable.length}
-		<h2>Tilføj som basisvare</h2>
+		<h2 class="section-title">Tilføj som basisvare</h2>
 		<ul>
 			{#each addable as ing (ing.id)}
 				<li class="quick">
@@ -150,7 +150,7 @@
 	{/if}
 
 	{#each groups as g (g.code)}
-		<h2>{g.name}</h2>
+		<h2 class="section-title">{g.name}</h2>
 		<ul>
 			{#each g.items as ing (ing.id)}
 				<li>
@@ -193,7 +193,7 @@
 	}
 	.unset {
 		flex: none;
-		min-height: 36px;
+		min-height: 44px;
 		padding: 4px 10px;
 		font-size: 0.85rem;
 	}
@@ -214,6 +214,7 @@
 		display: flex;
 		gap: 8px;
 		align-items: center;
+		justify-content: flex-start;
 		text-align: left;
 		padding: 10px 2px;
 		border-bottom: 1px solid var(--line);

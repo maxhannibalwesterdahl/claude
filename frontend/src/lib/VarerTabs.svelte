@@ -19,27 +19,11 @@
 	.tabs {
 		margin-bottom: 12px;
 	}
-	a {
-		flex: 1 0 auto;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		border-radius: 9px;
-		min-height: 38px;
-		padding: 6px 12px;
-		font-weight: 600;
-		color: var(--muted);
-		text-decoration: none;
-	}
-	a[aria-current='page'] {
-		background: var(--accent);
-		color: var(--accent-fg);
-	}
 	.count {
 		min-width: 20px;
 		height: 20px;
 		padding: 0 6px;
-		border-radius: 10px;
+		border-radius: var(--radius-pill);
 		background: var(--warn);
 		color: var(--card);
 		font-size: 0.75rem;

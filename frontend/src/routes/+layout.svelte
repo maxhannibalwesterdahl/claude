@@ -2,6 +2,7 @@
 	import '../app.css';
 	import { afterNavigate } from '$app/navigation';
 	import { page } from '$app/state';
+	import ConfirmDialog from '$lib/ConfirmDialog.svelte';
 	import { navState } from '$lib/nav.svelte';
 	import { reviewCount } from '$lib/review.svelte';
 
@@ -31,6 +32,8 @@
 </script>
 
 {@render children()}
+
+<ConfirmDialog />
 
 {#if showNav}
 	<nav aria-label="Hovedmenu">
@@ -80,7 +83,7 @@
 		place-items: center;
 		width: 56px;
 		height: 30px;
-		border-radius: 15px;
+		border-radius: var(--radius-pill);
 		transition: background 0.15s;
 	}
 	a.active .icon {
@@ -103,7 +106,7 @@
 		min-width: 18px;
 		height: 18px;
 		padding: 0 5px;
-		border-radius: 9px;
+		border-radius: var(--radius-pill);
 		background: var(--warn);
 		color: var(--card);
 		font-size: 0.7rem;

@@ -14,7 +14,17 @@
 	--danger: #b3261e;
 	--star: #b07800;
 	--radius: 14px;
+	/* Små flader (billeder, afkrydsning), felter og knapper, knapgrupper, ark, piller. */
+	--radius-thumb: 8px;
+	--radius-control: 10px;
+	--radius-seg: 12px;
+	--radius-sheet: 16px;
+	--radius-pill: 999px;
 	--shadow: 0 1px 2px rgb(40 38 30 / 0.06), 0 2px 8px rgb(40 38 30 / 0.05);
+	/* Svævende flader: vare-vælgeren og ark/dialoger med mørklagt baggrund. */
+	--shadow-float: 0 6px 24px rgb(0 0 0 / 0.12);
+	--shadow-sheet: 0 -8px 32px rgb(0 0 0 / 0.25);
+	--scrim: rgb(0 0 0 / 0.4);
 	--nav-h: 64px;
 	color-scheme: light;
 }
@@ -35,6 +45,10 @@
 		--danger: #ff8a80;
 		--star: #f2c14e;
 		--shadow: none;
+		/* En sort skygge ses ikke på mørk baggrund: en tydelig kant adskiller i stedet. */
+		--shadow-float: 0 0 0 1px var(--line-strong), 0 6px 24px rgb(0 0 0 / 0.6);
+		--shadow-sheet: 0 0 0 1px var(--line), 0 -8px 32px rgb(0 0 0 / 0.6);
+		--scrim: rgb(0 0 0 / 0.6);
 		color-scheme: dark;
 	}
 }
@@ -83,8 +97,10 @@ h1 {
 	margin: 0;
 }
 
-h2 {
+/* Overskrift på et afsnit (Ingredienser, afdelinger, Ønskeliste). */
+.section-title {
 	font-size: 0.8rem;
+	font-weight: 700;
 	text-transform: uppercase;
 	letter-spacing: 0.06em;
 	color: var(--muted);
@@ -112,12 +128,18 @@ h2 {
 	white-space: nowrap;
 }
 
+/* Linjen under sidens titel (periode, dato). */
+.top .sub {
+	font-size: 0.9rem;
+	color: var(--muted);
+}
+
 button,
 .button {
 	font: inherit;
 	font-size: 0.95rem;
 	padding: 9px 14px;
-	border-radius: 10px;
+	border-radius: var(--radius-control);
 	border: 1px solid var(--line-strong);
 	background: var(--card);
 	color: var(--fg);
@@ -150,11 +172,14 @@ button:active:not(:disabled) {
 	transform: scale(0.98);
 }
 
+/* Uden ramme, men stadig en trykflade på mindst 44px (ikoner som ✕ og ↑). */
 button.plain {
 	border: none;
 	background: none;
 	padding: 6px;
-	min-height: 0;
+	min-width: 44px;
+	min-height: 44px;
+	justify-content: center;
 }
 
 button:disabled {
@@ -169,7 +194,7 @@ textarea {
 	color: var(--fg);
 	background: var(--card);
 	border: 1px solid var(--line-strong);
-	border-radius: 10px;
+	border-radius: var(--radius-control);
 	padding: 9px 11px;
 	width: 100%;
 	min-width: 0;
@@ -217,24 +242,29 @@ label.field > span {
 	padding: 4px;
 	background: var(--card);
 	border: 1px solid var(--line);
-	border-radius: 12px;
+	border-radius: var(--radius-seg);
 	overflow-x: auto;
 	scrollbar-width: none;
 }
-.segmented > button {
+.segmented > button,
+.segmented > a {
 	flex: 1 0 auto;
+	display: flex;
+	align-items: center;
 	justify-content: center;
 	border: none;
-	border-radius: 9px;
+	border-radius: calc(var(--radius-seg) - 3px);
 	background: none;
 	min-height: 38px;
 	padding: 6px 12px;
 	font-weight: 600;
 	color: var(--muted);
 	text-align: center;
+	text-decoration: none;
 }
 .segmented > button[aria-selected='true'],
-.segmented > button[aria-pressed='true'] {
+.segmented > button[aria-pressed='true'],
+.segmented > a[aria-current='page'] {
 	background: var(--accent);
 	color: var(--accent-fg);
 }
@@ -250,7 +280,7 @@ label.field > span {
 .error {
 	background: var(--warn-soft);
 	color: var(--warn);
-	border-radius: 10px;
+	border-radius: var(--radius-control);
 	padding: 10px 12px;
 	margin: 12px 0;
 }
@@ -260,7 +290,7 @@ label.field > span {
 	font-size: 0.75rem;
 	font-weight: 600;
 	padding: 1px 8px;
-	border-radius: 999px;
+	border-radius: var(--radius-pill);
 	background: var(--warn-soft);
 	color: var(--warn);
 	white-space: nowrap;
@@ -299,4 +329,47 @@ form > *,
 	text-align: center;
 	color: var(--muted);
 	padding: 48px 16px;
+}
+
+/* Opskrift og dagens ret: billede øverst, ingredienser ved siden af
+   fremgangsmåden på iPad på tværs og computer. */
+.hero {
+	width: 100%;
+	max-height: min(320px, 40vh);
+	object-fit: cover;
+	border-radius: var(--radius);
+}
+
+@media (min-width: 900px) {
+	.columns {
+		display: grid;
+		grid-template-columns: minmax(280px, 2fr) 3fr;
+		gap: 40px;
+		align-items: start;
+	}
+	.columns > section:first-child {
+		position: sticky;
+		top: 80px;
+	}
+}
+
+/* Ingredienslinjer: mængden i en højrestillet kolonne foran varen. */
+.ingredients {
+	list-style: none;
+	padding: 0;
+	margin: 0;
+}
+.ingredients li {
+	display: flex;
+	gap: 12px;
+	padding: 8px 0;
+	border-bottom: 1px solid var(--line);
+}
+.ing-qty {
+	flex: 0 0 auto;
+	min-width: 64px;
+	max-width: 40%;
+	text-align: right;
+	color: var(--muted);
+	font-variant-numeric: tabular-nums;
 }

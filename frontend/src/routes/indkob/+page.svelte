@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { api, ApiError } from '$lib/api';
-	import { periodLabel, today, weekday } from '$lib/dates';
+	import { today, weekday } from '$lib/dates';
 	import { formatAmounts } from '$lib/format';
 	import IngredientPicker from '$lib/IngredientPicker.svelte';
+	import PeriodNav from '$lib/PeriodNav.svelte';
 	import { shopping } from '$lib/shopping.svelte';
 	import type { Department, IngredientRef, PlanBrief, ShoppingData, ShoppingItem } from '$lib/types';
 
@@ -23,7 +24,6 @@
 	// Uge-vælger: listen viser den igangværende uge (som Planlæg), men andre uger
 	// kan vælges (fx næste uges indkøb). Planerne hentes igen, når listen viser en ukendt plan.
 	let plans = $state<PlanBrief[]>([]);
-	const planIndex = $derived(data?.plan ? plans.findIndex((p) => p.id === data.plan!.id) : -1);
 	$effect(() => {
 		const id = data?.plan?.id;
 		if (id !== undefined && !plans.some((p) => p.id === id)) loadPlans();
@@ -35,9 +35,9 @@
 			/* offline: vælgeren vises ikke */
 		}
 	}
-	function showPlan(i: number) {
+	function showPlan(id: number) {
 		open = null;
-		shopping.show(plans[i].id);
+		shopping.show(id);
 	}
 	const isChecked = (i: ShoppingItem) => shopping.checked(i.key, i.checked);
 	const total = $derived(data?.items.length ?? 0);
@@ -68,7 +68,7 @@
 			shopping.set(await fn());
 		} catch (e) {
 			actionError =
-				e instanceof ApiError && e.status === 0 ? 'Kræver forbindelse. Prøv igen, når du har net.' : e instanceof ApiError ? e.message : 'Noget gik galt';
+				e instanceof ApiError && e.status === 0 ? 'Kræver forbindelse. Prøv igen, når I har net.' : e instanceof ApiError ? e.message : 'Noget gik galt';
 		}
 	}
 
@@ -88,7 +88,7 @@
 		try {
 			[parsed] = await api<(typeof parsed)[]>('/parse', { method: 'POST', body: { lines: [text] } });
 		} catch (err) {
-			actionError = err instanceof ApiError && err.status === 0 ? 'Kræver forbindelse. Prøv igen, når du har net.' : 'Kunne ikke læse varen';
+			actionError = err instanceof ApiError && err.status === 0 ? 'Kræver forbindelse. Prøv igen, når I har net.' : 'Kunne ikke læse varen';
 			return;
 		}
 		newItem = '';
@@ -171,15 +171,7 @@
 			<h1>Indkøb</h1>
 			{#if data?.plan}
 				<!-- Skift mellem planer (uger), som i Planlæg -->
-				<div class="period">
-					{#if plans.length > 1}
-						<button class="plain" aria-label="Forrige plan" disabled={planIndex < 0 || planIndex >= plans.length - 1} onclick={() => showPlan(planIndex + 1)}>‹</button>
-					{/if}
-					<span>{periodLabel(data.plan.start_date, data.plan.end_date)}</span>
-					{#if plans.length > 1}
-						<button class="plain" aria-label="Næste plan" disabled={planIndex <= 0} onclick={() => showPlan(planIndex - 1)}>›</button>
-					{/if}
-				</div>
+				<PeriodNav plan={data.plan} {plans} onselect={showPlan} />
 			{/if}
 			<div class="muted small">
 				<span class:warn={shopping.status === 'offline' || shopping.status === 'error'}>{statusText}</span>
@@ -231,7 +223,7 @@
 	{/if}
 
 	{#each sections as s (s.code)}
-		<h2>{s.name}</h2>
+		<h2 class="section-title">{s.name}</h2>
 		<ul class="list">
 			{#each s.items as item (item.key)}
 				{@const checked = isChecked(item)}
@@ -341,28 +333,10 @@
 </main>
 
 <style>
-	.period {
-		display: flex;
-		align-items: center;
-		gap: 2px;
-		font-size: 0.9rem;
-		color: var(--muted);
-		margin-left: -6px;
-	}
-	.period span {
-		padding: 0 6px;
-	}
-	.period button {
-		min-height: 28px;
-		padding: 0 8px;
-		font-size: 1.1rem;
-		color: var(--accent);
-	}
-	.period button:disabled {
-		visibility: hidden;
-	}
+	/* Link i en tekstlinje: undtaget fra knappernes mindste trykflade. */
 	.link {
 		padding: 0;
+		min-width: 0;
 		min-height: 0;
 		font-size: inherit;
 		color: var(--accent);
@@ -411,17 +385,13 @@
 	.chip {
 		min-height: 36px;
 		padding: 4px 14px;
-		border-radius: 999px;
+		border-radius: var(--radius-pill);
 		font-size: 0.9rem;
 	}
 	.chip[aria-pressed='true'] {
 		background: var(--accent-soft);
 		border-color: var(--accent);
 		color: var(--accent);
-	}
-	.order button {
-		width: auto;
-		min-height: 0;
 	}
 	.list {
 		list-style: none;
@@ -453,7 +423,7 @@
 		flex: none;
 		width: 30px;
 		height: 30px;
-		border-radius: 8px;
+		border-radius: var(--radius-thumb);
 		border: 2px solid var(--line-strong);
 		display: grid;
 		place-items: center;
@@ -525,7 +495,6 @@
 		border-bottom: 1px solid var(--line);
 	}
 	.order button {
-		padding: 6px 12px;
 		font-size: 1.1rem;
 	}
 </style>

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { api, ApiError } from './api';
+	import Thumb from './Thumb.svelte';
 	import type { Recipe } from './types';
 
 	interface Hit {
@@ -76,18 +77,18 @@
 
 {#if q.trim().length >= 3}
 	<section class="ext" aria-live="polite">
-		<h3>
+		<h2 class="section-title">
 			Fra Valdemarsro
 			{#if loading}<span class="muted small">søger…</span>{/if}
-		</h3>
-		{#if error}<p class="error">{error}</p>{/if}
+		</h2>
+		{#if error}<p class="error" role="alert">{error}</p>{/if}
 		{#if !loading && searched && !hits.length && !error}
 			<p class="muted small">Ingen opskrifter på Valdemarsro matcher "{searched}".</p>
 		{/if}
 		<ul>
 			{#each hits as hit (hit.url)}
 				<li>
-					<img src={hit.image_url} alt="" loading="lazy" referrerpolicy="no-referrer" />
+					<Thumb src={hit.image_url} size="sm" lazy referrerpolicy="no-referrer" />
 					<span class="grow title">{hit.title}</span>
 					<button
 						class:primary={!hit.recipe_id}
@@ -112,11 +113,7 @@
 	.ext {
 		margin-top: 16px;
 	}
-	h3 {
-		font-size: 0.8rem;
-		text-transform: uppercase;
-		letter-spacing: 0.06em;
-		color: var(--muted);
+	h2 {
 		margin: 0 0 8px;
 		display: flex;
 		gap: 8px;
@@ -134,17 +131,9 @@
 		align-items: center;
 		gap: 12px;
 		padding: 6px;
-		border-radius: 12px;
+		border-radius: var(--radius-seg);
 		background: var(--card);
 		border: 1px solid var(--line);
-	}
-	img {
-		width: 52px;
-		height: 52px;
-		border-radius: 8px;
-		object-fit: cover;
-		flex: none;
-		background: var(--accent-soft);
 	}
 	.title {
 		font-weight: 600;

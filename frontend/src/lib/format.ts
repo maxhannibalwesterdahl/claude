@@ -57,6 +57,9 @@ export function formatQuantity(q: number | null, qMax: number | null, unit: stri
 	return unit ? `${amount} ${unitLabel(unit, qMax ?? q)}` : amount;
 }
 
+/** Gange-mærket på en ret: 0.5 -> "×½", 2 -> "×2". */
+export const mult = (m: number) => (m === 0.5 ? '×½' : `×${m}`);
+
 /** Normaliseret søgetekst: små bogstaver, uden accenter (men med æøå). */
 export function searchKey(text: string): string {
 	return text

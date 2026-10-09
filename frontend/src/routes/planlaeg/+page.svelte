@@ -2,14 +2,18 @@
 	import { page } from '$app/state';
 	import { api, ApiError } from '$lib/api';
 	import { addDays, isoDate, nextWeekday, parseDate, periodLabel, shortDate, weekday, weekdayName } from '$lib/dates';
+	import { confirmDialog } from '$lib/confirm.svelte';
+	import { mult } from '$lib/format';
 	import MealChooser from '$lib/MealChooser.svelte';
 	import MealSlot from '$lib/MealSlot.svelte';
+	import PeriodNav from '$lib/PeriodNav.svelte';
+	import Thumb from '$lib/Thumb.svelte';
 	import { sequencer } from '$lib/ordered';
 	import { planApi } from '$lib/planApi';
 	import { clock, onResume } from '$lib/resume.svelte';
 	import { refreshReviewCount } from '$lib/review.svelte';
 	import { untrack } from 'svelte';
-	import type { Plan, PlanBrief } from '$lib/types';
+	import type { Day, Plan, PlanBrief } from '$lib/types';
 
 	let plan = $state<Plan | null>(null);
 	let plans = $state<PlanBrief[]>([]);
@@ -26,7 +30,6 @@
 	const index = $derived(plan && day ? plan.days.indexOf(day) : 0);
 	// Kun dage, der ikke er gået, kan få ønsker fordelt.
 	const freeDays = $derived(plan?.days.filter((d) => !d.meal && d.date >= clock.today).length ?? 0);
-	const planIndex = $derived(plan ? plans.findIndex((p) => p.id === plan!.id) : -1);
 
 	function show(p: Plan) {
 		plan = p;
@@ -95,8 +98,9 @@
 	}
 
 	async function removePlan() {
-		if (!plan || !confirm(`Slet madplanen ${periodLabel(plan.start_date, plan.end_date)}?`)) return;
-		await api(`/plans/${plan.id}`, { method: 'DELETE' });
+		const id = plan?.id;
+		if (!plan || !(await confirmDialog(`Slet madplanen ${periodLabel(plan.start_date, plan.end_date)}?`, 'Slet'))) return;
+		await api(`/plans/${id}`, { method: 'DELETE' });
 		plan = null;
 		await load();
 	}
@@ -141,6 +145,12 @@
 		if (kind === 'wish') run(() => planApi.setSlot(plan!, date, false, { kind: 'ønske', wish_id: Number(id) }));
 	}
 
+	/** Lægger et ønske på en dag. Står der allerede en ret, spørges der først. */
+	async function placeWish(wishId: number, d: Day) {
+		if (d.meal && !(await confirmDialog(`Erstat ${d.meal.title} ${weekdayName(d.date).toLowerCase()}?`, 'Erstat'))) return;
+		run(() => planApi.setSlot(plan!, d.date, false, { kind: 'ønske', wish_id: wishId }));
+	}
+
 	const nextSunday = () => isoDate(nextWeekday(new Date(), 0));
 	const nextMonday = () => isoDate(nextWeekday(new Date(), 1));
 </script>
@@ -149,18 +159,7 @@
 	<header class="top">
 		<div class="grow">
 			<h1>Planlæg</h1>
-			{#if plan}
-				<!-- Skift mellem planer (uger) ved perioden, så det ikke forveksles med dagene -->
-				<div class="period">
-					{#if plans.length > 1}
-						<button class="plain" aria-label="Forrige plan" disabled={planIndex >= plans.length - 1} onclick={() => load(plans[planIndex + 1].id)}>‹</button>
-					{/if}
-					<span>{periodLabel(plan.start_date, plan.end_date)}</span>
-					{#if plans.length > 1}
-						<button class="plain" aria-label="Næste plan" disabled={planIndex <= 0} onclick={() => load(plans[planIndex - 1].id)}>›</button>
-					{/if}
-				</div>
-			{/if}
+			{#if plan}<PeriodNav {plan} {plans} onselect={load} />{/if}
 		</div>
 		{#if plan}<button onclick={newPlan}>+ Ny plan</button>{/if}
 	</header>
@@ -169,7 +168,7 @@
 
 	{#if creating}
 		<form class="create card" onsubmit={create}>
-			<h2>Ny madplan</h2>
+			<h2 class="section-title">Ny madplan</h2>
 			<p class="muted small">Planen starter på indkøbsdagen og varer 7 dage.</p>
 			<label class="field">
 				<span>Indkøbsdag</span>
@@ -201,14 +200,14 @@
 		<!-- iPad/computer: hele ugen, træk retter mellem dage -->
 		<div class="grid">
 			{#each plan.days as d (d.date)}
+				<!-- Dagen vælges med knappen i toppen (tastatur og skærmlæser). Klik
+				     hvor som helst i cellen gør det samme for mus og finger. -->
+				<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 				<div
 					class="cell"
 					class:on={d.date === day.date}
 					class:over={dragOver === d.date}
-					role="button"
-					tabindex="0"
 					onclick={() => (selected = d.date)}
-					onkeydown={(e) => e.key === 'Enter' && (selected = d.date)}
 					ondragover={(e) => {
 						e.preventDefault();
 						dragOver = d.date;
@@ -216,17 +215,19 @@
 					ondragleave={() => (dragOver = '')}
 					ondrop={(e) => drop(e, d.date)}
 				>
-					<div class="cell-head" class:today={d.date === clock.today}>{weekday(d.date)} {parseDate(d.date).getDate()}.</div>
+					<button class="plain cell-head" class:today={d.date === clock.today} aria-pressed={d.date === day.date}>
+						{weekday(d.date)} {parseDate(d.date).getDate()}.
+					</button>
 					{#if d.meal}
-						<div class="mini" draggable="true" ondragstart={(e) => dragstart(e, `meal:${d.meal!.id}`)} role="listitem">
+						<div class="mini" draggable="true" ondragstart={(e) => dragstart(e, `meal:${d.meal!.id}`)}>
 							{#if d.meal.recipe?.image_url}<img src={d.meal.recipe.image_url} alt="" draggable="false" />{/if}
 							<span>{d.meal.title}</span>
-							{#if d.meal.multiplier !== 1}<b class="mult">×{d.meal.multiplier === 0.5 ? '½' : d.meal.multiplier}</b>{/if}
+							{#if d.meal.multiplier !== 1}<b class="mult">{mult(d.meal.multiplier)}</b>{/if}
 						</div>
 					{:else}
 						<div class="mini empty muted small">Træk en ret hertil</div>
 					{/if}
-					{#if d.child}<div class="child small">Barn: {d.child.title}</div>{/if}
+					{#if d.child}<div class="child small">Barnet: {d.child.title}</div>{/if}
 				</div>
 			{/each}
 		</div>
@@ -249,13 +250,13 @@
 		</section>
 
 		<section class="wishes">
-			<h2>Ønskeliste</h2>
+			<h2 class="section-title">Ønskeliste</h2>
 			<p class="muted small">Retter I vil have i perioden. Tryk på en dag for at lægge retten der.</p>
 			<ul>
 				{#each plan.wishlist as w (w.id)}
 					<li draggable="true" ondragstart={(e) => dragstart(e, `wish:${w.id}`)}>
 						<div class="wish-head">
-							{#if w.recipe?.image_url}<img src={w.recipe.image_url} alt="" />{/if}
+							{#if w.recipe?.image_url}<Thumb src={w.recipe.image_url} size="sm" />{/if}
 							<span class="grow title">
 								{#if w.recipe}<a href="/opskrift/{w.recipe.id}">{w.title}</a>{:else}{w.title}{/if}
 							</span>
@@ -267,10 +268,7 @@
 									class:free={!d.meal && d.date >= clock.today}
 									disabled={d.date < clock.today}
 									title={d.date < clock.today ? 'Dagen er gået' : d.meal ? `Erstatter ${d.meal.title}` : 'Ledig'}
-									onclick={() => {
-										if (!d.meal || confirm(`Erstat ${d.meal.title} ${weekdayName(d.date).toLowerCase()}?`))
-											run(() => planApi.setSlot(plan!, d.date, false, { kind: 'ønske', wish_id: w.id }));
-									}}>{weekday(d.date)}</button
+									onclick={() => placeWish(w.id, d)}>{weekday(d.date)}</button
 								>
 							{/each}
 						</div>
@@ -299,32 +297,15 @@
 
 		<p class="footer"><button class="plain danger small" onclick={removePlan}>Slet denne plan</button></p>
 	{:else if loaded && !creating && !error}
-		<div class="empty"><button class="primary" onclick={newPlan}>Lav en madplan</button></div>
+		<div class="empty">
+			<p>Ingen madplan endnu.</p>
+			<p><button class="primary" onclick={newPlan}>Lav en madplan</button></p>
+		</div>
 	{/if}
 </main>
 
 <style>
-	.period {
-		display: flex;
-		align-items: center;
-		gap: 2px;
-		font-size: 0.9rem;
-		color: var(--muted);
-		margin-left: -6px;
-	}
-	.period span {
-		padding: 0 6px;
-	}
-	.period button {
-		min-height: 28px;
-		padding: 0 8px;
-		font-size: 1.1rem;
-		color: var(--accent);
-	}
-	.period button:disabled {
-		visibility: hidden;
-	}
-	.top button {
+	.top > button {
 		padding: 8px 12px;
 	}
 	.create {
@@ -416,7 +397,11 @@
 	.cell.over {
 		background: var(--accent-soft);
 	}
+	/* Hele cellen er trykfladen, så knappen selv behøver ikke at være 44px høj. */
 	.cell-head {
+		min-height: 0;
+		padding: 0;
+		justify-content: flex-start;
 		font-size: 0.8rem;
 		font-weight: 700;
 		color: var(--muted);
@@ -439,13 +424,13 @@
 		width: 100%;
 		aspect-ratio: 4 / 3;
 		object-fit: cover;
-		border-radius: 8px;
+		border-radius: var(--radius-thumb);
 	}
 	.mini.empty {
 		font-weight: 400;
 		cursor: default;
 		border: 1px dashed var(--line);
-		border-radius: 8px;
+		border-radius: var(--radius-thumb);
 		padding: 12px 6px;
 		text-align: center;
 		flex: 1;
@@ -474,10 +459,7 @@
 		gap: 12px;
 	}
 	.day-title {
-		text-transform: none;
-		letter-spacing: 0;
 		font-size: 1.25rem;
-		color: var(--fg);
 		margin: 4px 0 0;
 	}
 	.child-slot {
@@ -507,13 +489,6 @@
 		display: flex;
 		align-items: center;
 		gap: 10px;
-	}
-	.wish-head img {
-		width: 44px;
-		height: 44px;
-		border-radius: 8px;
-		object-fit: cover;
-		flex: none;
 	}
 	.wish-head .title {
 		font-weight: 600;

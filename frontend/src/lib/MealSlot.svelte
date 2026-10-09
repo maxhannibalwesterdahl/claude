@@ -2,10 +2,11 @@
 	import { untrack } from 'svelte';
 	import { ApiError } from './api';
 	import { shortDate, weekday, weekdayName } from './dates';
-	import { formatQuantity } from './format';
+	import { formatQuantity, mult } from './format';
 	import { groupLines } from './lines';
 	import MealChooser from './MealChooser.svelte';
 	import { planApi } from './planApi';
+	import Thumb from './Thumb.svelte';
 	import type { LineState, Meal, MealLine, Plan, SlotChoice } from './types';
 
 	interface Props {
@@ -31,11 +32,7 @@
 	let busy = $state(false);
 	let error = $state('');
 
-	const MULTS: [number, string][] = [
-		[0.5, '×½'],
-		[1, '×1'],
-		[2, '×2']
-	];
+	const MULTS = [0.5, 1, 2];
 
 	const sources = $derived(
 		plan.days
@@ -96,10 +93,10 @@
 	<article class="meal card" aria-busy={busy}>
 		<div class="head">
 			{#if meal.recipe?.image_url}
-				<img src={meal.recipe.image_url} alt="" />
+				<Thumb src={meal.recipe.image_url} />
 			{/if}
 			<div class="grow">
-				{#if forChild}<div class="label">Barnet</div>{/if}
+				{#if forChild}<div class="section-title label">Barnet</div>{/if}
 				<h3>
 					{#if meal.recipe}
 						<a href="/opskrift/{meal.recipe.id}">{meal.title}</a>
@@ -122,11 +119,11 @@
 		{#if meal.kind === 'opskrift' && meal.recipe}
 			<div class="controls">
 				<div class="seg segmented" role="group" aria-label="Gange">
-					{#each MULTS as [value, label]}
+					{#each MULTS as value}
 						<button
 							aria-pressed={meal.multiplier === value}
 							disabled={busy}
-							onclick={() => run(() => planApi.patchMeal(meal!.id, { multiplier: value }))}>{label}</button
+							onclick={() => run(() => planApi.patchMeal(meal!.id, { multiplier: value }))}>{mult(value)}</button
 						>
 					{/each}
 				</div>
@@ -184,7 +181,7 @@
 										checked={!!l.state}
 										onchange={(e) => setLine(l, e.currentTarget.checked ? 'hjemme' : null)}
 									/>
-									<span class="qty">{formatQuantity(l.quantity, l.quantity_max, l.unit)}</span>
+									<span class="ing-qty">{formatQuantity(l.quantity, l.quantity_max, l.unit)}</span>
 									<span class="grow">
 										{l.item}{#if l.is_main}<span class="star">★</span>{/if}
 										{#if l.state === 'rest'}<span class="badge ok">rest</span>
@@ -193,7 +190,9 @@
 									</span>
 								</label>
 								{#if meal.leftover_from}
-									<button class="plain rest" class:on={l.state === 'rest'} onclick={() => setLine(l, l.state === 'rest' ? null : 'rest')}>rest</button>
+									<button class="plain rest" aria-pressed={l.state === 'rest'} onclick={() => setLine(l, l.state === 'rest' ? null : 'rest')}>
+										<span class="pill">rest</span>
+									</button>
 								{/if}
 							</li>
 						{/each}
@@ -214,13 +213,13 @@
 			</label>
 			<button class="danger" disabled={busy} onclick={remove}>Fjern</button>
 		</div>
-		{#if error}<p class="error">{error}</p>{/if}
+		{#if error}<p class="error" role="alert">{error}</p>{/if}
 	</article>
 {:else}
 	<button class="empty-slot" disabled={busy} onclick={() => (choosing = true)}>
 		+ {forChild ? 'Ret til barnet' : 'Vælg aftensmad'}
 	</button>
-	{#if error}<p class="error">{error}</p>{/if}
+	{#if error}<p class="error" role="alert">{error}</p>{/if}
 {/if}
 
 {#if choosing}
@@ -241,13 +240,6 @@
 		gap: 12px;
 		align-items: center;
 	}
-	.head img {
-		width: 72px;
-		height: 72px;
-		border-radius: 10px;
-		object-fit: cover;
-		flex: none;
-	}
 	h3 {
 		margin: 0;
 		font-size: 1.15rem;
@@ -258,10 +250,7 @@
 		text-decoration: none;
 	}
 	.label {
-		font-size: 0.75rem;
-		font-weight: 700;
-		text-transform: uppercase;
-		letter-spacing: 0.06em;
+		margin: 0;
 		color: var(--accent);
 	}
 	.controls {
@@ -288,7 +277,7 @@
 		gap: 8px;
 		align-items: center;
 		background: var(--accent-soft);
-		border-radius: 10px;
+		border-radius: var(--radius-control);
 		padding: 8px 10px;
 	}
 	.lines summary {
@@ -300,7 +289,7 @@
 		min-height: 44px;
 		padding: 0 4px;
 		margin: 0 -4px;
-		border-radius: 8px;
+		border-radius: var(--radius-thumb);
 		list-style: none;
 	}
 	.lines summary::-webkit-details-marker {
@@ -345,13 +334,6 @@
 		flex: none;
 		accent-color: var(--accent);
 	}
-	.qty {
-		flex: 0 0 auto;
-		min-width: 56px;
-		max-width: 40%;
-		color: var(--muted);
-		font-variant-numeric: tabular-nums;
-	}
 	li.done .grow {
 		text-decoration: line-through;
 		color: var(--muted);
@@ -366,14 +348,19 @@
 	.badge {
 		margin-left: 6px;
 	}
+	/* Knappen er trykfladen (44px, som linjen). Pillen indeni er det, man ser. */
 	.rest {
+		flex: none;
+		padding: 0 2px;
+	}
+	.pill {
 		font-size: 0.8rem;
 		border: 1px solid var(--line);
-		border-radius: 999px;
+		border-radius: var(--radius-pill);
 		padding: 2px 10px;
 		color: var(--muted);
 	}
-	.rest.on {
+	.rest[aria-pressed='true'] .pill {
 		background: var(--accent-soft);
 		border-color: var(--accent);
 		color: var(--accent);

@@ -4,7 +4,7 @@
 	import RecipeEditor from '$lib/RecipeEditor.svelte';
 </script>
 
-<main>
+<main class="legacy">
 	<header class="top">
 		<BackButton fallback="/opskrifter" />
 		<h1>Ny opskrift</h1>

@@ -71,6 +71,9 @@ export function searchKey(text: string): string {
 		.trim();
 }
 
+/** Samme nøgle som backend (matcher.key): små bogstaver uden mellemrum og bindestreger. */
+export const itemKey = (text: string) => text.toLowerCase().replace(/[\s-]/g, '');
+
 /** Dansk tal fra et inputfelt: "1,5" og "1½" -> 1.5. Tomt -> null. */
 export function parseNumber(text: string): number | null {
 	const t = text.trim().replace(',', '.');

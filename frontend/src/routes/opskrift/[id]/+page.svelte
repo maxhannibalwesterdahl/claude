@@ -48,7 +48,7 @@
 	}
 </script>
 
-<main>
+<main class="legacy">
 	<header class="top">
 		<BackButton fallback="/opskrifter" />
 		<span class="grow"></span>

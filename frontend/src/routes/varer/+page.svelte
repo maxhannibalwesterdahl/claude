@@ -115,7 +115,7 @@
 	</form>
 {/snippet}
 
-<main>
+<main class="legacy">
 	<header class="top">
 		<h1>Varer</h1>
 		<button class="primary" onclick={() => open(null)}>+ Ny vare</button>

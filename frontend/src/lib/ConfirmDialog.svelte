@@ -29,9 +29,10 @@
 >
 	{#if request}
 		<p id="confirm-message">{request.message}</p>
-		<div class="row">
-			<button onclick={() => answer(false)}>Annullér</button>
-			<button class="primary" class:danger={request.danger} onclick={() => answer(true)}>{request.confirmLabel}</button>
+		<!-- Samme tomat, uanset om svaret sletter noget: der er kun én handlingsfarve. -->
+		<div class="btns">
+			<button class="btn" onclick={() => answer(false)}>Annullér</button>
+			<button class="btn primary" onclick={() => answer(true)}>{request.confirmLabel}</button>
 		</div>
 	{/if}
 </dialog>
@@ -39,23 +40,17 @@
 <style>
 	dialog {
 		width: min(400px, calc(100vw - 32px));
-		padding: 16px;
-		color: var(--fg);
+		padding: 20px;
+		border: none;
+		color: var(--ink);
 		box-shadow: var(--shadow-sheet);
 	}
 	dialog::backdrop {
 		background: var(--scrim);
 	}
 	p {
-		margin: 0 0 16px;
+		margin-bottom: 18px;
+		font-size: 17px;
 		font-weight: 600;
-	}
-	.row {
-		justify-content: flex-end;
-	}
-	.danger {
-		background: var(--danger);
-		border-color: var(--danger);
-		color: var(--card);
 	}
 </style>

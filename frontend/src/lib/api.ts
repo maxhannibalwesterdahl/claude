@@ -18,7 +18,7 @@ function message(detail: unknown, status: number): string {
 		const msg = detail[0]?.msg;
 		return typeof msg === 'string' ? msg.replace(/^Value error, /, '') : 'Ugyldige oplysninger';
 	}
-	return `Fejl ${status}`;
+	return 'Det gik ikke. Prøv igen.';
 }
 
 /** JSON-kald til backend. Sender til login, hvis sessionen er udløbet. */

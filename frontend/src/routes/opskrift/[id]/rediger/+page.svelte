@@ -15,7 +15,7 @@
 	});
 </script>
 
-<main>
+<main class="legacy">
 	<header class="top">
 		<a class="button" href="/opskrift/{page.params.id}" aria-label="Tilbage">‹</a>
 		<h1>Rediger</h1>

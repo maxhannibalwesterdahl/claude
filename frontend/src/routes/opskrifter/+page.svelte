@@ -36,7 +36,7 @@
 	}
 </script>
 
-<main>
+<main class="legacy">
 	<header class="top">
 		<h1>Opskrifter</h1>
 		<a class="button" href="/ny">+ Ny</a>

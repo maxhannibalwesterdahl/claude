@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { api, ApiError } from '$lib/api';
+	import { api } from '$lib/api';
+	import { say } from '$lib/ui/copy';
 
 	let username = $state('');
 	let password = $state('');
@@ -18,20 +19,20 @@
 			// Kun stier i appen, ikke andre sider.
 			await goto(target.startsWith('/') && !target.startsWith('//') ? target : '/');
 		} catch (err) {
-			error = err instanceof ApiError ? err.message : 'Noget gik galt';
+			error = say(err);
 		} finally {
 			busy = false;
 		}
 	}
 </script>
 
-<main class="login">
+<main class="login pad">
 	<svg viewBox="0 0 64 64" class="logo" aria-hidden="true">
-		<rect width="64" height="64" rx="14" fill="var(--accent)" />
-		<path d="M14 30h36a18 18 0 0 1-36 0z" fill="var(--accent-fg)" />
-		<path d="M25 22c0-4 4-4 4-8M35 22c0-4 4-4 4-8" stroke="var(--accent-fg)" stroke-width="3" stroke-linecap="round" fill="none" />
+		<rect width="64" height="64" rx="14" fill="var(--tomat)" />
+		<path d="M14 30h36a18 18 0 0 1-36 0z" fill="var(--ontomat)" />
+		<path d="M25 22c0-4 4-4 4-8M35 22c0-4 4-4 4-8" stroke="var(--ontomat)" stroke-width="3" stroke-linecap="round" fill="none" />
 	</svg>
-	<h1>Madplan</h1>
+	<h1 class="serif">Madplan</h1>
 	<form onsubmit={submit}>
 		<label class="field">
 			<span>Brugernavn</span>
@@ -41,14 +42,14 @@
 			<span>Kodeord</span>
 			<input type="password" bind:value={password} autocomplete="current-password" required />
 		</label>
-		{#if error}<p class="error" role="alert">{error}</p>{/if}
-		<button class="primary" disabled={busy}>{busy ? 'Logger ind…' : 'Log ind'}</button>
+		{#if error}<p class="msg" role="alert">{error}</p>{/if}
+		<button class="btn primary block" disabled={busy}>{busy ? 'Logger ind…' : 'Log ind'}</button>
 	</form>
 </main>
 
 <style>
 	.login {
-		max-width: 360px;
+		max-width: 392px;
 		padding-top: calc(12vh + env(safe-area-inset-top));
 		text-align: center;
 	}
@@ -58,14 +59,19 @@
 	}
 	h1 {
 		margin: 12px 0 24px;
+		font-size: var(--fs-title);
+		line-height: 36px;
+		letter-spacing: -0.01em;
 	}
 	form {
 		display: grid;
 		gap: 14px;
 		text-align: left;
 	}
-	button {
-		justify-content: center;
+	.msg {
+		margin: 0;
+	}
+	.btn {
 		margin-top: 4px;
 	}
 </style>

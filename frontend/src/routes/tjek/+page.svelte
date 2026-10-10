@@ -65,7 +65,7 @@
 	}
 </script>
 
-<main>
+<main class="legacy">
 	<header class="top">
 		<h1>Varer</h1>
 	</header>

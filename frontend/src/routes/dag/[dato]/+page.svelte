@@ -92,7 +92,7 @@
 		m.recipe?.servings ? `${Math.round(m.recipe.servings * m.multiplier)} pers.` : '';
 </script>
 
-<main>
+<main class="legacy">
 	<header class="top">
 		<div class="grow">
 			<h1>{date ? weekdayName(date) : ''}</h1>

@@ -1,8 +1,14 @@
 <script lang="ts">
 	import { navState } from './nav.svelte';
+	import Icon from './ui/Icon.svelte';
 
-	/** Siden, der bruges, hvis siden er åbnet direkte (fx fra et bogmærke). */
-	let { fallback }: { fallback: string } = $props();
+	interface Props {
+		/** Siden, der bruges, hvis siden er åbnet direkte (fx fra et bogmærke). */
+		fallback: string;
+		/** Knappen ligger oven på et billede. */
+		float?: boolean;
+	}
+	let { fallback, float = false }: Props = $props();
 
 	function back(e: MouseEvent) {
 		if (navState.inApp) {
@@ -12,4 +18,4 @@
 	}
 </script>
 
-<a class="button" href={fallback} onclick={back} aria-label="Tilbage">‹</a>
+<a class="rnd" class:float href={fallback} onclick={back} aria-label="Tilbage"><Icon name="left" stroke={2.2} /></a>

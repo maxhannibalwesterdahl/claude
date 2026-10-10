@@ -155,7 +155,7 @@
 	const nextMonday = () => isoDate(nextWeekday(new Date(), 1));
 </script>
 
-<main>
+<main class="legacy">
 	<header class="top">
 		<div class="grow">
 			<h1>Planlæg</h1>

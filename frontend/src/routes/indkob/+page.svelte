@@ -165,7 +165,7 @@
 	const days = (list: string[]) => list.map(weekday).join(', ');
 </script>
 
-<main>
+<main class="legacy">
 	<header class="top">
 		<div class="grow">
 			<h1>Indkøb</h1>

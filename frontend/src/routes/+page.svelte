@@ -45,7 +45,7 @@
 	}
 </script>
 
-<main>
+<main class="legacy">
 	<header class="top">
 		<div class="grow">
 			<h1>Madplan</h1>

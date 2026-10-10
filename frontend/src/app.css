@@ -1,57 +1,116 @@
 :root {
-	--fg: #1d1f1c;
-	--muted: #676b64;
-	--bg: #f7f6f1;
+	/* Farver, lys. Værdierne er designets. */
+	--paper: #fafaf7;
 	--card: #ffffff;
-	--line: #e3e1d8;
-	/* Kanter på felter og afkrydsning: mindst 3:1 mod baggrunden (WCAG 1.4.11) */
-	--line-strong: #8a877d;
-	--accent: #2f6b3f;
-	--accent-fg: #ffffff;
-	--accent-soft: #e4efe5;
-	--warn: #9a5800;
-	--warn-soft: #fbefdc;
-	--danger: #b3261e;
-	--star: #b07800;
-	--radius: 14px;
-	/* Små flader (billeder, afkrydsning), felter og knapper, knapgrupper, ark, piller. */
-	--radius-thumb: 8px;
-	--radius-control: 10px;
-	--radius-seg: 12px;
-	--radius-sheet: 16px;
-	--radius-pill: 999px;
-	--shadow: 0 1px 2px rgb(40 38 30 / 0.06), 0 2px 8px rgb(40 38 30 / 0.05);
-	/* Svævende flader: vare-vælgeren og ark/dialoger med mørklagt baggrund. */
-	--shadow-float: 0 6px 24px rgb(0 0 0 / 0.12);
-	--shadow-sheet: 0 -8px 32px rgb(0 0 0 / 0.25);
-	--scrim: rgb(0 0 0 / 0.4);
-	--nav-h: 64px;
+	--ink: #1b1b1a;
+	--muted: #6b6961;
+	/* faint: aldrig til tekst under 18px */
+	--faint: #8a877d;
+	--line: #eceae2;
+	--band: #f1f0ea;
+	--soft: #f3f1eb;
+	--tomat: #c4391d;
+	--tomat-soft: #fcefeb;
+	--tomat-line: #f0c2b6;
+	--ontomat: #ffffff;
+	--kobt: #23774a;
+	--onkobt: #ffffff;
+	/* Ringen om en afkrydsning: mindst 3:1 mod baggrunden (WCAG 1.4.11) */
+	--ring: #8a877d;
+	--chipline: #dddacf;
+	--plate: #fbfaf4;
+	--rim: #efece2;
+	--hero-a: #dce3d8;
+	--hero-b: #c9d3c6;
+	--scrim: rgba(27, 27, 26, 0.38);
+	--shadow: 0 1px 2px rgba(40, 38, 30, 0.06), 0 8px 24px rgba(40, 38, 30, 0.08);
+	--shadow-float: 0 1px 2px rgba(40, 38, 30, 0.08), 0 6px 20px rgba(40, 38, 30, 0.12);
+	--shadow-sheet: 0 -8px 32px rgba(0, 0, 0, 0.2);
+	--shadow-fab: 0 6px 18px rgba(196, 57, 29, 0.35);
+
+	/* Skrift. Ingen webskrifter. */
+	--serif: ui-serif, 'New York', Georgia, serif;
+	--sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
+	--fs-body: 17px;
+	--fs-title: 32px;
+	--fs-sheet-title: 26px;
+	--fs-dish: 24px;
+	--fs-step: 27px;
+	--fs-row: 17px;
+	--fs-cap: 13.5px;
+	--fs-eyebrow: 13px;
+	--fs-label: 12.5px;
+
+	/* Form og mål */
+	--r-card: 20px;
+	--r-tile: 16px;
+	--r-control: 14px;
+	--r-small: 12px;
+	--r-sheet: 26px;
+	--r-pill: 999px;
+	/* Mindste trykflade */
+	--tap: 44px;
+	--btn-h: 50px;
+	--btn-sm-h: 40px;
+	--chip-h: 36px;
+	--row-h: 56px;
+	--ing-h: 46px;
+	--shop-h: 60px;
+	--gutter: 16px;
+	/* Fanelinjen uden telefonens sikre område */
+	--nav-h: 56px;
+
+	/* Bevægelse */
+	--t-sheet: 200ms;
+	--t-tick: 120ms;
+	--ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
 	color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
 	:root {
-		--fg: #ecebe6;
-		--muted: #a3a69e;
-		--bg: #141513;
-		--card: #1e201d;
-		--line: #33362f;
-		--line-strong: #6f736a;
-		--accent: #7cc48f;
-		--accent-fg: #0f1a12;
-		--accent-soft: #223328;
-		--warn: #f0a94a;
-		--warn-soft: #3a2a12;
-		--danger: #ff8a80;
-		--star: #f2c14e;
-		--shadow: none;
+		--paper: #161614;
+		--card: #222220;
+		--ink: #eeede7;
+		--muted: #a3a096;
+		--faint: #8c8980;
+		--line: #2e2d29;
+		--band: #1e1e1b;
+		--soft: #2a2926;
+		--tomat: #f26b4e;
+		--tomat-soft: #3a201a;
+		--tomat-line: #6a3225;
+		--ontomat: #1a0e0b;
+		--kobt: #5fbf8a;
+		--onkobt: #0f1f16;
+		--ring: #8c8980;
+		--chipline: #3a3934;
+		--plate: #e9e6da;
+		--rim: #cfcbbd;
+		--hero-a: #2a302a;
+		--hero-b: #1f241f;
+		--scrim: rgba(0, 0, 0, 0.6);
 		/* En sort skygge ses ikke på mørk baggrund: en tydelig kant adskiller i stedet. */
-		--shadow-float: 0 0 0 1px var(--line-strong), 0 6px 24px rgb(0 0 0 / 0.6);
-		--shadow-sheet: 0 0 0 1px var(--line), 0 -8px 32px rgb(0 0 0 / 0.6);
-		--scrim: rgb(0 0 0 / 0.6);
+		--shadow: 0 0 0 1px #34332f;
+		--shadow-float: 0 0 0 1px #34332f, 0 6px 20px rgba(0, 0, 0, 0.5);
+		--shadow-sheet: 0 0 0 1px #34332f, 0 -8px 32px rgba(0, 0, 0, 0.6);
+		--shadow-fab: 0 0 0 1px #34332f;
 		color-scheme: dark;
 	}
 }
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		transition-duration: 0.01ms !important;
+		scroll-behavior: auto !important;
+	}
+}
+
+/* ---------- Grundregler ---------- */
 
 * {
 	box-sizing: border-box;
@@ -62,43 +121,651 @@ html {
 	text-size-adjust: 100%;
 }
 
-body {
-	margin: 0;
-	font: 17px/1.45 system-ui, -apple-system, 'Segoe UI', sans-serif;
-	color: var(--fg);
-	background: var(--bg);
+/* Et åbent ark: siden bagved må ikke rulle med (iPhone). */
+html.sheet-open {
+	overflow: hidden;
 }
 
+body {
+	margin: 0;
+	font: var(--fs-body) / 1.35 var(--sans);
+	color: var(--ink);
+	background: var(--paper);
+	-webkit-font-smoothing: antialiased;
+}
+
+/* Vandret luft ligger ikke på main, men på blokkene (.pad og rækkerne), så
+   bånd og skillelinjer kan gå fra kant til kant. */
 main {
-	max-width: 760px;
+	max-width: 640px;
 	margin: 0 auto;
-	/* Plads til notch/afrundede hjørner på telefoner på langs. */
-	padding: 0 max(16px, env(safe-area-inset-right)) calc(var(--nav-h) + 32px + env(safe-area-inset-bottom))
-		max(16px, env(safe-area-inset-left));
+	padding: env(safe-area-inset-top) 0 calc(var(--nav-h) + env(safe-area-inset-bottom) + 24px);
 	/* Lange ord og links brydes i stedet for at gøre siden bredere end skærmen. */
 	overflow-wrap: anywhere;
 }
 
+/* Ugen på iPad på tværs. */
+main.wide {
+	max-width: 1180px;
+}
+
+/* Siden har et felt eller en plusknap, der ligger fast over fanelinjen. */
+main.docked {
+	padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) + 24px + 68px);
+}
+
+h1,
+h2,
+h3,
+p {
+	margin: 0;
+}
+
+/* En knap uden klasse har intet udseende. Alle synlige knapper bruger klasserne nedenfor. */
+button {
+	font: inherit;
+	color: inherit;
+	background: none;
+	border: 0;
+	padding: 0;
+	margin: 0;
+	cursor: pointer;
+	text-align: inherit;
+}
+
+a {
+	color: inherit;
+}
+
+a.link,
+.link {
+	color: var(--tomat);
+	font-weight: 600;
+	text-decoration: none;
+}
+
+input,
+select,
+textarea {
+	font: inherit;
+	/* Under 16px zoomer iPhone ind, når feltet får fokus, og zoomer ikke ud igen. */
+	font-size: max(16px, 1rem);
+	color: var(--ink);
+}
+
+input:where(:not([type='checkbox'], [type='radio'])),
+select,
+textarea {
+	background: var(--band);
+	border: 0;
+	border-radius: var(--r-control);
+	padding: 0 14px;
+	min-height: 48px;
+	width: 100%;
+	min-width: 0;
+}
+
+/* Uden dette får søgefelter deres egne runde hjørner på iPhone. */
+input[type='search'] {
+	-webkit-appearance: none;
+	appearance: none;
+}
+
+input:where([type='checkbox'], [type='radio']) {
+	accent-color: var(--tomat);
+}
+
+textarea {
+	padding: 12px 14px;
+	resize: vertical;
+}
+
+:focus-visible {
+	outline: 2px solid var(--ink);
+	outline-offset: 2px;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+	outline-offset: 0;
+}
+
+/* ---------- Fælles klasser ---------- */
+
+/* Retternes navne og sidernes titler. */
+.serif {
+	font-family: var(--serif);
+}
+
+/* Vandret luft, også forbi notch og afrundede hjørner på langs. */
+.pad {
+	padding-inline: max(var(--gutter), env(safe-area-inset-left)) max(var(--gutter), env(safe-area-inset-right));
+}
+
+.muted {
+	color: var(--muted);
+}
+
+.small {
+	font-size: var(--fs-cap);
+}
+
+.grow {
+	flex: 1;
+	min-width: 0;
+}
+
+.ellipsis {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* Kun for skærmlæsere. */
+.sr {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	margin: -1px;
+	padding: 0;
+	border: 0;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+
+/* Den lille linje over eller under en titel (periode, dato). */
+.ey {
+	font-size: var(--fs-eyebrow);
+	font-weight: 600;
+	color: var(--muted);
+	letter-spacing: 0.02em;
+}
+
+/* Tomatfarvet mærke: "I AFTEN · ONSDAG", "TRIN 3 AF 6". */
+.lab {
+	font-size: 12.5px;
+	font-weight: 700;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--tomat);
+}
+
+/* Overskrift på et afsnit, evt. med en tekst til højre i et <span>. */
+.sl,
+.dep {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	gap: 10px;
+	padding: 18px var(--gutter) 6px;
+	font-size: var(--fs-label);
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.07em;
+	color: var(--muted);
+}
+
+.sl > *,
+.dep > * {
+	font-weight: 600;
+	letter-spacing: 0;
+	text-transform: none;
+}
+
+/* Afdelingerne på indkøbslisten: samme overskrift på et bånd fra kant til kant. */
+.dep {
+	align-items: center;
+	min-height: 34px;
+	padding-block: 0;
+	background: var(--band);
+}
+
+/* Knapper. Én handlingsfarve: .primary. */
+.btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 7px;
+	height: var(--btn-h);
+	padding: 0 18px;
+	border-radius: var(--r-control);
+	background: var(--soft);
+	color: var(--ink);
+	font-size: 16px;
+	font-weight: 600;
+	white-space: nowrap;
+	text-decoration: none;
+}
+
+.btn.primary {
+	background: var(--tomat);
+	color: var(--ontomat);
+}
+
+.btn.quiet {
+	background: none;
+	color: var(--tomat);
+}
+
+/* Der er ikke en særskilt rød: det, der fjerner noget, står i tomat på grå. */
+.btn.danger {
+	background: var(--soft);
+	color: var(--tomat);
+}
+
+/* Lille knap. Trykfladen rækker ud til 44px. */
+.btn.sm {
+	position: relative;
+	height: var(--btn-sm-h);
+	padding: 0 13px;
+	border-radius: var(--r-small);
+	font-size: 14.5px;
+}
+
+.btn.sm::after {
+	content: '';
+	position: absolute;
+	inset: -2px 0;
+}
+
+.btn.block {
+	display: flex;
+	width: 100%;
+}
+
+.btn:disabled,
+.btn[aria-busy='true'] {
+	opacity: 0.5;
+	cursor: default;
+}
+
+/* Række af knapper: lige brede, den vigtigste lidt bredere. */
+.btns {
+	display: flex;
+	gap: 8px;
+}
+
+.btns > * {
+	flex: 1;
+}
+
+.btns > .primary {
+	flex: 1.5;
+}
+
+/* Rund ikonknap (uge frem og tilbage, tilbage, luk). */
+.rnd {
+	position: relative;
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 40px;
+	height: 40px;
+	border-radius: 50%;
+	background: var(--soft);
+	color: var(--ink);
+	text-decoration: none;
+}
+
+.rnd::after {
+	content: '';
+	position: absolute;
+	inset: -2px;
+}
+
+/* Oven på et billede. */
+.rnd.float {
+	background: var(--card);
+	box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+
+/* Slået fra, men stadig på sin plads. */
+.rnd:disabled {
+	opacity: 0.4;
+	cursor: default;
+}
+
+/* Chip: forslag og filtre. */
+.chip {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: var(--chip-h);
+	max-width: 100%;
+	padding: 0 14px;
+	border-radius: var(--r-pill);
+	background: var(--card);
+	box-shadow: inset 0 0 0 1px var(--chipline);
+	color: var(--ink);
+	font-size: 14.5px;
+	font-weight: 600;
+	white-space: nowrap;
+	text-decoration: none;
+}
+
+.chip::after {
+	content: '';
+	position: absolute;
+	inset: -4px 0;
+}
+
+/* Tomatfarvet chip: "Søg", "Ryd op · 3". */
+.chip.a {
+	color: var(--tomat);
+	box-shadow: inset 0 0 0 1px var(--tomat-line);
+	background: var(--tomat-soft);
+}
+
+/* Det valgte filter. */
+.chip.on,
+.chip[aria-pressed='true'] {
+	background: var(--ink);
+	color: var(--paper);
+	box-shadow: none;
+}
+
+.chip:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
+.chips {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+/* Stille mærke: "ingen indkøb", antal. */
+.tag {
+	font-size: 12.5px;
+	font-weight: 700;
+	color: var(--muted);
+	background: var(--soft);
+	border-radius: 7px;
+	padding: 2px 7px;
+	white-space: nowrap;
+}
+
+/* Hævet flade. */
+.card {
+	background: var(--card);
+	border-radius: var(--r-card);
+	box-shadow: var(--shadow);
+}
+
+/* Række med navn og værdi (indstillinger, rækker i ark). Er hele rækken et
+   link eller en knap, sættes .kv på <a>/<button>. */
+.kv {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	min-height: var(--row-h);
+	margin-inline: var(--gutter);
+	border-bottom: 1px solid var(--line);
+	color: inherit;
+	text-decoration: none;
+}
+
+a.kv,
+button.kv,
+a.op,
+button.op {
+	width: calc(100% - 2 * var(--gutter));
+	text-align: left;
+}
+
+.kv .k {
+	min-width: 0;
+	font-size: var(--fs-row);
+	font-weight: 500;
+}
+
+.kv .k small {
+	display: block;
+	font-size: var(--fs-cap);
+	font-weight: 400;
+	color: var(--muted);
+}
+
+.kv .v {
+	font-size: 14.5px;
+	font-weight: 600;
+	color: var(--tomat);
+	white-space: nowrap;
+}
+
+.kv button.v,
+.kv a.v {
+	display: inline-flex;
+	align-items: center;
+	min-height: var(--tap);
+	text-decoration: none;
+}
+
+/* Valgmulighed: tallerken, navn og en linje under, og noget til sidst. */
+.op {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	min-height: 60px;
+	margin-inline: var(--gutter);
+	border-bottom: 1px solid var(--line);
+	color: inherit;
+	text-decoration: none;
+}
+
+.op .n {
+	font-size: var(--fs-row);
+	font-weight: 600;
+	line-height: 1.25;
+}
+
+.op .m {
+	font-size: var(--fs-cap);
+	color: var(--muted);
+}
+
+/* Lille rund plus til sidst i en række. */
+.pc {
+	flex: none;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 32px;
+	border-radius: 50%;
+	background: var(--tomat-soft);
+	color: var(--tomat);
+}
+
+/* Opskriftsflise. */
+.rc {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	min-height: 150px;
+	padding: 12px;
+	border-radius: var(--r-tile);
+	background: var(--card);
+	box-shadow: var(--shadow);
+	color: inherit;
+	text-decoration: none;
+}
+
+.rc .n {
+	font-family: var(--serif);
+	font-size: 16px;
+	line-height: 20px;
+	font-weight: 700;
+}
+
+.rc .m {
+	margin-top: auto;
+	font-size: 12.5px;
+	color: var(--muted);
+}
+
+.grid2 {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+	gap: 12px;
+	padding-inline: var(--gutter);
+}
+
+/* Oplysning (barnets note, rester) og en rolig sætning, når noget ikke gik.
+   .msg vises med role="alert": en hel sætning, aldrig ordet "Fejl". */
+.note,
+.msg {
+	margin: 12px var(--gutter) 0;
+	padding: 12px 14px;
+	border-radius: var(--r-control);
+	background: var(--band);
+	font-size: 15px;
+	line-height: 1.35;
+}
+
+/* Linjen, der siger, at der ikke er net. */
+.net {
+	display: flex;
+	gap: 6px;
+	align-items: center;
+	padding: 6px var(--gutter);
+	font-size: 13.5px;
+	color: var(--muted);
+}
+
+.net b {
+	color: var(--ink);
+	font-weight: 600;
+}
+
+.empty {
+	text-align: center;
+	color: var(--muted);
+	padding: 48px var(--gutter);
+}
+
+/* Svævende plusknap over fanelinjen. */
+.fab {
+	position: fixed;
+	right: max(16px, env(safe-area-inset-right));
+	bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) + 16px);
+	z-index: 8;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 56px;
+	height: 56px;
+	border-radius: 50%;
+	background: var(--tomat);
+	color: var(--ontomat);
+	box-shadow: var(--shadow-fab);
+}
+
+/* Bjælke fast over fanelinjen. Løfter sig over skærmtastaturet (--kb fra layoutet). */
+.dock {
+	position: fixed;
+	left: max(12px, calc(50% - 308px));
+	right: max(12px, calc(50% - 308px));
+	bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) + 8px);
+	z-index: 8;
+}
+
+html.kb-open .dock {
+	bottom: calc(var(--kb) + 8px);
+}
+
+/* Felt med ledetekst over. */
+.field {
+	display: grid;
+	min-width: 0;
+	gap: 6px;
+}
+
+.field > span {
+	font-size: 13.5px;
+	font-weight: 600;
+	color: var(--muted);
+}
+
+/* To spalter på iPad på tværs og computer. */
 @media (min-width: 900px) {
-	main {
+	.columns {
+		display: grid;
+		grid-template-columns: minmax(280px, 2fr) 3fr;
+		gap: 40px;
+		align-items: start;
+	}
+}
+
+/* LEGACY-START */
+/* Midlertidigt: de sider, der endnu ikke er skrevet om, har class="legacy" på
+   <main> og beholder deres gamle opbygning med de nye farver. En side mister
+   klassen, når den skrives om. Hele blokken slettes, når den sidste er væk.
+   :where() holder vægten på reglerne, som den var, så sidernes egne stilarter
+   stadig vinder. Ny kode må ikke bruge noget herfra. */
+:root {
+	--fg: var(--ink);
+	--bg: var(--paper);
+	--line-strong: var(--ring);
+	--accent: var(--tomat);
+	--accent-fg: var(--ontomat);
+	--accent-soft: var(--tomat-soft);
+	--warn: var(--muted);
+	--warn-soft: var(--band);
+	--danger: var(--tomat);
+	--star: var(--tomat);
+	--radius: var(--r-tile);
+	--radius-thumb: 8px;
+	--radius-control: var(--r-small);
+	--radius-seg: var(--r-small);
+	--radius-sheet: var(--r-sheet);
+	--radius-pill: var(--r-pill);
+}
+
+/* De gamle sider har luften på main. De nye rækkers egen luft nulstilles, så
+   de fælles komponenter ikke rykkes ind to gange. */
+main:where(.legacy) {
+	--gutter: 0px;
+	max-width: 760px;
+	padding: 0 max(16px, env(safe-area-inset-right)) calc(var(--nav-h) + 32px + env(safe-area-inset-bottom))
+		max(16px, env(safe-area-inset-left));
+}
+
+@media (min-width: 900px) {
+	main:where(.legacy) {
 		max-width: 1080px;
 		padding-left: 32px;
 		padding-right: 32px;
 	}
 }
 
-a {
+:where(main.legacy) a {
 	color: var(--accent);
 }
 
-h1 {
+:where(main.legacy) h1 {
 	font-size: 1.5rem;
 	line-height: 1.2;
-	margin: 0;
 }
 
-/* Overskrift på et afsnit (Ingredienser, afdelinger, Ønskeliste). */
-.section-title {
+/* Browserens egne afstande, som de gamle sider regner med. */
+:where(main.legacy) h2 {
+	margin: 0.83em 0;
+}
+
+:where(main.legacy) h3,
+:where(main.legacy) p {
+	margin: 1em 0;
+}
+
+:where(main.legacy) .section-title {
 	font-size: 0.8rem;
 	font-weight: 700;
 	text-transform: uppercase;
@@ -107,7 +774,7 @@ h1 {
 	margin: 28px 0 8px;
 }
 
-.top {
+:where(main.legacy) .top {
 	position: sticky;
 	top: 0;
 	z-index: 5;
@@ -120,7 +787,7 @@ h1 {
 	margin-bottom: 12px;
 }
 
-.top h1 {
+:where(main.legacy) .top h1 {
 	flex: 1;
 	min-width: 0;
 	overflow: hidden;
@@ -128,14 +795,14 @@ h1 {
 	white-space: nowrap;
 }
 
-/* Linjen under sidens titel (periode, dato). */
-.top .sub {
+:where(main.legacy) .top .sub {
 	font-size: 0.9rem;
 	color: var(--muted);
 }
 
-button,
-.button {
+/* De gamle knapper. Knapper med de nye klasser (i de fælles komponenter) holdes ude. */
+:where(main.legacy) button:where(:not(.btn, .rnd, .chip, .kv, .op, .fab, .link)),
+:where(main.legacy) .button {
 	font: inherit;
 	font-size: 0.95rem;
 	padding: 9px 14px;
@@ -149,31 +816,28 @@ button,
 	align-items: center;
 	gap: 6px;
 	min-height: 42px;
-	/* Knapper må ombryde mellem ord, så lang tekst ikke skubber siden ud over
-	   skærmen, men aldrig midt i et ord ("Væl-g"). */
 	max-width: 100%;
 	text-align: left;
 	overflow-wrap: normal;
 }
 
-button.primary,
-.button.primary {
+:where(main.legacy) button.primary:where(:not(.btn)),
+:where(main.legacy) .button.primary {
 	background: var(--accent);
 	border-color: var(--accent);
 	color: var(--accent-fg);
 	font-weight: 600;
 }
 
-button.danger {
+:where(main.legacy) button.danger:where(:not(.btn)) {
 	color: var(--danger);
 }
 
-button:active:not(:disabled) {
+:where(main.legacy) button:where(:not(.btn, .rnd, .chip, .kv, .op, .fab, .link)):active:not(:disabled) {
 	transform: scale(0.98);
 }
 
-/* Uden ramme, men stadig en trykflade på mindst 44px (ikoner som ✕ og ↑). */
-button.plain {
+:where(main.legacy) button.plain:where(:not(.btn)) {
 	border: none;
 	background: none;
 	padding: 6px;
@@ -182,61 +846,21 @@ button.plain {
 	justify-content: center;
 }
 
-button:disabled {
+:where(main.legacy) button:disabled {
 	opacity: 0.5;
 	cursor: default;
 }
 
-input,
-select,
-textarea {
-	font: inherit;
-	color: var(--fg);
-	background: var(--card);
-	border: 1px solid var(--line-strong);
-	border-radius: var(--radius-control);
-	padding: 9px 11px;
-	width: 100%;
-	min-width: 0;
-	min-height: 42px;
-	/* Under 16px zoomer iPhone ind, når feltet får fokus, og zoomer ikke ud igen. */
-	font-size: max(16px, 1rem);
-}
-
-textarea {
-	resize: vertical;
+:where(main.legacy) textarea {
 	line-height: 1.4;
 }
 
-input:focus,
-select:focus,
-textarea:focus,
-button:focus-visible {
-	outline: 2px solid var(--accent);
-	outline-offset: 1px;
-}
-
-label.field {
-	display: grid;
-	min-width: 0;
-	gap: 4px;
-	font-size: 0.9rem;
-	color: var(--muted);
-}
-
-label.field > span {
-	font-weight: 600;
-}
-
-.card {
-	background: var(--card);
+:where(main.legacy) .card {
 	border: 1px solid var(--line);
 	border-radius: var(--radius);
-	box-shadow: var(--shadow);
 }
 
-/* Fælles stil til faner og knapgrupper (vælger, varer, gange-knap). */
-.segmented {
+:where(main.legacy) .segmented {
 	display: flex;
 	gap: 4px;
 	padding: 4px;
@@ -246,8 +870,8 @@ label.field > span {
 	overflow-x: auto;
 	scrollbar-width: none;
 }
-.segmented > button,
-.segmented > a {
+:where(main.legacy) .segmented > button,
+:where(main.legacy) .segmented > a {
 	flex: 1 0 auto;
 	display: flex;
 	align-items: center;
@@ -262,30 +886,22 @@ label.field > span {
 	text-align: center;
 	text-decoration: none;
 }
-.segmented > button[aria-selected='true'],
-.segmented > button[aria-pressed='true'],
-.segmented > a[aria-current='page'] {
+:where(main.legacy) .segmented > button[aria-selected='true'],
+:where(main.legacy) .segmented > button[aria-pressed='true'],
+:where(main.legacy) .segmented > a[aria-current='page'] {
 	background: var(--accent);
 	color: var(--accent-fg);
 }
 
-.muted {
-	color: var(--muted);
-}
-
-.small {
-	font-size: 0.85rem;
-}
-
-.error {
+:where(main.legacy) .error {
 	background: var(--warn-soft);
-	color: var(--warn);
+	color: var(--fg);
 	border-radius: var(--radius-control);
 	padding: 10px 12px;
 	margin: 12px 0;
 }
 
-.badge {
+:where(main.legacy) .badge {
 	display: inline-block;
 	font-size: 0.75rem;
 	font-weight: 600;
@@ -296,44 +912,28 @@ label.field > span {
 	white-space: nowrap;
 }
 
-.badge.ok {
+:where(main.legacy) .badge.ok {
 	background: var(--accent-soft);
 	color: var(--accent);
 }
 
-.row {
+:where(main.legacy) .row {
 	display: flex;
 	gap: 8px;
 	align-items: center;
 	flex-wrap: wrap;
 }
 
-.grow {
-	flex: 1;
+:where(main.legacy) form > *,
+:where(main.legacy) .row > * {
 	min-width: 0;
 }
 
-/* Grid- og flex-børn må krympe under deres indholds bredde. */
-form > *,
-.row > * {
-	min-width: 0;
-}
-
-.ellipsis {
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.empty {
-	text-align: center;
-	color: var(--muted);
+:where(main.legacy) .empty {
 	padding: 48px 16px;
 }
 
-/* Opskrift og dagens ret: billede øverst, ingredienser ved siden af
-   fremgangsmåden på iPad på tværs og computer. */
-.hero {
+:where(main.legacy) .hero {
 	width: 100%;
 	max-height: min(320px, 40vh);
 	object-fit: cover;
@@ -341,31 +941,24 @@ form > *,
 }
 
 @media (min-width: 900px) {
-	.columns {
-		display: grid;
-		grid-template-columns: minmax(280px, 2fr) 3fr;
-		gap: 40px;
-		align-items: start;
-	}
-	.columns > section:first-child {
+	:where(main.legacy) .columns > section:first-child {
 		position: sticky;
 		top: 80px;
 	}
 }
 
-/* Ingredienslinjer: mængden i en højrestillet kolonne foran varen. */
-.ingredients {
+:where(main.legacy) .ingredients {
 	list-style: none;
 	padding: 0;
 	margin: 0;
 }
-.ingredients li {
+:where(main.legacy) .ingredients li {
 	display: flex;
 	gap: 12px;
 	padding: 8px 0;
 	border-bottom: 1px solid var(--line);
 }
-.ing-qty {
+:where(main.legacy) .ing-qty {
 	flex: 0 0 auto;
 	min-width: 64px;
 	max-width: 40%;
@@ -373,3 +966,13 @@ form > *,
 	color: var(--muted);
 	font-variant-numeric: tabular-nums;
 }
+
+/* Vare-vælgeren har ikke længere sin egen Luk-knap. De gamle sider viser den
+   uden et ark omkring, så her får den lov at blive, til siderne er skrevet om. */
+.legacy-only {
+	display: none;
+}
+main.legacy .btn.legacy-only {
+	display: inline-flex;
+}
+/* LEGACY-END */

@@ -40,7 +40,7 @@
 	}
 </script>
 
-<main>
+<main class="legacy">
 	<header class="top">
 		<BackButton fallback="/opskrifter" />
 		<h1>Importér opskrift</h1>

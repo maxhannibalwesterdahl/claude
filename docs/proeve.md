@@ -37,7 +37,7 @@ bliver liggende, hvor den er.
 I LXC'en:
 
 ```sh
-git clone --branch rolig https://github.com/maxhannibalwesterdahl/madplan.git /opt/madplan-proeve
+git clone --branch rolig https://github.com/maxhannibalwesterdahl/claude.git /opt/madplan-proeve
 cd /opt/madplan-proeve/deploy/proeve
 cp .env.example .env      # udfyld: ny TS_AUTHKEY og ny APP_SECRET
 ./deploy.sh

@@ -5,6 +5,7 @@ __pycache__/
 
 # Hemmeligheder til drift
 deploy/.env
+deploy/proeve/.env
 
 # Lokal database og billeder under udvikling
 backend/data/

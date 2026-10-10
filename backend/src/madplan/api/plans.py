@@ -1,11 +1,12 @@
 """Madplanen: dage, retter, rester, ønskeliste og "har hjemme" pr. linje."""
 
 from datetime import date, timedelta
-from typing import Literal
+from typing import Annotated, Literal
+from urllib.parse import urlparse
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from ..config import local_today
@@ -124,6 +125,14 @@ class LineStateIn(BaseModel):
 class WishIn(BaseModel):
     recipe_id: int | None = None
     text: str = Field("", max_length=200)
+
+
+class SuggestionOut(BaseModel):
+    recipe: RecipeBrief
+    # Tom for egne opskrifter.
+    source_host: str | None
+    # Seneste dag, opskriften har stået på en plan. Tom = aldrig.
+    last_planned: date | None
 
 
 # --- Opbygning af svar -----------------------------------------------------------
@@ -474,3 +483,50 @@ def place_wish(wish_id: int, body: MoveIn, session: DbSession, user: CurrentUser
     session.delete(wish)
     session.flush()
     return set_slot(plan_id, slot, session, user)
+
+
+# --- Forslag ----------------------------------------------------------------------
+
+@router.get("/suggestions")
+def suggestions(
+    session: DbSession,
+    _: CurrentUser,
+    plan_id: int | None = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 12,
+) -> list[SuggestionOut]:
+    """Opskrifter, det er længe siden, I har haft: ældste dato først, og dem, der
+    aldrig har stået på en plan, til sidst. Med `plan_id` udelades de opskrifter,
+    der allerede står på den plan som ret eller ønske."""
+    if plan_id is not None and session.get(Plan, plan_id) is None:
+        raise HTTPException(status_code=404, detail="Planen findes ikke")
+    # Både husstandens og barnets ret tæller: opskriften har været på bordet.
+    # Rester tæller ikke (de har ingen opskrift), og den viste plan holdes ude.
+    planned = (
+        select(PlanMeal.recipe_id, func.max(PlanMeal.date).label("last"))
+        .where(PlanMeal.kind == "opskrift", PlanMeal.recipe_id.is_not(None))
+        .group_by(PlanMeal.recipe_id)
+    )
+    stmt = select(Recipe)
+    if plan_id is not None:
+        planned = planned.where(PlanMeal.plan_id != plan_id)
+        on_plan = select(PlanMeal.recipe_id).where(PlanMeal.plan_id == plan_id, PlanMeal.recipe_id.is_not(None))
+        wished = select(WishlistItem.recipe_id).where(
+            WishlistItem.plan_id == plan_id, WishlistItem.recipe_id.is_not(None))
+        stmt = stmt.where(Recipe.id.not_in(on_plan), Recipe.id.not_in(wished))
+    planned = planned.subquery()
+    last = planned.c.last
+    rows = session.execute(
+        stmt.add_columns(last)
+        .outerjoin(planned, planned.c.recipe_id == Recipe.id)
+        # Aldrig planlagte sidst, ældste oprettet først. Id til sidst, så rækkefølgen er fast.
+        .order_by(last.is_(None), last, case((last.is_(None), Recipe.created_at)), func.lower(Recipe.title), Recipe.id)
+        .limit(limit)
+    )
+    return [
+        SuggestionOut(
+            recipe=_brief(r),
+            source_host=urlparse(r.source_url).hostname.removeprefix("www.") if r.source_url else None,
+            last_planned=when,
+        )
+        for r, when in rows
+    ]

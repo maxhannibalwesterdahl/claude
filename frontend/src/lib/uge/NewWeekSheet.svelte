@@ -22,6 +22,12 @@
 	// Genveje til de to mest brugte indkøbsdage.
 	const shortcuts = [isoDate(nextWeekday(new Date(), 0)), isoDate(nextWeekday(new Date(), 1))];
 
+	/** En anden dag er valgt: sætningen om den forrige gælder ikke længere. */
+	function pick(d: string) {
+		startDate = d;
+		error = '';
+	}
+
 	async function create(e: SubmitEvent, close: () => void) {
 		e.preventDefault();
 		busy = true;
@@ -44,11 +50,11 @@
 			<p class="muted">Ugen starter på indkøbsdagen og varer syv dage.</p>
 			<label class="field">
 				<span>Indkøbsdag</span>
-				<input type="date" bind:value={startDate} required />
+				<input type="date" bind:value={startDate} required oninput={() => (error = '')} />
 			</label>
 			<div class="chips">
 				{#each shortcuts as d}
-					<button type="button" class="chip" aria-pressed={startDate === d} onclick={() => (startDate = d)}>
+					<button type="button" class="chip" aria-pressed={startDate === d} onclick={() => pick(d)}>
 						{weekdayName(d)} {shortDate(d)}
 					</button>
 				{/each}

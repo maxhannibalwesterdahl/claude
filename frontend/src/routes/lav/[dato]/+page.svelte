@@ -1,9 +1,10 @@
 <script lang="ts">
-	import { afterNavigate, goto } from '$app/navigation';
+	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { untrack } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import { api } from '$lib/api';
+	import { navState } from '$lib/nav.svelte';
 	import { clock, onResume } from '$lib/resume.svelte';
 	import { longDate, weekdayName } from '$lib/dates';
 	import { formatQuantity, mult } from '$lib/format';
@@ -91,24 +92,12 @@
 	const toStep = (n: number) => goto(`?trin=${n}`, { replaceState: true, noScroll: true, keepFocus: true });
 	const toOverview = () => goto(page.url.pathname, { replaceState: true });
 
-	// Om der er en side i appen at gå tilbage til. Skift mellem trin tæller ikke:
-	// de er sidens egne og lægger ikke noget i historikken.
-	let cameFromApp = false;
-	afterNavigate(({ from, to }) => {
-		if (from?.url && from.url.pathname !== to?.url.pathname) cameFromApp = true;
-	});
-
+	// Forlad "Lav mad": tilbage til siden, man kom fra (ugen), ellers til ugen
+	// med retten. Tilbage-knappen på billedet gør det samme.
 	const weekUrl = $derived(plan ? `/?plan=${plan.id}` : '/');
 	function leave() {
-		if (cameFromApp) history.back();
+		if (navState.inApp) history.back();
 		else goto(weekUrl, { replaceState: true });
-	}
-	// Tilbage-knappen på billedet skal forlade siden på samme måde som "Færdig".
-	function heroBack(e: MouseEvent) {
-		if (!(e.target instanceof Element) || !e.target.closest('a')) return;
-		e.preventDefault();
-		e.stopPropagation();
-		leave();
 	}
 
 	// "Find frem": kryds, der kun findes på denne telefon. De gemmes, så de
@@ -227,10 +216,7 @@
 		{:else if main?.kind === 'opskrift'}
 			<div class="columns">
 				<section class="intro">
-					<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions (fanger kun trykket på billedets Tilbage-link, som også virker fra tastaturet) -->
-					<div onclickcapture={heroBack}>
-						<Hero src={main.recipe?.image_url} seed={main.recipe?.id ?? main.title} back={weekUrl} />
-					</div>
+					<Hero src={main.recipe?.image_url} seed={main.recipe?.id ?? main.title} back={weekUrl} />
 					<div class="pad head">
 						{@render when()}
 						<h1 class="serif">{main.title}</h1>

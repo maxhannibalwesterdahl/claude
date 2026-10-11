@@ -12,8 +12,17 @@
 
 	let { children } = $props();
 
-	afterNavigate(({ from }) => {
-		if (from) navState.inApp = true;
+	// "Tilbage" må kun gå et skridt tilbage i historikken, når skridtet før også
+	// er en side i appen. SvelteKit nummererer skridtene: et nyt skridt får et
+	// højere nummer, mens en side, der erstatter den forrige (trin i "Lav mad",
+	// adressen på Uge, en omdirigering), beholder nummeret. Står vi over det
+	// nummer, appen blev åbnet på, er der en side at gå tilbage til. Efter en
+	// genindlæsning, eller hvis nummeret mangler, bruges linket i stedet.
+	const step = () => Number(history.state?.['sveltekit:history']) || 0;
+	let entered: number | undefined;
+	afterNavigate(() => {
+		entered ??= step();
+		navState.inApp = step() > entered;
 	});
 
 	const tabs: { href: string; label: string; icon: IconName }[] = [

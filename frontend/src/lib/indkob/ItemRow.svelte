@@ -29,28 +29,6 @@
 			.filter(Boolean)
 			.join(' · ')
 	);
-
-	// Ved et langt tryk åbner arket, mens fingeren stadig er nede. Trykket, der
-	// følger, når den slippes, ville ellers ramme arket: dets baggrund (som
-	// lukker det igen) eller en knap i det. Det tryk bliver derfor ikke til noget.
-	let pressed = false;
-	function held() {
-		if (pressed) {
-			const eat = (e: Event) => {
-				e.preventDefault();
-				e.stopPropagation();
-			};
-			const lifted = () => {
-				removeEventListener('pointerup', lifted, true);
-				removeEventListener('pointercancel', lifted, true);
-				setTimeout(() => removeEventListener('click', eat, true), 400);
-			};
-			addEventListener('click', eat, { capture: true, once: true });
-			addEventListener('pointerup', lifted, true);
-			addEventListener('pointercancel', lifted, true);
-		}
-		onmore();
-	}
 </script>
 
 <!-- Rækken er tre knapper ved siden af hinanden, ikke knapper inden i en knap:
@@ -60,11 +38,7 @@
 <div
 	class="row"
 	class:done={checked}
-	use:longpress={held}
-	onpointerdown={() => (pressed = true)}
-	onpointerup={() => (pressed = false)}
-	onpointercancel={() => (pressed = false)}
-	onpointerleave={() => (pressed = false)}
+	use:longpress={onmore}
 >
 	<button type="button" class="toggle" aria-pressed={checked} onclick={ontoggle}>
 		<Tick {checked} size="lg" />

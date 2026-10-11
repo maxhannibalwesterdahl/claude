@@ -38,7 +38,7 @@
 	/** En oplysning om adressen, siden blev åbnet med. */
 	let notice = $state('');
 	let suggestions = $state<Suggestion[] | null>(null);
-	/** Ugen fra adressen (?plan=). Bruges, når siden hentes igen, og ingen uge vises. */
+	/** Ugen, der er bedt om (?plan=). Tom: den aktuelle uge. Bruges, når siden hentes igen. */
 	let wanted: number | undefined;
 
 	const plan = $derived(week.plan);
@@ -88,8 +88,10 @@
 		if (location.pathname + location.search !== url) replaceState(url, {});
 	}
 
-	// Åbnes appen igen efter et stykke tid, hentes ugen igen (den anden kan have ændret den).
-	onMount(() => onResume(() => week.load(week.plan?.id ?? wanted)));
+	// Åbnes appen igen efter et stykke tid, hentes ugen igen (den anden kan have
+	// ændret den). Vises den aktuelle uge, hentes den aktuelle: er en ny uge
+	// begyndt imens, er det den, der vises, og ikke den gamle.
+	onMount(() => onResume(() => week.load(wanted)));
 
 	async function select(id: number) {
 		await week.load(id);

@@ -1,11 +1,12 @@
 <script lang="ts">
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { untrack } from 'svelte';
-	import { api, ApiError } from './api';
+	import { api } from './api';
 	import { confirmDialog } from './confirm.svelte';
 	import { formatNumber, formatQuantity, parseNumber } from './format';
 	import IngredientPicker from './IngredientPicker.svelte';
 	import { shrinkImage, uploadRecipeImage } from './image';
+	import { say } from './ui/copy';
 	import Icon from './ui/Icon.svelte';
 	import Plate from './ui/Plate.svelte';
 	import type { IngredientRef, Line, Recipe } from './types';
@@ -63,7 +64,7 @@
 			bulk = '';
 			return true;
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : 'Kunne ikke læse linjerne';
+			error = say(e);
 			return false;
 		}
 	}
@@ -74,7 +75,7 @@
 			const [p] = await parse([line.raw]);
 			Object.assign(line, p);
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : 'Kunne ikke læse linjen';
+			error = say(e);
 		}
 	}
 
@@ -203,7 +204,7 @@
 			leaving = true;
 			onsave(saved);
 		} catch (err) {
-			error = err instanceof ApiError ? err.message : 'Kunne ikke gemme';
+			error = say(err);
 		} finally {
 			busy = false;
 		}
@@ -220,7 +221,7 @@
 		try {
 			r = await api<Recipe>(`/recipes/${recipe.id}/suggest-main`, { method: 'POST' });
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : 'Kunne ikke foreslå hovedingredienser';
+			error = say(e);
 			return;
 		}
 		const main = new Set(r.ingredients.filter((l) => l.is_main).map((l) => l.id));

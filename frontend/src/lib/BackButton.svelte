@@ -7,11 +7,13 @@
 		fallback: string;
 		/** Knappen ligger oven på et billede. */
 		float?: boolean;
+		/** Altid et almindeligt link til `fallback`, aldrig "gå tilbage" (fx når målet er en bestemt side). */
+		plain?: boolean;
 	}
-	let { fallback, float = false }: Props = $props();
+	let { fallback, float = false, plain = false }: Props = $props();
 
 	function back(e: MouseEvent) {
-		if (navState.inApp) {
+		if (navState.inApp && !plain) {
 			e.preventDefault();
 			history.back();
 		}

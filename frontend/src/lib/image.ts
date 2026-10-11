@@ -38,6 +38,6 @@ export async function uploadRecipeImage(recipeId: number, image: Blob): Promise<
 		throw new ApiError(401, 'Ikke logget ind');
 	}
 	const data = await res.json().catch(() => null);
-	if (!res.ok) throw new ApiError(res.status, typeof data?.detail === 'string' ? data.detail : 'Kunne ikke gemme billedet');
+	if (!res.ok) throw new ApiError(res.status, typeof data?.detail === 'string' ? data.detail : 'Billedet kunne ikke gemmes. Prøv igen.');
 	return data as Recipe;
 }

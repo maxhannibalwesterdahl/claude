@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { untrack } from 'svelte';
 	import { api } from '$lib/api';
+	import { navState } from '$lib/nav.svelte';
 	import { shopping } from '$lib/shopping.svelte';
 	import { say } from '$lib/ui/copy';
 	import Icon from '$lib/ui/Icon.svelte';
@@ -37,7 +38,10 @@
 			await api('/settings/departments', { method: 'PUT', body: { order: order.map((d) => d.code) } });
 			// Indkøbslisten følger den nye rækkefølge, næste gang den hentes.
 			shopping.sync();
-			await goto('/rydop', { replaceState: true });
+			// Tilbage til Ryd op, uden at lægge en ekstra side i historikken: ellers
+			// skulle der trykkes Tilbage to gange for at komme videre derfra.
+			if (navState.inApp) history.back();
+			else await goto('/rydop', { replaceState: true });
 		} catch (e) {
 			error = say(e);
 		} finally {

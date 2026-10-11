@@ -1,7 +1,8 @@
 <script lang="ts">
-	import BackButton from '$lib/BackButton.svelte';
 	import { goto } from '$app/navigation';
 	import { api, ApiError } from '$lib/api';
+	import { say } from '$lib/ui/copy';
+	import ScreenHeader from '$lib/ui/ScreenHeader.svelte';
 	import type { Recipe } from '$lib/types';
 
 	let url = $state('');
@@ -21,11 +22,11 @@
 			const note = r.warnings.length ? `?advarsel=${encodeURIComponent(r.warnings.join('. '))}` : '';
 			await goto(`/opskrift/${r.id}${note}`);
 		} catch (err) {
+			error = say(err);
 			if (err instanceof ApiError) {
-				error = err.message;
 				const d = err.detail as { id?: number } | null;
 				if (err.status === 409 && d?.id) existing = d.id;
-			} else error = 'Noget gik galt';
+			}
 		} finally {
 			busy = false;
 		}
@@ -35,37 +36,34 @@
 		try {
 			url = (await navigator.clipboard.readText()).trim();
 		} catch {
-			error = 'Kunne ikke læse udklipsholderen. Indsæt linket i feltet.';
+			error = 'Udklipsholderen kunne ikke læses. Indsæt linket i feltet.';
 		}
 	}
 </script>
 
-<main class="legacy">
-	<header class="top">
-		<BackButton fallback="/opskrifter" />
-		<h1>Importér opskrift</h1>
-	</header>
+<main>
+	<ScreenHeader title="Importér opskrift" eyebrow="Opskrifter" back="/opskrifter" />
 
-	<form onsubmit={submit}>
+	<form class="pad" onsubmit={submit}>
 		<label class="field">
 			<span>Link til opskriften</span>
 			<input type="url" inputmode="url" placeholder="https://www.valdemarsro.dk/…" bind:value={url} required />
 		</label>
-		<div class="row">
-			<button type="button" onclick={paste}>Indsæt link</button>
-			<button class="primary grow" disabled={busy || !url.trim()}>{busy ? 'Henter opskriften…' : 'Importér'}</button>
+		<div class="btns">
+			<button type="button" class="btn" onclick={paste}>Indsæt link</button>
+			<button class="btn primary" disabled={busy || !url.trim()}>{busy ? 'Henter opskriften…' : 'Importér'}</button>
 		</div>
 	</form>
 
 	{#if error}
-		<p class="error" role="alert">
+		<p class="msg" role="alert">
 			{error}
-			{#if existing}<br /><a href="/opskrift/{existing}">Åbn opskriften</a>{/if}
+			{#if existing}<a class="link" href="/opskrift/{existing}">Åbn opskriften</a>{/if}
 		</p>
 	{/if}
 
-	<h2 class="section-title">Virker med</h2>
-	<p class="muted small">
+	<h2 class="sl">Virker med</h2>
+	<p class="pad muted small">
 		{sites.join(', ')} og de fleste andre sider med opskriftsdata. Spis Bedre virker ikke. Ingredienserne læses
 		automatisk, og I kan rette dem bagefter.
 	</p>
@@ -75,8 +73,10 @@
 	form {
 		display: grid;
 		gap: 12px;
+		margin-top: 8px;
 	}
-	button.grow {
-		justify-content: center;
+	.msg .link {
+		display: block;
+		padding-block: 10px 2px;
 	}
 </style>

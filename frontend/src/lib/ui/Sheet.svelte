@@ -18,7 +18,7 @@
 		size?: 'auto' | 'tall';
 		/** Kaldes efter Escape, tryk på baggrunden, træk ned eller Luk, når arket er gledet ud. */
 		onclose: () => void;
-		/** Til højre for titlen (tallerken, "Færdig"). Erstatter Luk-knappen. */
+		/** Til højre for titlen (tallerken, "Færdig"). Luk-knappen ses så kun, når tastaturet står på den. */
 		aside?: Snippet<[close: () => void]>;
 		/** Ligger fast under indholdet (knapper, søgefelt). */
 		footer?: Snippet<[close: () => void]>;
@@ -154,11 +154,10 @@
 					<h2 id="{uid}-title" class="serif">{title}</h2>
 					{#if eyebrow && !eyebrowAbove}<p class="ey">{eyebrow}</p>{/if}
 				</div>
-				{#if aside}
-					{@render aside(close)}
-				{:else}
-					<button type="button" class="rnd" aria-label={labelClose} onclick={close}><Icon name="x" /></button>
-				{/if}
+				<!-- Med noget ved titlen (tallerken, "Færdig") er Luk ikke synlig, men den er
+				     der stadig: skærmlæsere finder den, og den kommer frem, når tastaturet når den. -->
+				{#if aside}{@render aside(close)}{/if}
+				<button type="button" class="rnd" class:tucked={!!aside} aria-label={labelClose} onclick={close}><Icon name="x" /></button>
 			</header>
 		</div>
 		<div class="body" bind:this={body}>{@render children(close)}</div>
@@ -252,6 +251,21 @@
 		gap: 12px;
 		padding: 8px max(var(--gutter), env(safe-area-inset-right)) 10px max(var(--gutter), env(safe-area-inset-left));
 	}
+	header {
+		position: relative;
+	}
+	/* Luk, når der står noget andet ved titlen: lægger sig oven på det, når den har fokus. */
+	.tucked {
+		position: absolute;
+		top: 8px;
+		right: max(var(--gutter), env(safe-area-inset-right));
+	}
+	.tucked:not(:focus-visible) {
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+	}
 	h2 {
 		font-size: var(--fs-sheet-title);
 		line-height: 30px;
@@ -308,6 +322,9 @@
 		}
 		header {
 			padding-top: 18px;
+		}
+		.tucked {
+			top: 18px;
 		}
 		.inner {
 			padding-bottom: 0;

@@ -7,7 +7,6 @@
 	import { clock } from '$lib/resume.svelte';
 	import { shopping } from '$lib/shopping.svelte';
 	import { say } from '$lib/ui/copy';
-	import Icon from '$lib/ui/Icon.svelte';
 	import Sheet from '$lib/ui/Sheet.svelte';
 	import WeekNav from '$lib/ui/WeekNav.svelte';
 	import type { Day, Plan, PlanBrief } from '$lib/types';
@@ -89,14 +88,12 @@
 	}
 </script>
 
-<Sheet title="Læg på en dag" eyebrow={recipe.title} {onclose}>
-	{#snippet aside(close)}
-		<!-- Ugerne kan kun skiftes, når der er flere. Luk står her, fordi arket ellers ingen synlig lukkeknap har. -->
-		{#if plan && plans.length > 1}
-			<WeekNav {plan} {plans} onselect={(id) => show(api<Plan>(`/plans/${id}`))} />
-		{/if}
-		<button type="button" class="rnd" aria-label="Luk" onclick={close}><Icon name="x" /></button>
-	{/snippet}
+<!-- Ugerne kan kun skiftes, når der er flere. Ellers står arkets egen Luk ved titlen. -->
+{#snippet weeks()}
+	{#if plan}<WeekNav {plan} {plans} onselect={(id) => show(api<Plan>(`/plans/${id}`))} />{/if}
+{/snippet}
+
+<Sheet title="Læg på en dag" eyebrow={recipe.title} aside={plan && plans.length > 1 ? weeks : undefined} {onclose}>
 	{#snippet children(close)}
 		{#if error}<p class="msg" role="alert">{error}</p>{/if}
 		{#if plan}

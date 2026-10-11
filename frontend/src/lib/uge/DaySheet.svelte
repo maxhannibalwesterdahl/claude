@@ -120,30 +120,11 @@
 	</Sheet>
 {/if}
 
-<!-- Med en tallerken ved titlen har arket ikke sin egen Luk-knap. Den her ses
-     kun, når tastaturet når til den; fingeren har baggrunden og træk ned. -->
-{#snippet plate(close: () => void)}
-	<span class="aside">
-		<Plate src={recipe?.image_url} seed={recipe?.id} size={44} />
-		<button type="button" class="rnd x" aria-label="Luk" onclick={close}><Icon name="x" /></button>
-	</span>
+{#snippet plate()}
+	<Plate src={recipe?.image_url} seed={recipe?.id} size={44} />
 {/snippet}
 
 <style>
-	.aside {
-		position: relative;
-		flex: none;
-	}
-	.x {
-		position: absolute;
-		inset: 2px;
-	}
-	.x:not(:focus-visible) {
-		width: 1px;
-		height: 1px;
-		overflow: hidden;
-		clip-path: inset(50%);
-	}
 	.to {
 		margin-bottom: 8px;
 	}

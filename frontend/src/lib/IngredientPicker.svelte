@@ -60,8 +60,7 @@
      Escape i feltet kalder oncancel. -->
 <div class="picker">
 	<div class="search">
-		<input bind:this={input} bind:value={q} onkeydown={keydown} placeholder="Søg vare" aria-label="Søg vare" class="grow" />
-		<button type="button" class="btn sm legacy-only" onclick={oncancel}>Luk</button>
+		<input bind:this={input} bind:value={q} onkeydown={keydown} placeholder="Søg vare" aria-label="Søg vare" />
 	</div>
 	{#if suggestion}
 		<div class="suggestion">

@@ -3,6 +3,7 @@
 	import { MediaQuery } from 'svelte/reactivity';
 	import { afterNavigate, replaceState } from '$app/navigation';
 	import { periodLong, shoppingDayLabel, weekTitle } from '$lib/dates';
+	import { navState } from '$lib/nav.svelte';
 	import { planApi } from '$lib/planApi';
 	import { clock, onResume } from '$lib/resume.svelte';
 	import { fetchSuggestions, type Suggestion } from '$lib/suggestions';
@@ -85,6 +86,7 @@
 		const current = !p || (p.start_date <= clock.today && clock.today <= p.end_date);
 		const url = current ? '/' : `/?plan=${p.id}`;
 		wanted = current ? undefined : p.id;
+		navState.week = url;
 		if (location.pathname + location.search !== url) replaceState(url, {});
 	}
 

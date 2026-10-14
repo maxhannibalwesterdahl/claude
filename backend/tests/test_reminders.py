@@ -174,6 +174,78 @@ def test_vapid_signature_verifies():
     assert claims["aud"] == "https://web.push.apple.com" and claims["sub"] == "https://madplan.example"
 
 
+def patch(client, rid, **body):
+    r = client.patch(f"/api/reminders/{rid}", json=body)
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def reminder_of(plan):
+    return thursday(plan)["reminders"][0]
+
+
+def test_default_times_are_reported(client, plan):
+    p = client.post(f"/api/meals/{thursday(plan)['id']}/reminders", json={"text": "kød op"}).json()
+    r = reminder_of(p)
+    assert (r["first_time"], r["again_time"], r["again_on"]) == ("19:00", "07:00", True)
+
+
+def test_own_times(app, client, plan):
+    meal = thursday(plan)
+    client.post(f"/api/meals/{meal['id']}/reminders", json={"text": "kød op"})
+    phone = Phone()
+    subscribe(client, phone)
+    rid = reminder_of(client.get(f"/api/plans/{plan['id']}").json())["id"]
+    p = patch(client, rid, first_time="17:30", again_time="06:15")
+    assert (reminder_of(p)["first_time"], reminder_of(p)["again_time"]) == ("17:30", "06:15")
+
+    assert run(app, at(7, 17), phone) == 0          # før 17.30
+    assert run(app, datetime(2026, 10, 7, 17, 30, tzinfo=TZ), phone) == 1
+    assert run(app, at(8, 6), phone) == 0           # før 6.15
+    assert run(app, datetime(2026, 10, 8, 6, 15, tzinfo=TZ), phone) == 1
+
+
+def test_repeat_can_be_turned_off(app, client, plan):
+    meal = thursday(plan)
+    client.post(f"/api/meals/{meal['id']}/reminders", json={"text": "kød op", "again_on": False})
+    phone = Phone()
+    subscribe(client, phone)
+    assert run(app, at(7, 19), phone) == 1
+    assert run(app, at(8, 7), phone) == 0           # ingen gentagelse
+    assert run(app, at(8, 19), phone) == 0
+
+
+def test_default_value_is_stored_as_default_and_null_resets(client, plan):
+    meal = thursday(plan)
+    p = client.post(f"/api/meals/{meal['id']}/reminders",
+                    json={"text": "kød op", "first_time": "19:00", "again_time": "08:00"}).json()
+    rid = reminder_of(p)["id"]
+    p = patch(client, rid, first_time="20:00")
+    assert reminder_of(p)["first_time"] == "20:00" and reminder_of(p)["again_time"] == "08:00"
+    p = patch(client, rid, first_time=None, again_time=None, again_on=True)
+    r = reminder_of(p)
+    assert (r["first_time"], r["again_time"]) == ("19:00", "07:00")
+
+
+def test_invalid_time_is_refused(client, plan):
+    meal = thursday(plan)
+    r = client.post(f"/api/meals/{meal['id']}/reminders", json={"text": "kød op", "first_time": "25:00"})
+    assert r.status_code == 422
+
+
+def test_a_new_time_that_has_already_passed_does_not_send_at_once(app, client, plan, monkeypatch):
+    import madplan.api.reminders as routes
+    meal = thursday(plan)
+    client.post(f"/api/meals/{meal['id']}/reminders", json={"text": "kød op", "first_time": "21:00"})
+    phone = Phone()
+    subscribe(client, phone)
+    rid = reminder_of(client.get(f"/api/plans/{plan['id']}").json())["id"]
+    monkeypatch.setattr(routes, "local_now", lambda: at(7, 20))   # onsdag kl. 20
+    patch(client, rid, first_time="19:30")                         # 19.30 er allerede gået
+    assert run(app, at(7, 20), phone) == 0
+    assert run(app, at(8, 7), phone) == 1
+
+
 def test_written_after_the_send_time_waits_for_the_next(app, client, plan, monkeypatch):
     import madplan.api.reminders as routes
     meal = thursday(plan)

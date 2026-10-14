@@ -6,20 +6,31 @@ from pydantic import BaseModel, Field
 from .. import push
 from ..config import local_now
 from ..models import MealReminder, PushSubscription, Setting
-from ..reminders import SUBJECT_KEY, send_to, written_tonight
+from ..reminders import DEFAULT_AGAIN, DEFAULT_FIRST, SUBJECT_KEY, mark_seen, send_to
 from .deps import AppSettings, CurrentUser, DbSession
 from .plans import PlanOut, _meal, load_plan, plan_out
 
 router = APIRouter(prefix="/api")
 
 
+HHMM = r"^([01]\d|2[0-3]):[0-5]\d$"
+
+
 class ReminderIn(BaseModel):
     text: str = Field(max_length=200)
+    # Tom = standarden (kl. 19 aftenen før og kl. 7 på dagen).
+    first_time: str | None = Field(None, pattern=HHMM)
+    again_time: str | None = Field(None, pattern=HHMM)
+    again_on: bool = True
 
 
 class ReminderPatch(BaseModel):
     done: bool | None = None
     text: str | None = Field(None, max_length=200)
+    # null nulstiller til standarden.
+    first_time: str | None = Field(None, pattern=HHMM)
+    again_time: str | None = Field(None, pattern=HHMM)
+    again_on: bool | None = None
 
 
 class SubscriptionKeys(BaseModel):
@@ -51,9 +62,13 @@ def _reminder(session, reminder_id: int) -> MealReminder:
 @router.post("/meals/{meal_id}/reminders")
 def add_reminder(meal_id: int, body: ReminderIn, session: DbSession, _: CurrentUser) -> PlanOut:
     meal = _meal(session, meal_id)
-    r = MealReminder(text=_clean(body.text))
+    r = MealReminder(
+        text=_clean(body.text), again_on=body.again_on,
+        first_time=None if body.first_time == DEFAULT_FIRST else body.first_time,
+        again_time=None if body.again_time == DEFAULT_AGAIN else body.again_time,
+    )
     meal.reminders.append(r)
-    written_tonight(r, local_now())
+    mark_seen(r, local_now())
     session.commit()
     return plan_out(load_plan(session, meal.plan_id))
 
@@ -65,6 +80,19 @@ def update_reminder(reminder_id: int, body: ReminderPatch, session: DbSession, _
         r.done = body.done
     if body.text is not None:
         r.text = _clean(body.text)
+    changed = False
+    if "first_time" in body.model_fields_set:
+        r.first_time = None if body.first_time == DEFAULT_FIRST else body.first_time
+        changed = True
+    if "again_time" in body.model_fields_set:
+        r.again_time = None if body.again_time == DEFAULT_AGAIN else body.again_time
+        changed = True
+    if body.again_on is not None:
+        r.again_on = body.again_on
+        changed = True
+    if changed:
+        # Et nyt tidspunkt, der allerede er passeret i dag, sender ikke med det samme.
+        mark_seen(r, local_now())
     session.commit()
     return plan_out(load_plan(session, r.meal.plan_id))
 

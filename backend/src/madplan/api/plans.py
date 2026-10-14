@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session, selectinload
 from ..config import local_today
 from ..models import Plan, PlanLineState, PlanMeal, Recipe, RecipeIngredient, WishlistItem
 from ..planning import MULTIPLIERS, scale
+from ..reminders import again_time, first_time
 from .deps import CurrentUser, DbSession
 from .recipes import image_url, ingredient_ref
 from .schemas import IngredientRef
@@ -56,6 +57,10 @@ class ReminderOut(BaseModel):
     id: int
     text: str
     done: bool
+    # Tidspunkterne, der gælder ("HH:MM"): standarden, hvis de ikke er ændret.
+    first_time: str
+    again_time: str
+    again_on: bool
 
 
 class MealOut(BaseModel):
@@ -183,7 +188,11 @@ def _meal_out(meal: PlanMeal) -> MealOut:
         if src else None,
         suggest_double=bool(src and src.kind == "opskrift" and src.multiplier < 2),
         lines=lines,
-        reminders=[ReminderOut(id=r.id, text=r.text, done=r.done) for r in meal.reminders],
+        reminders=[
+            ReminderOut(id=r.id, text=r.text, done=r.done, first_time=first_time(r),
+                        again_time=again_time(r), again_on=r.again_on)
+            for r in meal.reminders
+        ],
     )
 
 

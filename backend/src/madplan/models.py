@@ -6,7 +6,7 @@
 
 from datetime import date, datetime, timezone
 
-from sqlalchemy import BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, true
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -173,8 +173,9 @@ class PlanLineState(Base):
 
 
 class MealReminder(Base):
-    """"Husk kød op af fryseren" på en ret. Sendes som besked kl. 19 dagen før
-    og igen kl. 7 på dagen, hvis den ikke er krydset af. Følger retten, når den flyttes."""
+    """"Husk kød op af fryseren" på en ret. Sendes som besked aftenen før (standard
+    kl. 19) og igen på dagen (standard kl. 7), hvis den ikke er krydset af.
+    Tidspunkterne kan ændres pr. påmindelse. Følger retten, når den flyttes."""
 
     __tablename__ = "meal_reminder"
 
@@ -182,7 +183,12 @@ class MealReminder(Base):
     meal_id: Mapped[int] = mapped_column(ForeignKey("plan_meal.id", ondelete="CASCADE"), index=True)
     text: Mapped[str] = mapped_column(String(200))
     done: Mapped[bool] = mapped_column(Boolean, default=False)
-    # Dagen (dansk tid), beskeden sidst blev sendt. Højst én gang pr. aften.
+    # "HH:MM" i dansk tid. Tom = standarden (se madplan.reminders).
+    first_time: Mapped[str | None] = mapped_column(String(5))
+    again_time: Mapped[str | None] = mapped_column(String(5))
+    # Sendes den igen på dagen, hvis den ikke er krydset af?
+    again_on: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
+    # Dagen (dansk tid), beskeden sidst blev sendt. Højst én gang pr. dag.
     sent_on: Mapped[date | None] = mapped_column(Date)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 

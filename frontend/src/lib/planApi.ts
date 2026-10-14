@@ -21,6 +21,9 @@ export const planApi = {
 		api<Plan>(`/meals/${mealId}/lines/${lineId}`, { method: 'PUT', body: { state } }),
 	addReminder: (mealId: number, text: string) => api<Plan>(`/meals/${mealId}/reminders`, { method: 'POST', body: { text } }),
 	setReminder: (id: number, done: boolean) => api<Plan>(`/reminders/${id}`, { method: 'PATCH', body: { done } }),
+	/** null nulstiller et tidspunkt til standarden. */
+	setReminderTimes: (id: number, body: { first_time?: string | null; again_time?: string | null; again_on?: boolean }) =>
+		api<Plan>(`/reminders/${id}`, { method: 'PATCH', body }),
 	removeReminder: (id: number) => api<Plan>(`/reminders/${id}`, { method: 'DELETE' }),
 	addWish: (planId: number, body: { recipe_id?: number; text?: string }) =>
 		api<Plan>(`/plans/${planId}/wishlist`, { method: 'POST', body }),

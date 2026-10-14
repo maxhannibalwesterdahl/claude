@@ -112,6 +112,10 @@ export interface Reminder {
 	id: number;
 	text: string;
 	done: boolean;
+	/** Tidspunkterne, der gælder ("HH:MM"). Standarden, hvis de ikke er ændret. */
+	first_time: string;
+	again_time: string;
+	again_on: boolean;
 }
 
 export interface Meal {

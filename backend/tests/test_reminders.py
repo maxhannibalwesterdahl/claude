@@ -100,7 +100,7 @@ def test_reminder_follows_the_meal_when_moved(client, plan):
     assert [r["text"] for r in friday["reminders"]] == ["kød op"]
 
 
-def test_sent_at_19_the_day_before_and_again_until_ticked(app, client, plan):
+def test_sent_at_19_the_day_before_and_at_7_on_the_day(app, client, plan):
     meal = thursday(plan)
     client.post(f"/api/meals/{meal['id']}/reminders", json={"text": "Husk kød op af fryseren"})
     phone = Phone()
@@ -112,16 +112,18 @@ def test_sent_at_19_the_day_before_and_again_until_ticked(app, client, plan):
     assert phone.got[-1]["body"] == "Hakkebøf i morgen"
     assert phone.got[-1]["url"] == "/?dag=2026-10-08"
     assert run(app, at(7, 21), phone) == 0          # kun én gang pr. aften
-    assert run(app, at(8, 19), phone) == 1          # ikke krydset af: igen torsdag
+    assert run(app, at(8, 6), phone) == 0           # torsdag før kl. 7
+    assert run(app, at(8, 7), phone) == 1           # ikke krydset af: torsdag kl. 7
     assert phone.got[-1]["body"] == "Hakkebøf i dag"
-    assert run(app, at(9, 19), phone) == 0          # retten er spist
+    assert run(app, at(8, 19), phone) == 0          # kun én gang på dagen
+    assert run(app, at(9, 7), phone) == 0           # retten er spist
 
     rid = thursday(client.get(f"/api/plans/{plan['id']}").json())["reminders"][0]["id"]
     with app.state.db.sessionmaker() as s:
         s.get(MealReminder, rid).sent_on = None
         s.commit()
     client.patch(f"/api/reminders/{rid}", json={"done": True})
-    assert run(app, at(8, 20), phone) == 0          # krydset af: ingen besked
+    assert run(app, at(8, 8), phone) == 0           # krydset af: ingen besked
 
 
 def test_waits_for_a_phone_and_drops_phones_that_are_gone(app, client, plan):
@@ -170,3 +172,14 @@ def test_vapid_signature_verifies():
     key.public_key().verify(der, f"{head}.{body}".encode(), ec.ECDSA(hashes.SHA256()))
     claims = json.loads(push.b64url_decode(body))
     assert claims["aud"] == "https://web.push.apple.com" and claims["sub"] == "https://madplan.example"
+
+
+def test_written_after_the_send_time_waits_for_the_next(app, client, plan, monkeypatch):
+    import madplan.api.reminders as routes
+    meal = thursday(plan)
+    phone = Phone()
+    subscribe(client, phone)
+    monkeypatch.setattr(routes, "local_now", lambda: at(7, 20))   # onsdag aften
+    client.post(f"/api/meals/{meal['id']}/reminders", json={"text": "kød op"})
+    assert run(app, at(7, 21), phone) == 0          # lige skrevet: ingen besked i aften
+    assert run(app, at(8, 7), phone) == 1           # men torsdag morgen

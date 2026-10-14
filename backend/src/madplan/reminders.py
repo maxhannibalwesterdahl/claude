@@ -1,8 +1,8 @@
 """Påmindelser: "Husk kød op af fryseren" på en ret sendes som besked.
 
 Første gang kl. 19 aftenen før retten. Er den ikke krydset af, kommer den igen
-kl. 19 dagen efter (på selve dagen). Derefter er retten spist, og der sendes
-ikke mere. Højst én besked pr. påmindelse pr. aften.
+kl. 7 om morgenen på selve dagen. Derefter sendes der ikke mere. Højst én
+besked pr. påmindelse pr. dag.
 """
 
 import asyncio
@@ -19,20 +19,27 @@ from .models import MealReminder, PlanMeal, PushSubscription, Setting
 
 log = logging.getLogger("madplan")
 
-SEND_HOUR = 19
+EVENING_HOUR = 19  # aftenen før
+MORNING_HOUR = 7   # på selve dagen
 SUBJECT_KEY = "push_subject"
 
 
-def in_window(meal_date: date, today: date) -> bool:
-    return meal_date - timedelta(days=1) <= today <= meal_date
+def due_dates(now: datetime) -> list[date]:
+    """Rettenes datoer, hvis besked skal være sendt i dag på dette tidspunkt."""
+    today = now.date()
+    dates = []
+    if now.hour >= MORNING_HOUR:
+        dates.append(today)
+    if now.hour >= EVENING_HOUR:
+        dates.append(today + timedelta(days=1))
+    return dates
 
 
 def written_tonight(reminder: MealReminder, now: datetime) -> None:
-    """Skrives påmindelsen efter kl. 19 en aften, hvor den ellers skulle sendes,
-    er den lige set: beskeden kommer først næste aften."""
-    today = now.date()
-    if now.hour >= SEND_HOUR and in_window(reminder.meal.date, today):
-        reminder.sent_on = today
+    """Skrives påmindelsen, efter dagens besked skulle være sendt, er den lige
+    set: den næste besked kommer først på næste tidspunkt."""
+    if reminder.meal.date in due_dates(now):
+        reminder.sent_on = now.date()
 
 
 def strip_husk(text: str) -> str:
@@ -85,21 +92,22 @@ def send_to(session: Session, subs: list[PushSubscription], msg: dict, key, post
 def send_due(sm: sessionmaker, data_dir: Path, now: datetime | None = None, post=None) -> int:
     """Sender de påmindelser, der skal ud nu. Svarer med antallet, der blev sendt."""
     now = now or local_now()
-    if now.hour < SEND_HOUR:
+    dates = due_dates(now)
+    if not dates:
         return 0
     today = now.date()
     post = post or push.httpx.post
     with sm() as session:
         if not targets(session):
             # Ingen telefoner endnu: påmindelserne venter, så de kan nå frem samme
-            # aften, hvis nogen slår beskeder til.
+            # dag, hvis nogen slår beskeder til.
             return 0
         due = session.scalars(
             select(MealReminder)
             .join(PlanMeal)
             .where(
                 MealReminder.done.is_(False),
-                PlanMeal.date.in_([today, today + timedelta(days=1)]),
+                PlanMeal.date.in_(dates),
                 or_(MealReminder.sent_on.is_(None), MealReminder.sent_on != today),
             )
             .options(selectinload(MealReminder.meal).selectinload(PlanMeal.recipe),

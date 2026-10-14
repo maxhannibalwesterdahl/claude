@@ -174,7 +174,7 @@ class PlanLineState(Base):
 
 class MealReminder(Base):
     """"Husk kød op af fryseren" på en ret. Sendes som besked kl. 19 dagen før
-    og igen aftenen efter, til den er krydset af. Følger retten, når den flyttes."""
+    og igen kl. 7 på dagen, hvis den ikke er krydset af. Følger retten, når den flyttes."""
 
     __tablename__ = "meal_reminder"
 

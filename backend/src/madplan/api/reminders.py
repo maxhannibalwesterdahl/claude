@@ -105,7 +105,7 @@ def subscribe(body: SubscriptionIn, request: Request, session: DbSession, settin
             setting.value = origin
     session.commit()
     if body.hello:
-        msg = {"title": "Beskeder er slået til", "body": "Påmindelser kommer kl. 19 dagen før.", "tag": "hej", "url": "/"}
+        msg = {"title": "Beskeder er slået til", "body": "Påmindelser kommer kl. 19 dagen før og kl. 7 på dagen.", "tag": "hej", "url": "/"}
         ok = send_to(session, [sub], msg, push.load_key(settings.data_dir), push.httpx.post)
         session.commit()
         if not ok:

@@ -42,7 +42,7 @@
 	}
 </script>
 
-<p class="sl">Husk<span>Besked kl. 19 dagen før</span></p>
+<p class="sl">Husk<span>Besked kl. 19 aftenen før</span></p>
 {#each meal.reminders as r (r.id)}
 	<div class="husk">
 		<input id="husk-{r.id}" type="checkbox" class="sr" checked={r.done} onchange={(e) => toggle(r, e.currentTarget.checked)} />

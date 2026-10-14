@@ -25,6 +25,8 @@
 		const s = weekday(day.date);
 		return s.charAt(0).toUpperCase() + s.slice(1);
 	});
+	// Påmindelser, der ikke er krydset af endnu ("Husk: kød op af fryseren").
+	const husk = $derived(meal?.reminders.filter((r) => !r.done).map((r) => r.text) ?? []);
 	const scaled = $derived(meal?.kind === 'opskrift' && meal.multiplier !== 1 ? ` ${mult(meal.multiplier)}` : '');
 </script>
 
@@ -65,6 +67,7 @@
 				<span class="c pick">Vælg ret</span>
 			{/if}
 			{#if day.child}<span class="c">Barnet: {day.child.title}</span>{/if}
+			{#if husk.length}<span class="c husk ellipsis">Husk: {husk.join(', ')}</span>{/if}
 		</span>
 		{#if !meal}
 			<span class="pc"><Icon name="plus" size={17} stroke={2.4} /></span>
@@ -138,6 +141,9 @@
 	.c {
 		font-size: var(--fs-cap);
 		color: var(--muted);
+	}
+	.husk {
+		color: var(--tomat);
 	}
 	.pick {
 		font-size: 15.5px;

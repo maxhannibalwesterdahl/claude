@@ -19,6 +19,9 @@ export const planApi = {
 	remove: (mealId: number) => api<Plan>(`/meals/${mealId}`, { method: 'DELETE' }),
 	setLine: (mealId: number, lineId: number, state: 'hjemme' | 'rest' | null) =>
 		api<Plan>(`/meals/${mealId}/lines/${lineId}`, { method: 'PUT', body: { state } }),
+	addReminder: (mealId: number, text: string) => api<Plan>(`/meals/${mealId}/reminders`, { method: 'POST', body: { text } }),
+	setReminder: (id: number, done: boolean) => api<Plan>(`/reminders/${id}`, { method: 'PATCH', body: { done } }),
+	removeReminder: (id: number) => api<Plan>(`/reminders/${id}`, { method: 'DELETE' }),
 	addWish: (planId: number, body: { recipe_id?: number; text?: string }) =>
 		api<Plan>(`/plans/${planId}/wishlist`, { method: 'POST', body }),
 	removeWish: (wishId: number) => api<Plan>(`/wishlist/${wishId}`, { method: 'DELETE' })

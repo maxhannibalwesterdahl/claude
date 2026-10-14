@@ -24,11 +24,15 @@ certifi==2026.7.22
     #   httpx
     #   requests
 cffi==2.1.1
-    # via argon2-cffi-bindings
+    # via
+    #   argon2-cffi-bindings
+    #   cryptography
 charset-normalizer==3.5.1
     # via requests
 click==8.5.0
     # via uvicorn
+cryptography==50.0.2
+    # via madplan (pyproject.toml)
 extruct==0.18.0
     # via recipe-scrapers
 fastapi==0.141.1

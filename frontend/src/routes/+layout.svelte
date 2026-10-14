@@ -5,6 +5,7 @@
 	import { page } from '$app/state';
 	import ConfirmDialog from '$lib/ConfirmDialog.svelte';
 	import { navState } from '$lib/nav.svelte';
+	import { syncPush } from '$lib/push.svelte';
 	import { onResume } from '$lib/resume.svelte';
 	import { shopping } from '$lib/shopping.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
@@ -54,6 +55,12 @@
 		if (onLogin) return;
 		untrack(() => void shopping.sync());
 		return onResume(() => void shopping.sync());
+	});
+
+	// Har telefonen sagt ja til beskeder, får serveren den at vide igen (fx efter
+	// en ny prøveudgave af databasen). Ikke på login.
+	$effect(() => {
+		if (!onLogin) untrack(syncPush);
 	});
 
 	// Skærmtastaturet lægger sig oven på siden uden at gøre den lavere (iPhone).

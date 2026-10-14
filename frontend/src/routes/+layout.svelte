@@ -93,8 +93,10 @@
 		{#each tabs as tab}
 			{@const on = active(tab.href)}
 			{@const badge = tab.href === '/indkob' && !on && left > 0}
+			<!-- Uge går til den uge, der sidst blev vist. Står man allerede på Uge,
+			     går fanen til den igangværende uge. -->
 			<a
-				href={tab.href}
+				href={tab.href === '/' && !on ? navState.week : tab.href}
 				class:on
 				aria-current={on ? 'page' : undefined}
 				aria-label={badge ? `Indkøb, ${left} ${left === 1 ? 'vare' : 'varer'} mangler` : undefined}

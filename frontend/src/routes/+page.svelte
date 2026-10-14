@@ -6,6 +6,7 @@
 	import { navState } from '$lib/nav.svelte';
 	import { planApi } from '$lib/planApi';
 	import { clock, onResume } from '$lib/resume.svelte';
+	import { shopping } from '$lib/shopping.svelte';
 	import { fetchSuggestions, type Suggestion } from '$lib/suggestions';
 	import type { Day, SlotChoice, Wish } from '$lib/types';
 	import Plate from '$lib/ui/Plate.svelte';
@@ -87,6 +88,12 @@
 		const url = current ? '/' : `/?plan=${p.id}`;
 		wanted = current ? undefined : p.id;
 		navState.week = url;
+		// Indkøb viser samme uge som Uge.
+		const view = current ? null : p.id;
+		if (shopping.selected !== view) {
+			shopping.selected = view;
+			void shopping.sync();
+		}
 		if (location.pathname + location.search !== url) replaceState(url, {});
 	}
 

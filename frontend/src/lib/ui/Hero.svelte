@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import BackButton from '$lib/BackButton.svelte';
 	import Plate from './Plate.svelte';
 
@@ -9,8 +10,10 @@
 		seed?: string | number;
 		/** Siden, Tilbage går til, hvis siden er åbnet direkte. Uden den vises ingen knap. */
 		back?: string;
+		/** Knap i øverste højre hjørne (fx Start på "Lav mad"). */
+		action?: Snippet;
 	}
-	let { src = null, seed = '', back }: Props = $props();
+	let { src = null, seed = '', back, action }: Props = $props();
 </script>
 
 <!-- Toppen af en opskrift og af "Lav mad": billede fra kant til kant. -->
@@ -21,6 +24,7 @@
 		<Plate {seed} size={132} />
 	{/if}
 	{#if back}<div class="back"><BackButton fallback={back} float /></div>{/if}
+	{#if action}<div class="act">{@render action()}</div>{/if}
 </div>
 
 <style>
@@ -50,6 +54,11 @@
 		position: absolute;
 		top: calc(env(safe-area-inset-top) + 8px);
 		left: max(12px, env(safe-area-inset-left));
+	}
+	.act {
+		position: absolute;
+		top: calc(env(safe-area-inset-top) + 8px);
+		right: max(12px, env(safe-area-inset-right));
 	}
 	@media (min-width: 900px) {
 		.hero {

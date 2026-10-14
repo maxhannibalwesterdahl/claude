@@ -2,7 +2,6 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { untrack } from 'svelte';
-	import { MediaQuery } from 'svelte/reactivity';
 	import { api } from '$lib/api';
 	import { navState } from '$lib/nav.svelte';
 	import { clock, onResume } from '$lib/resume.svelte';
@@ -141,8 +140,17 @@
 	});
 	const meta = $derived([persons, steps.length ? `${steps.length} trin` : '', host ? `fra ${host}` : ''].filter(Boolean).join(' · '));
 
-	const wide = new MediaQuery('(min-width: 900px)');
-	const pinned = $derived(index === null && loaded && main?.kind === 'opskrift' && steps.length > 0 && !wide.current);
+	// Oversigten viser hele fremgangsmåden som en almindelig opskrift, nummereret
+	// som trinene i "trin for trin".
+	const stepGroups = $derived.by(() => {
+		let n = 0;
+		return groupSteps(recipe?.instructions ?? []).map((g) => {
+			// En overskrift uden noget under sig er et trin (som i "trin for trin").
+			const group = g.steps.length ? { title: g.title, start: n + 1, steps: g.steps } : { title: '', start: n + 1, steps: [g.title] };
+			n += group.steps.length;
+			return group;
+		});
+	});
 </script>
 
 {#snippet when()}
@@ -183,13 +191,14 @@
 	{/if}
 {/snippet}
 
-{#snippet start()}
-	<button type="button" class="btn primary block start" onclick={() => toStep(1)}>
-		<Icon name="play" size={17} />Start · {steps.length} trin
+{#snippet play()}
+	<!-- Trin for trin: ét trin ad gangen med stor skrift. -->
+	<button type="button" class="rnd float play" aria-label="Start trin for trin" onclick={() => toStep(1)}>
+		<Icon name="play" size={20} />
 	</button>
 {/snippet}
 
-<main class:step={index !== null} class:pinned>
+<main class:step={index !== null}>
 	{#if index !== null && main}
 		<StepView
 			title={main.title}
@@ -216,7 +225,7 @@
 		{:else if main?.kind === 'opskrift'}
 			<div class="columns">
 				<section class="intro">
-					<Hero src={main.recipe?.image_url} seed={main.recipe?.id ?? main.title} back={weekUrl} />
+					<Hero src={main.recipe?.image_url} seed={main.recipe?.id ?? main.title} back={weekUrl} action={steps.length ? play : undefined} />
 					<div class="pad head">
 						{@render when()}
 						<h1 class="serif">{main.title}</h1>
@@ -236,15 +245,26 @@
 							{#if sourceUrl}<a class="link" href={sourceUrl} target="_blank" rel="noopener noreferrer">Se den på siden</a>.{/if}
 						</p>
 					{/if}
-					{#if steps.length && wide.current}<div class="pad inline">{@render start()}</div>{/if}
 				</section>
 
 				<section class="list">
 					<h2 class="sl">Find frem<span>{foundCount} af {lines.length}</span></h2>
 					{@render ingredients()}
+
+					{#if steps.length}
+						<h2 class="sl how">
+							Fremgangsmåde
+							<button type="button" class="link small" onclick={() => toStep(1)}>Trin for trin</button>
+						</h2>
+						{#each stepGroups as g}
+							{#if g.title}<h3 class="pad sub">{g.title}</h3>{/if}
+							<ol class="steps" start={g.start}>
+								{#each g.steps as s}<li>{s}</li>{/each}
+							</ol>
+						{/each}
+					{/if}
 				</section>
 			</div>
-			{#if pinned}<div class="pad bar">{@render start()}</div>{/if}
 		{:else}
 			<!-- Ingen ret, en ret uden opskrift eller rester: en rolig sætning i stedet for en opskrift. -->
 			<div class="pad head calm">
@@ -271,9 +291,6 @@
 		flex-direction: column;
 		min-height: 100dvh;
 		padding-bottom: calc(24px + env(safe-area-inset-bottom));
-	}
-	main.pinned {
-		padding-bottom: 0;
 	}
 	/* Et trin ad gangen: siden ruller ikke, kun trinets tekst. */
 	main.step {
@@ -313,21 +330,35 @@
 		align-items: center;
 		min-height: var(--tap);
 	}
-	.start {
-		height: 56px;
-		font-size: 17px;
+	/* Start trin for trin: tomatfarvet, så den ses oven på billedet. */
+	.play {
+		width: 48px;
+		height: 48px;
+		background: var(--tomat);
+		color: var(--ontomat);
 	}
-	/* Start står fast i bunden, fri af telefonens streg. Listen toner ud bag den. */
-	.bar {
-		position: sticky;
-		bottom: 0;
-		margin-top: auto;
-		padding-top: 20px;
-		padding-bottom: calc(12px + env(safe-area-inset-bottom));
-		background: linear-gradient(to top, var(--paper) 78%, transparent);
+	.how {
+		align-items: center;
+		margin-top: 14px;
+		padding-block: 6px 0;
 	}
-	.inline {
-		margin-top: 20px;
+	.how .link {
+		min-height: var(--tap);
+	}
+	.sub {
+		padding-top: 12px;
+		font-size: var(--fs-cap);
+		font-weight: 700;
+	}
+	.steps {
+		margin: 6px 0 0;
+		padding-left: calc(var(--gutter) + 1.4em);
+		padding-right: var(--gutter);
+		font-size: 16.5px;
+		line-height: 1.5;
+	}
+	.steps li {
+		margin-bottom: 10px;
 	}
 	@media (min-width: 900px) {
 		main {

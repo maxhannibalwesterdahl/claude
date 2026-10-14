@@ -8,6 +8,7 @@
 	import ItemRow from '$lib/indkob/ItemRow.svelte';
 	import ItemSheet from '$lib/indkob/ItemSheet.svelte';
 	import PickSheet from '$lib/indkob/PickSheet.svelte';
+	import { navState } from '$lib/nav.svelte';
 	import { shopping } from '$lib/shopping.svelte';
 	import type { IngredientRef, PlanBrief, ReviewLine, ShoppingData, ShoppingItem } from '$lib/types';
 	import { OFFLINE, say } from '$lib/ui/copy';
@@ -47,8 +48,8 @@
 
 	const data = $derived(shopping.data);
 
-	// Uge-vælger: listen viser den igangværende uge (som Uge), men andre uger
-	// kan vælges (fx næste uges indkøb). Planerne hentes igen, når listen viser en ukendt plan.
+	// Uge-vælger: listen viser den uge, Uge sidst viste, men andre uger kan
+	// vælges (fx næste uges indkøb). Planerne hentes igen, når listen viser en ukendt plan.
 	let plans = $state<PlanBrief[]>([]);
 	$effect(() => {
 		const id = data?.plan?.id;
@@ -64,6 +65,8 @@
 	function showPlan(id: number | null) {
 		sheetKey = null;
 		shopping.show(id);
+		// Uge viser samme uge, når man går tilbage dertil.
+		navState.week = id === null ? '/' : `/?plan=${id}`;
 	}
 	// Uden net kan en anden uge ikke hentes, så pilene vises ikke.
 	const canNavigate = $derived(

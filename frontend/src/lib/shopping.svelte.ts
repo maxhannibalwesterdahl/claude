@@ -33,8 +33,8 @@ class ShoppingStore {
 	pending = $state<Change[]>([]);
 	status = $state<Status>('loading');
 	syncedAt = $state<Date | null>(null);
-	// Den uge, der er valgt med uge-vælgeren. null = den igangværende uge.
-	// Gemmes ikke, så appen åbner på den igangværende uge igen.
+	// Den uge, der er valgt (på Uge eller med uge-vælgeren). null = den
+	// igangværende uge. Gemmes ikke, så appen åbner på den igangværende uge igen.
 	selected = $state<number | null>(null);
 	// Forskel mellem serverens og telefonens ur (ms). "Seneste ændring vinder"
 	// sammenligner tidsstempler fra to telefoner, så de skal regnes i samme tid.

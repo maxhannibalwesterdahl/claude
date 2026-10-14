@@ -107,6 +107,13 @@ export interface MealLine {
 	state: LineState;
 }
 
+/** "Husk kød op af fryseren": besked kl. 19 dagen før, til den er krydset af. */
+export interface Reminder {
+	id: number;
+	text: string;
+	done: boolean;
+}
+
 export interface Meal {
 	id: number;
 	date: string;
@@ -119,6 +126,7 @@ export interface Meal {
 	leftover_from: MealRef | null;
 	suggest_double: boolean;
 	lines: MealLine[];
+	reminders: Reminder[];
 }
 
 export interface Day {

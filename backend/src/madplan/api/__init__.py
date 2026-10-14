@@ -1,5 +1,6 @@
 """FastAPI-appen: JSON-API under /api og den byggede frontend på resten."""
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -11,7 +12,8 @@ from ..auth import RateLimiter
 from ..catalog import rematch_open_lines, sync_seed
 from ..config import Settings, load_settings
 from ..db import Database, make_engine, migrate
-from . import auth_routes, ingredients, plans, recipes, shopping
+from ..reminders import run_forever
+from . import auth_routes, ingredients, plans, recipes, reminders, shopping
 from .deps import CurrentUser, get_settings  # noqa: F401  (bruges af ruterne)
 
 log = logging.getLogger("madplan")
@@ -37,7 +39,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             except Exception:
                 s.rollback()
                 log.exception("genmatch ved opstart fejlede; appen starter alligevel")
+        # Påmindelser ("husk kød op af fryseren") sendes kl. 19 fra en baggrundsopgave.
+        task = asyncio.create_task(run_forever(app.state.db.sessionmaker, settings.data_dir))
         yield
+        task.cancel()
         engine.dispose()
 
     app = FastAPI(title="Madplan", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
@@ -48,6 +53,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(ingredients.router)
     app.include_router(plans.router)
     app.include_router(shopping.router)
+    app.include_router(reminders.router)
     app.include_router(_images(settings))
 
     @app.get("/api/health")

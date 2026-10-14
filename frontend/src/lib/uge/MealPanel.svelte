@@ -9,6 +9,7 @@
 	import Icon from '$lib/ui/Icon.svelte';
 	import IngredientRow from '$lib/ui/IngredientRow.svelte';
 	import Segmented from '$lib/ui/Segmented.svelte';
+	import Reminders from './Reminders.svelte';
 	import { leftoverSources, lowerFirst, weekdayLower, type Week } from './week.svelte';
 
 	interface Props {
@@ -182,6 +183,10 @@
 				<button type="button" class="v" disabled={busy} onclick={doubleForLater}>Lav ×2</button>
 			</div>
 		{/if}
+	{/if}
+
+	{#if meal}
+		<Reminders {week} {meal} {busy} {run} />
 	{/if}
 
 	{#if meal?.lines.length}

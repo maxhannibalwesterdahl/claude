@@ -52,6 +52,12 @@ class MealLine(BaseModel):
     state: LineStateValue | None
 
 
+class ReminderOut(BaseModel):
+    id: int
+    text: str
+    done: bool
+
+
 class MealOut(BaseModel):
     id: int
     date: date
@@ -65,6 +71,8 @@ class MealOut(BaseModel):
     # Retten bruger rest fra en ret, der ikke er sat til ×2.
     suggest_double: bool
     lines: list[MealLine]
+    # "Husk kød op af fryseren": besked kl. 19 dagen før.
+    reminders: list[ReminderOut]
 
 
 class DayOut(BaseModel):
@@ -175,6 +183,7 @@ def _meal_out(meal: PlanMeal) -> MealOut:
         if src else None,
         suggest_double=bool(src and src.kind == "opskrift" and src.multiplier < 2),
         lines=lines,
+        reminders=[ReminderOut(id=r.id, text=r.text, done=r.done) for r in meal.reminders],
     )
 
 
@@ -202,6 +211,7 @@ def load_plan(session: Session, plan_id: int) -> Plan:
             selectinload(Plan.meals).selectinload(PlanMeal.recipe).selectinload(Recipe.ingredients)
             .selectinload(RecipeIngredient.ingredient),
             selectinload(Plan.meals).selectinload(PlanMeal.line_states),
+            selectinload(Plan.meals).selectinload(PlanMeal.reminders),
             selectinload(Plan.meals).selectinload(PlanMeal.leftover_from).selectinload(PlanMeal.recipe),
             selectinload(Plan.wishlist).selectinload(WishlistItem.recipe),
         )

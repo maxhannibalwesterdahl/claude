@@ -12,6 +12,7 @@ Opsætningen af containeren og Tailscale er beskrevet i
 | Data | Docker-volumen `deploy_madplan-data`, monteret som `/data` i app-containeren |
 | Database | `/data/madplan.db` (SQLite) |
 | Billeder | `/data/images/` |
+| Nøgle til beskeder | `/data/vapid.pem` (laves selv første gang). Forsvinder den, laves en ny, og telefonerne tilmelder sig igen, næste gang appen åbnes |
 | SSH | `ssh root@192.168.1.114` fra Macen (nøgle lagt ind) |
 
 Alle kommandoer herunder køres i containeren fra `/opt/madplan/deploy`.

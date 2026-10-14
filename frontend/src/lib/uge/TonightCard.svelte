@@ -19,11 +19,13 @@
 
 	const meal = $derived(day.meal);
 	const recipe = $derived(meal?.kind === 'opskrift' ? meal.recipe : null);
+	const husk = $derived(meal?.reminders.filter((r) => !r.done).map((r) => r.text) ?? []);
 	const meta = $derived(
 		[
 			recipe?.servings ? `${formatNumber(recipe.servings * meal!.multiplier)} pers.` : '',
 			meal && !recipe ? 'Ingen indkøb' : '',
-			day.child ? `Barnet: ${day.child.title}` : ''
+			day.child ? `Barnet: ${day.child.title}` : '',
+			husk.length ? `Husk: ${husk.join(', ')}` : ''
 		]
 			.filter(Boolean)
 			.join(' · ')

@@ -152,6 +152,9 @@ class PlanMeal(Base):
     line_states: Mapped[list["PlanLineState"]] = relationship(
         back_populates="meal", cascade="all, delete-orphan"
     )
+    reminders: Mapped[list["MealReminder"]] = relationship(
+        back_populates="meal", cascade="all, delete-orphan", order_by="MealReminder.id"
+    )
 
 
 class PlanLineState(Base):
@@ -167,6 +170,23 @@ class PlanLineState(Base):
     state: Mapped[str] = mapped_column(String(10))
 
     meal: Mapped[PlanMeal] = relationship(back_populates="line_states")
+
+
+class MealReminder(Base):
+    """"Husk kød op af fryseren" på en ret. Sendes som besked kl. 19 dagen før
+    og igen kl. 7 på dagen, hvis den ikke er krydset af. Følger retten, når den flyttes."""
+
+    __tablename__ = "meal_reminder"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    meal_id: Mapped[int] = mapped_column(ForeignKey("plan_meal.id", ondelete="CASCADE"), index=True)
+    text: Mapped[str] = mapped_column(String(200))
+    done: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Dagen (dansk tid), beskeden sidst blev sendt. Højst én gang pr. aften.
+    sent_on: Mapped[date | None] = mapped_column(Date)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    meal: Mapped[PlanMeal] = relationship(back_populates="reminders")
 
 
 class WishlistItem(Base):
@@ -228,3 +248,19 @@ class Setting(Base):
 
     key: Mapped[str] = mapped_column(String(50), primary_key=True)
     value: Mapped[str] = mapped_column(Text)
+
+
+# --- Beskeder ---------------------------------------------------------------------
+
+
+class PushSubscription(Base):
+    """En telefon (eller browser), der har sagt ja til beskeder (Web Push)."""
+
+    __tablename__ = "push_subscription"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"), index=True)
+    endpoint: Mapped[str] = mapped_column(String(1000), unique=True)
+    p256dh: Mapped[str] = mapped_column(String(200))
+    auth: Mapped[str] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

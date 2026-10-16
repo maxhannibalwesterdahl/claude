@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
+from .. import totp
 from ..auth import HASH_GATE, RateLimiter, hash_password, make_session, read_session, verify_password
 from ..households import add_member, create_household, create_invite
 from ..ingredients.matcher import DEPARTMENTS
@@ -78,6 +79,8 @@ protected = APIRouter(dependencies=[Admin])
 class LoginIn(BaseModel):
     username: str = Field(max_length=50)
     password: str = Field(max_length=200)
+    # Kode fra authenticator-appen, hvis tofaktor er slået til.
+    code: str = Field("", max_length=12)
 
 
 @router.post("/login")
@@ -96,12 +99,22 @@ def login(body: LoginIn, request: Request, response: Response, session: DbSessio
         ok = verify_password(user.password_hash if user else None, body.password) and user is not None
     finally:
         HASH_GATE.release()
+    # Tofaktor: koden tjekkes sammen med kodeordet, så et forkert svar ikke afslører,
+    # hvilket af dem der var galt. Et brugt trin kan ikke bruges igen.
+    step = None
+    if ok and user.is_system_admin and user.totp_enabled and user.totp_secret:
+        secret = totp.unseal(_secret(settings), user.totp_secret)
+        step = totp.verify(secret, body.code, user.totp_last_step) if secret else None
+        ok = step is not None
     # Samme svar, uanset om kodeordet er forkert, eller brugeren ikke er admin.
     if not ok or not user.is_system_admin or user.disabled:
         log.warning("admin-login afvist for %r fra %s", name, keys[0])
-        raise HTTPException(status_code=401, detail="Forkert brugernavn eller kodeord")
+        raise HTTPException(status_code=401, detail="Forkert brugernavn, kodeord eller kode")
     for k in keys:
         lim.succeeded(k)
+    if step is not None:
+        user.totp_last_step = step
+        session.commit()
     response.set_cookie(
         COOKIE,
         make_session(_secret(settings), user.id, user.session_version, days=ADMIN_HOURS / 24),
@@ -121,7 +134,51 @@ def logout(response: Response) -> None:
 
 @protected.get("/me")
 def me(admin: User = Admin) -> dict:
-    return {"username": admin.username}
+    return {"username": admin.username, "two_factor": admin.totp_enabled}
+
+
+# --- Tofaktor ----------------------------------------------------------------------------
+
+
+@protected.post("/2fa/setup")
+def two_factor_setup(session: DbSession, settings: AppSettings, admin: User = Admin) -> dict:
+    """Ny hemmelighed til en authenticator-app. Slås først til, når en kode er bekræftet."""
+    if admin.totp_enabled:
+        raise HTTPException(status_code=409, detail="Tofaktor er allerede slået til")
+    secret = totp.new_secret()
+    admin.totp_secret = totp.seal(_secret(settings), secret)
+    session.commit()
+    return {"secret": secret, "uri": totp.uri(secret, admin.username)}
+
+
+class CodeIn(BaseModel):
+    code: str = Field(max_length=12)
+
+
+@protected.post("/2fa/enable", status_code=204)
+def two_factor_enable(body: CodeIn, session: DbSession, settings: AppSettings, admin: User = Admin) -> None:
+    secret = totp.unseal(_secret(settings), admin.totp_secret) if admin.totp_secret else None
+    step = totp.verify(secret, body.code) if secret else None
+    if admin.totp_enabled or step is None:
+        raise HTTPException(status_code=422, detail="Koden passer ikke. Prøv igen med den nyeste kode")
+    admin.totp_enabled, admin.totp_last_step = True, step
+    session.commit()
+    log.info("%s slog tofaktor til", admin.username)
+
+
+class DisableIn(BaseModel):
+    password: str = Field(max_length=200)
+    code: str = Field(max_length=12)
+
+
+@protected.post("/2fa/disable", status_code=204)
+def two_factor_disable(body: DisableIn, session: DbSession, settings: AppSettings, admin: User = Admin) -> None:
+    secret = totp.unseal(_secret(settings), admin.totp_secret) if admin.totp_secret else None
+    if not verify_password(admin.password_hash, body.password) or not secret or totp.verify(secret, body.code, admin.totp_last_step) is None:
+        raise HTTPException(status_code=403, detail="Kodeord eller kode er forkert")
+    admin.totp_enabled, admin.totp_secret, admin.totp_last_step = False, None, 0
+    session.commit()
+    log.info("%s slog tofaktor fra", admin.username)
 
 
 # --- Familier -----------------------------------------------------------------------

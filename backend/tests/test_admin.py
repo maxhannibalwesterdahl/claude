@@ -187,3 +187,80 @@ def test_admin_edits_catalog_and_aliases(app, client, admin):
     assert admin.delete(f"/api/admin/ingredients/{løg['id']}").status_code == 409
     free = next(i for i in admin.get("/api/admin/ingredients").json()["items"] if i["used_in"] == 0)
     assert admin.delete(f"/api/admin/ingredients/{free['id']}").status_code == 204
+
+
+# --- Tofaktor ------------------------------------------------------------------------------
+
+def _enable_2fa(admin, app):
+    from madplan import totp
+    secret = admin.post("/api/admin/2fa/setup").json()["secret"]
+    import time
+    step = int(time.time() // 30)
+    assert admin.post("/api/admin/2fa/enable", json={"code": totp.code_at(secret, step)}).status_code == 204
+    return secret, step
+
+
+def test_totp_matches_rfc_6238_vectors():
+    import base64
+
+    from madplan import totp
+    secret = base64.b32encode(b"12345678901234567890").decode()
+    # RFC 6238, bilag B (SHA-1), 6 cifre = de sidste 6 af de 8 cifre i tabellen
+    assert totp.code_at(secret, 59 // 30) == "287082"
+    assert totp.code_at(secret, 1111111109 // 30) == "081804"
+    assert totp.code_at(secret, 20000000000 // 30) == "353130"
+    step = totp.verify(secret, "287082", now=59)
+    assert step == 1 and totp.verify(secret, "287082", last_step=1, now=59) is None   # brugt trin afvises
+    assert totp.verify(secret, "000000", now=59) is None and totp.verify(secret, "abc", now=59) is None
+
+
+def test_login_requires_code_once_two_factor_is_on(app, client, admin):
+    from madplan import totp
+    secret, used = _enable_2fa(admin, app)
+    assert admin.get("/api/admin/me").json()["two_factor"] is True
+    c = TestClient(app)
+    assert c.post("/api/admin/login", json={"username": "max", "password": PASSWORD}).status_code == 401
+    assert c.post("/api/admin/login", json={"username": "max", "password": PASSWORD, "code": "000000"}).status_code == 401
+    import time
+    nxt = totp.code_at(secret, int(time.time() // 30) + 1)          # næste vindue (inden for tolerancen)
+    r = c.post("/api/admin/login", json={"username": "max", "password": PASSWORD, "code": nxt})
+    assert r.status_code == 200
+    # Samme kode kan ikke bruges to gange.
+    assert TestClient(app).post("/api/admin/login", json={"username": "max", "password": PASSWORD, "code": nxt}).status_code == 401
+
+
+def test_wrong_code_and_wrong_password_look_the_same(app, client, admin):
+    _enable_2fa(admin, app)
+    a = TestClient(app).post("/api/admin/login", json={"username": "max", "password": "forkert-kodeord", "code": "123456"})
+    b = TestClient(app).post("/api/admin/login", json={"username": "max", "password": PASSWORD, "code": "123456"})
+    assert a.status_code == b.status_code == 401 and a.json() == b.json()
+
+
+def test_enable_needs_a_correct_code_and_secret_is_stored_sealed(app, client, admin):
+    from madplan.models import User
+    s = admin.post("/api/admin/2fa/setup").json()
+    assert admin.post("/api/admin/2fa/enable", json={"code": "000000"}).status_code == 422
+    with app.state.db.sessionmaker() as db:
+        u = db.query(User).filter_by(username="max").one()
+        assert not u.totp_enabled and s["secret"] not in u.totp_secret
+    assert s["uri"].startswith("otpauth://totp/") and s["secret"] in s["uri"]
+
+
+def test_disable_two_factor_needs_password_and_code(app, client, admin):
+    from madplan import totp
+    secret, used = _enable_2fa(admin, app)
+    import time
+    code = totp.code_at(secret, int(time.time() // 30) + 1)
+    assert admin.post("/api/admin/2fa/disable", json={"password": "forkert", "code": code}).status_code == 403
+    assert admin.post("/api/admin/2fa/disable", json={"password": PASSWORD, "code": code}).status_code == 204
+    assert admin.get("/api/admin/me").json()["two_factor"] is False
+    assert TestClient(app).post("/api/admin/login", json={"username": "max", "password": PASSWORD}).status_code == 200
+
+
+def test_cli_reset_2fa(app, client, admin, tmp_path, monkeypatch):
+    _enable_2fa(admin, app)
+    from madplan import cli
+    monkeypatch.setenv("DATA_DIR", str(app.state.settings.data_dir))
+    monkeypatch.setenv("APP_SECRET", app.state.settings.secret)
+    assert cli.main(["reset-2fa", "max"]) == 0
+    assert TestClient(app).post("/api/admin/login", json={"username": "max", "password": PASSWORD}).status_code == 200

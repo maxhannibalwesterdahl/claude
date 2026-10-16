@@ -39,7 +39,7 @@ const run = (fn) => async (...a) => { msg(); try { await fn(...a); } catch (e) {
 let tab = 'households';
 function show(name) {
   tab = name;
-  for (const id of ['login', 'households', 'recipes', 'catalog']) $(id).hidden = id !== name;
+  for (const id of ['login', 'households', 'recipes', 'catalog', 'security']) $(id).hidden = id !== name;
   $('nav').hidden = name === 'login';
   for (const b of document.querySelectorAll('.tab')) b.classList.toggle('on', b.dataset.tab === name);
 }
@@ -48,7 +48,7 @@ function show(name) {
 $('login-form').addEventListener('submit', run(async (e) => {
   e.preventDefault();
   const f = e.target;
-  await api('/login', 'POST', { username: f.username.value, password: f.password.value });
+  await api('/login', 'POST', { username: f.username.value, password: f.password.value, code: f.code.value });
   f.reset();
   await open('households');
 }));
@@ -59,7 +59,8 @@ async function open(name) {
   show(name);
   if (name === 'households') await loadHouseholds();
   else if (name === 'recipes') await loadRecipes();
-  else await loadCatalog();
+  else if (name === 'catalog') await loadCatalog();
+  else await loadSecurity();
 }
 
 // --- Familier ---
@@ -200,6 +201,35 @@ function catalogCard(i) {
   return el('div', { class: 'card' }, form, aliases);
 }
 $('catalog-filter').addEventListener('input', drawCatalog);
+
+// --- Sikkerhed (tofaktor) ---
+async function loadSecurity() {
+  const me = await api('/me');
+  $('tf-status').textContent = me.two_factor ? 'Tofaktor er slået til.' : 'Tofaktor er slået fra. Slå det til: siden kan ses fra hele internettet.';
+  $('tf-off').hidden = me.two_factor;
+  $('tf-disable').hidden = !me.two_factor;
+  $('tf-secret').hidden = true;
+}
+$('tf-setup').addEventListener('click', run(async () => {
+  const s = await api('/2fa/setup', 'POST');
+  $('tf-key').textContent = s.secret;
+  $('tf-link').setAttribute('href', s.uri);
+  $('tf-secret').hidden = false;
+}));
+$('tf-enable').addEventListener('submit', run(async (e) => {
+  e.preventDefault();
+  await api('/2fa/enable', 'POST', { code: e.target.code.value });
+  e.target.reset();
+  await loadSecurity();
+  msg('Tofaktor er slået til.');
+}));
+$('tf-disable').addEventListener('submit', run(async (e) => {
+  e.preventDefault();
+  await api('/2fa/disable', 'POST', { password: e.target.password.value, code: e.target.code.value });
+  e.target.reset();
+  await loadSecurity();
+  msg('Tofaktor er slået fra.');
+}));
 
 // --- Start ---
 run(async () => {

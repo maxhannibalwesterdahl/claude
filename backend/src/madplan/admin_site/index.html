@@ -14,6 +14,7 @@
     <button data-tab="households" class="tab">Familier</button>
     <button data-tab="recipes" class="tab">Opskrifter</button>
     <button data-tab="catalog" class="tab">Varer</button>
+    <button data-tab="security" class="tab">Sikkerhed</button>
     <button id="logout" class="quiet">Log ud</button>
   </nav>
 </header>
@@ -23,6 +24,7 @@
   <form id="login-form">
     <label>Brugernavn <input name="username" autocomplete="username" autocapitalize="none" required></label>
     <label>Kodeord <input name="password" type="password" autocomplete="current-password" required></label>
+    <label>Kode fra authenticator-appen (hvis slået til) <input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8"></label>
     <button type="submit">Log ind</button>
   </form>
 </main>
@@ -45,6 +47,29 @@
 <main id="catalog" hidden>
   <input id="catalog-filter" type="search" placeholder="Søg i varer og aliaser">
   <div id="catalog-list"></div>
+</main>
+<main id="security" hidden>
+  <div class="card">
+    <h2>Tofaktor</h2>
+    <p id="tf-status" class="muted"></p>
+    <div id="tf-off" hidden>
+      <p>Slå tofaktor til: tilføj hemmeligheden i en authenticator-app (fx 1Password, Google Authenticator eller Authy), og skriv den kode, appen viser.</p>
+      <button id="tf-setup" type="button">Opret hemmelighed</button>
+      <div id="tf-secret" hidden>
+        <p>Hemmelighed: <code id="tf-key"></code></p>
+        <p><a id="tf-link" href="#">Åbn i authenticator-app</a></p>
+        <form id="tf-enable" class="row">
+          <input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="6 cifre" required>
+          <button type="submit">Bekræft og slå til</button>
+        </form>
+      </div>
+    </div>
+    <form id="tf-disable" class="row" hidden>
+      <input name="password" type="password" placeholder="Kodeord" autocomplete="current-password" required>
+      <input name="code" inputmode="numeric" maxlength="8" placeholder="Kode" required>
+      <button type="submit" class="danger">Slå fra</button>
+    </form>
+  </div>
 </main>
 <script src="/admin/admin.js"></script>
 </body>

@@ -36,7 +36,9 @@ Systemadmin styrer familier, brugere og opskrifter på `/admin` (samme adresse s
 appen, ingen link i appen). Log ind med en bruger, der er sat som systemadmin; det er
 et eget login, der gælder i 12 timer. Alle andre får 404 på siden og dens API.
 Loginforsøg begrænses til 5 pr. 5 minutter pr. IP og pr. brugernavn, og alt, admin
-gør, står i loggen (`madplan.admin`). Tofaktor er ikke bygget endnu.
+gør, står i loggen (`madplan.admin`). Slå tofaktor til under fanen Sikkerhed (en
+authenticator-app; hemmeligheden gemmes krypteret). Mistes telefonen:
+`madplan-admin reset-2fa <brugernavn>` på serveren.
 
 ```sh
 docker compose exec app madplan-admin set-password max   # logger også ud på alle enheder

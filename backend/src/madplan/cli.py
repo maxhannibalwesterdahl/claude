@@ -5,6 +5,7 @@
     madplan-admin create-user <brugernavn> [--household <navn eller id>] [--medlem]
     madplan-admin set-password <brugernavn>
     madplan-admin set-system-admin <brugernavn> [--fjern]
+    madplan-admin reset-2fa <brugernavn>      # tabt telefon: slår tofaktor fra på admin-siden
     madplan-admin list-users
     madplan-admin backup [--keep 14]
 """
@@ -47,6 +48,7 @@ def main(argv: list[str] | None = None) -> int:
     cu.add_argument("--household", help="familiens navn eller id (kan udelades, hvis der kun er én familie)")
     cu.add_argument("--medlem", action="store_true", help="almindeligt medlem i stedet for familie-admin")
     sub.add_parser("set-password").add_argument("username")
+    sub.add_parser("reset-2fa").add_argument("username")
     sa = sub.add_parser("set-system-admin")
     sa.add_argument("username")
     sa.add_argument("--fjern", action="store_true", help="fjern systemadmin igen")
@@ -102,6 +104,13 @@ def main(argv: list[str] | None = None) -> int:
             add_member(s, household, new, "medlem" if args.medlem else "admin")
             s.commit()
             print(f"Brugeren {username} er oprettet i familien {household.name!r}.")
+        elif args.cmd == "reset-2fa":
+            if not user:
+                print(f"Brugeren {username} findes ikke.", file=sys.stderr)
+                return 1
+            user.totp_enabled, user.totp_secret, user.totp_last_step = False, None, 0
+            s.commit()
+            print(f"Tofaktor er slået fra for {username}. Slå det til igen på admin-siden.")
         elif args.cmd == "set-system-admin":
             if not user:
                 print(f"Brugeren {username} findes ikke.", file=sys.stderr)

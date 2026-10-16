@@ -30,6 +30,10 @@ class User(Base):
     is_system_admin: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     # Spærret af systemadmin: kan ikke logge ind, og cookies holder op med at virke.
     disabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    # Tofaktor til admin-siden (krypteret TOTP-hemmelighed, se madplan.totp)
+    totp_secret: Mapped[str | None] = mapped_column(String(200))
+    totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    totp_last_step: Mapped[int] = mapped_column(BigInteger, default=0, server_default='0')
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

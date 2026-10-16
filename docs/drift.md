@@ -86,13 +86,24 @@ Log for den daglige kopi: `/var/log/madplan-backup.log` i LXC'en.
 
 ### Kopi uden for maskinen
 
-Alt ovenfor ligger på værtens ene NVMe-disk, så `deploy/offsite-backup.sh` sender den
-nyeste daglige kopi (og billederne) til et sted uden for maskinen: en anden maskine over
-`rsync`/ssh eller en sky via `rclone`, evt. krypteret med `age`. Sæt målet i
-`/opt/madplan/deploy/offsite.env` (se toppen af scriptet), afprøv med
-`OFFSITE_DRY_RUN=1 ./offsite-backup.sh`, og læg det i cron efter den daglige kopi
-(`0 4 * * * root /opt/madplan/deploy/offsite-backup.sh >> /var/log/madplan-offsite.log 2>&1`).
-Scriptet er afprøvet lokalt (falsk docker, rsync), men ikke på serveren og ikke med `age` eller `rclone`. **Det skal sættes op og køres én gang for hånd, før familie nr. 2 kommer ind.** LXC'en skal have `rsync` (eller `rclone`/`age`) installeret.
+Sat op og afprøvet 16-10-2026. Hver nat kl. 04:00 (cron `/etc/cron.d/madplan-offsite`) sender
+`/usr/local/sbin/madplan-offsite-backup` (samme som `deploy/offsite-backup.sh`) den nyeste daglige kopi
+og billederne, **krypteret med age**, til det private GitHub-repo `maxhannibalwesterdahl/madplan-backup`.
+Repoet har ét commit og de seneste 7 databasekopier, så det ikke vokser. Serveren har en deploy-nøgle
+(`/root/.ssh/madplan_backup`, kun skriveadgang til det repo) og kun den OFFENTLIGE age-nøgle i
+`/etc/madplan-offsite.env`. **Den hemmelige age-nøgle (`AGE-SECRET-KEY-…`) ligger hos Max (password-manager) og
+ikke på serveren; uden den kan kopierne ikke læses.** Log: `/var/log/madplan-offsite.log`.
+
+Gendan fra kopien uden for huset (på en maskine med `age` og nøglen):
+
+```sh
+git clone git@github.com:maxhannibalwesterdahl/madplan-backup.git && cd madplan-backup
+age -d -i nøglefil madplan-ÅÅÅÅ-MM-DD.db.age > madplan.db        # databasen
+age -d -i nøglefil billeder.tar.age | tar -xf -                  # billeder (mappen images/)
+```
+
+Derefter lægges `madplan.db` og `images/` i volumen som beskrevet nedenfor. Andre mål (`OFFSITE_RSYNC`,
+`OFFSITE_RCLONE`) og indstillinger står i toppen af scriptet.
 
 ### Gendan databasen fra en daglig kopi
 

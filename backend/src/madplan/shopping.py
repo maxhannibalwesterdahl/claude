@@ -100,3 +100,42 @@ def combine(
         out.append(_volume(ml))
     out += [Amount(float(math.ceil(q - 1e-9)) if u in WHOLE else _nice(q), u) for u, q in sorted(other.items())]
     return out
+
+
+def _comparable(x: Amount, grams_per_piece: float | None) -> tuple[str, float]:
+    """Mængden i en fælles enhed (g, ml eller stk), så to mængder kan sammenlignes."""
+    if x.unit is None:
+        return ("g", x.quantity * grams_per_piece) if grams_per_piece else ("stk", x.quantity)
+    if x.unit in MASS_G:
+        return ("g", x.quantity * MASS_G[x.unit])
+    if x.unit in VOLUME_ML:
+        return ("ml", x.quantity * VOLUME_ML[x.unit])
+    return (x.unit, x.quantity)
+
+
+def cover(
+    fixed: list[tuple[float, str | None]],
+    need: list[tuple[float, str | None]],
+    grams_per_piece: float | None = None,
+    grams_per_dl: float | None = None,
+) -> list[Amount]:
+    """Hvad der skal købes, når en fast vare og ugens retter begge bruger varen.
+
+    Mængderne lægges ikke sammen: den største tæller. 2 l mælk dækker 1 l fra
+    retterne, og 3 l fra retterne giver 3 l. Kan mængderne ikke sammenlignes
+    (fx 1 pk og 500 g), vises begge hver for sig, ligesom combine gør.
+    """
+    a = combine(fixed, grams_per_piece, grams_per_dl)
+    b = combine(need, grams_per_piece, grams_per_dl)
+    if len(a) != 1 or len(b) != 1:
+        return a + b
+    (ka, va), (kb, vb) = _comparable(a[0], grams_per_piece), _comparable(b[0], grams_per_piece)
+    # Rumfang -> vægt, som combine gør, så 2 dl mælk og 500 g kan sammenlignes.
+    if {ka, kb} == {"g", "ml"} and grams_per_dl:
+        if ka == "ml":
+            va, ka = va / 100 * grams_per_dl, "g"
+        else:
+            vb, kb = vb / 100 * grams_per_dl, "g"
+    if ka != kb:
+        return a + b
+    return [a[0] if va >= vb else b[0]]

@@ -416,6 +416,26 @@ class ShoppingExtra(Base):
     plan: Mapped[Plan | None] = relationship()
 
 
+class HouseholdStaple(Base):
+    """Fast vare: familien køber den hver uge, uanset planen. Kommer på hver uges liste."""
+
+    __tablename__ = "household_staple"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    household_id: Mapped[int] = mapped_column(ForeignKey("household.id", ondelete="CASCADE"), index=True)
+    # Teksten, som familien skrev den ("2 l mælk")
+    text: Mapped[str] = mapped_column(String(200))
+    quantity: Mapped[float | None] = mapped_column(Float)
+    unit: Mapped[str | None] = mapped_column(String(20))
+    # Varen fra parseren ("mælk"); bruges, når teksten ikke kan kobles til en vare
+    item: Mapped[str] = mapped_column(String(200))
+    ingredient_id: Mapped[int | None] = mapped_column(ForeignKey("ingredient.id", ondelete="SET NULL"))
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    ingredient: Mapped[Ingredient | None] = relationship()
+
+
 class Setting(Base):
     """Små indstillinger som JSON, fx afdelingernes rækkefølge. household_id 0 er
     indstillinger for hele appen (fx push_subject); ellers familiens egne."""

@@ -217,10 +217,24 @@ export interface ShoppingItem {
 	days: string[];
 	sources: { date: string; meal: string; raw: string }[];
 	checked: boolean;
-	kind: 'plan' | 'extra';
+	kind: 'plan' | 'extra' | 'staple';
 	source: 'egen' | 'løbet tør' | null;
 	unknown: boolean;
 	ingredient_name: string | null;
+	// Faste varer: teksten, familien skrev (rækken er også en fast vare)
+	staple?: string | null;
+}
+
+// Faste varer (backend/src/madplan/api/shopping.py): kommer på hver uges liste.
+export interface Staple {
+	id: number;
+	text: string;
+	quantity: number | null;
+	unit: string | null;
+	item: string;
+	ingredient_id: number | null;
+	ingredient_name: string | null;
+	department: string;
 }
 
 export interface PantryItem {

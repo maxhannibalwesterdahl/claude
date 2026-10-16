@@ -14,7 +14,7 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
@@ -25,6 +25,7 @@ from ..config import local_today
 from ..ingredients.matcher import DEPARTMENTS, key as item_key
 from ..models import (
     Household,
+    HouseholdStaple,
     Ingredient,
     Plan,
     PlanLineState,
@@ -36,7 +37,7 @@ from ..models import (
     ShoppingExtra,
 )
 from ..planning import scale
-from ..shopping import combine
+from ..shopping import combine, cover
 from .deps import CurrentHousehold, DbSession, pantry_ids
 from .plans import PlanBrief, meal_title, pick_current
 
@@ -69,12 +70,14 @@ class ItemOut(BaseModel):
     days: list[date]
     sources: list[SourceOut]
     checked: bool
-    kind: Literal["plan", "extra"]
+    kind: Literal["plan", "extra", "staple"]
     source: Literal["egen", "løbet tør"] | None = None
     # Linjer uden kendt vare (skal tjekkes). For egne varer: ingen vare valgt.
     unknown: bool = False
     # Egne varer: den vare, teksten er koblet til (bestemmer afdelingen)
     ingredient_name: str | None = None
+    # Faste varer: teksten, familien skrev (vises som "fast")
+    staple: str | None = None
 
 
 class PantryOut(BaseModel):
@@ -136,6 +139,29 @@ class ExtraIn(BaseModel):
 class ExtraPatch(BaseModel):
     # null = ingen vare (kommer under "Andet")
     ingredient_id: int | None
+
+
+class StapleOut(BaseModel):
+    id: int
+    text: str
+    quantity: float | None
+    unit: str | None
+    item: str
+    ingredient_id: int | None
+    ingredient_name: str | None
+    department: str
+
+
+class StapleIn(BaseModel):
+    text: str = Field("", max_length=200)
+    # Mangler den, prøves teksten at blive koblet til en vare af sig selv.
+    ingredient_id: int | None = None
+
+
+class StaplePatch(BaseModel):
+    text: str | None = Field(None, max_length=200)
+    # null = ingen vare (kommer under "Andet"). Mangler feltet, ændres vare ikke.
+    ingredient_id: int | None = None
 
 
 class HomeIn(BaseModel):
@@ -269,6 +295,41 @@ def plan_extras(session: Session, hh: Household, plan: Plan | None, today: date 
     return [e for e in extras if belongs_to(e) is plan]
 
 
+def _staples(session: Session, hh: Household) -> list[HouseholdStaple]:
+    return list(session.scalars(
+        select(HouseholdStaple).where(HouseholdStaple.household_id == hh.id)
+        .options(selectinload(HouseholdStaple.ingredient))
+        .order_by(HouseholdStaple.position, HouseholdStaple.id)
+    ).all())
+
+
+def _staple_groups(session: Session, hh: Household) -> dict[str, list[HouseholdStaple]]:
+    """Faste varer grupperet efter række-nøgle. Samme vare ("i:<id>") deler række med ugens retter."""
+    groups: dict[str, list[HouseholdStaple]] = defaultdict(list)
+    for s in _staples(session, hh):
+        groups[f"i:{s.ingredient_id}" if s.ingredient_id else f"f:{s.id}"].append(s)
+    return groups
+
+
+def _fixed_pairs(group: list[HouseholdStaple]) -> list[tuple[float | None, str | None]]:
+    return [(s.quantity, s.unit) for s in group if s.quantity is not None]
+
+
+def _staple_text(group: list[HouseholdStaple] | None) -> str | None:
+    return ", ".join(s.text for s in group) if group else None
+
+
+def _item_amounts(buy: list[_Part], group: list[HouseholdStaple] | None, ing: Ingredient | None) -> list[AmountOut]:
+    """Mængden på listen: uden faste varer lægges retternes mængder sammen (som før).
+    Med en fast vare tæller den største af de to (cover), så de ikke lægges sammen."""
+    if not group:
+        return _amounts(buy, ing)
+    need = [(p.quantity, p.unit) for p in buy if p.quantity is not None]
+    covered = cover(_fixed_pairs(group), need,
+                    ing.grams_per_piece if ing else None, ing.grams_per_dl if ing else None)
+    return [AmountOut(quantity=a.quantity, unit=a.unit) for a in covered]
+
+
 def build(session: Session, hh: Household, plan: Plan | None, now_ms: int | None = None, today: date | None = None) -> ShoppingOut:
     now_ms = now_ms or int(time.time() * 1000)
     order = department_order(session, hh)
@@ -283,24 +344,36 @@ def build(session: Session, hh: Household, plan: Plan | None, now_ms: int | None
     if plan is not None:
         checks = {c.key: c.checked for c in session.scalars(select(ShoppingCheck).where(ShoppingCheck.plan_id == plan.id))}
         parts, ingredients, names = _plan_parts(session, hh, plan)
+        fixed = _staple_groups(session, hh)
         for k, ps in parts.items():
             ing = ingredients[k]
-            if ing is not None and ing.id in household_pantry:
+            group = fixed.pop(k, None)
+            # Familiens basisvarer går til lageret, men en fast vare står altid på listen.
+            if group is None and ing is not None and ing.id in household_pantry:
                 pantry.append(PantryOut(
                     ingredient_id=ing.id, name=ing.name, amounts=_amounts(ps, ing),
                     days=sorted({p.date for p in ps}), requested=ing.id in requested,
                 ))
                 continue
             buy = [p for p in ps if p.state != "hjemme"]
-            if not buy:
+            if not buy and group is None:
                 home.append(HomeOut(key=k, name=names[k]))
                 continue
             items.append(ItemOut(
                 key=k, name=names[k], department=ing.department if ing else "andet",
-                amounts=_amounts(buy, ing), unquantified=any(p.quantity is None for p in buy),
+                amounts=_item_amounts(buy, group, ing), unquantified=any(p.quantity is None for p in buy),
                 days=sorted({p.date for p in buy}),
                 sources=[SourceOut(date=p.date, meal=p.meal, raw=p.raw) for p in sorted(buy, key=lambda p: p.date)],
-                checked=checks.get(k, False), kind="plan", unknown=ing is None,
+                checked=checks.get(k, False), kind="plan", unknown=ing is None, staple=_staple_text(group),
+            ))
+        # Faste varer, som ugens retter slet ikke bruger.
+        for k, group in fixed.items():
+            ing = group[0].ingredient
+            items.append(ItemOut(
+                key=k, name=ing.name if ing else group[0].item, department=ing.department if ing else "andet",
+                amounts=_item_amounts([], group, ing), unquantified=False, days=[], sources=[],
+                checked=checks.get(k, False), kind="staple", unknown=ing is None,
+                ingredient_name=ing.name if ing else None, staple=_staple_text(group),
             ))
 
     for e in extras:
@@ -321,6 +394,92 @@ def build(session: Session, hh: Household, plan: Plan | None, now_ms: int | None
         departments=[DepartmentOut(code=c, name=DEPARTMENTS[c]) for c in order],
         items=items, pantry=pantry, home=home, server_ms=now_ms,
     )
+
+
+# --- Faste varer -------------------------------------------------------------------
+
+def _parse_staple(session: Session, hh: Household, text: str) -> tuple[float | None, str | None, str, int | None]:
+    """Mængde, enhed, vare og den vare, teksten passer til (kun en sikker match)."""
+    p = Catalog(session, hh.id).parse(text)
+    quantity = p.quantity_max if p.quantity_max is not None else p.quantity
+    auto = p.ingredient_id if p.match_status == "sikker" else None
+    return quantity, p.unit, p.item or text, auto
+
+
+def _ingredient(session: Session, ingredient_id: int | None) -> Ingredient | None:
+    if ingredient_id is None:
+        return None
+    ing = session.get(Ingredient, ingredient_id)
+    if ing is None:
+        raise HTTPException(status_code=404, detail="Varen findes ikke")
+    return ing
+
+
+def _staple_out(s: HouseholdStaple) -> StapleOut:
+    ing = s.ingredient
+    return StapleOut(
+        id=s.id, text=s.text, quantity=s.quantity, unit=s.unit, item=s.item, ingredient_id=s.ingredient_id,
+        ingredient_name=ing.name if ing else None, department=ing.department if ing else "andet",
+    )
+
+
+def _own_staple(session: Session, staple_id: int, hh: Household) -> HouseholdStaple:
+    staple = session.scalar(select(HouseholdStaple).where(
+        HouseholdStaple.id == staple_id, HouseholdStaple.household_id == hh.id))
+    if staple is None:
+        raise HTTPException(status_code=404, detail="Varen findes ikke")
+    return staple
+
+
+@router.get("/staples")
+def get_staples(session: DbSession, hh: CurrentHousehold) -> list[StapleOut]:
+    return [_staple_out(s) for s in _staples(session, hh)]
+
+
+@router.post("/staples", status_code=201)
+def add_staple(body: StapleIn, session: DbSession, hh: CurrentHousehold) -> StapleOut:
+    """Fast vare ("2 l mælk"). Kommer på hver uges liste, til den tages af listen igen."""
+    text = " ".join(body.text.split())
+    if not text:
+        raise HTTPException(status_code=422, detail="Skriv en vare")
+    quantity, unit, item, auto = _parse_staple(session, hh, text)
+    ing = _ingredient(session, body.ingredient_id if body.ingredient_id is not None else auto)
+    last = session.scalar(select(func.max(HouseholdStaple.position)).where(HouseholdStaple.household_id == hh.id))
+    staple = HouseholdStaple(
+        household_id=hh.id, text=text, quantity=quantity, unit=unit, item=item, ingredient=ing,
+        position=0 if last is None else last + 1,
+    )
+    session.add(staple)
+    if body.ingredient_id is not None and ing is not None:
+        _learn_from_extra(session, hh, text, ing)
+    session.commit()
+    return _staple_out(staple)
+
+
+@router.patch("/staples/{staple_id}")
+def update_staple(staple_id: int, body: StaplePatch, session: DbSession, hh: CurrentHousehold) -> StapleOut:
+    staple = _own_staple(session, staple_id, hh)
+    chosen = "ingredient_id" in body.model_fields_set
+    if body.text is not None:
+        # Ny tekst: læs den igen. Mangler en vare, prøves teksten at finde sin egen.
+        text = " ".join(body.text.split())
+        if not text:
+            raise HTTPException(status_code=422, detail="Skriv en vare")
+        quantity, unit, item, auto = _parse_staple(session, hh, text)
+        staple.text, staple.quantity, staple.unit, staple.item = text, quantity, unit, item
+        staple.ingredient = _ingredient(session, body.ingredient_id if chosen else auto)
+    elif chosen:
+        staple.ingredient = _ingredient(session, body.ingredient_id)
+    if chosen and staple.ingredient is not None:
+        _learn_from_extra(session, hh, staple.text, staple.ingredient)
+    session.commit()
+    return _staple_out(staple)
+
+
+@router.delete("/staples/{staple_id}", status_code=204)
+def delete_staple(staple_id: int, session: DbSession, hh: CurrentHousehold) -> None:
+    session.delete(_own_staple(session, staple_id, hh))
+    session.commit()
 
 
 # --- Ruter -------------------------------------------------------------------------
@@ -356,7 +515,7 @@ def sync(body: SyncIn, session: DbSession, hh: CurrentHousehold, today: date | N
                     ShoppingExtra.id == int(ch.key[2:]), ShoppingExtra.household_id == hh.id))
             if extra and ch.ts > extra.updated_ms:
                 extra.checked, extra.updated_ms = ch.checked, ch.ts
-        elif ch.key[:2] in ("i:", "t:"):
+        elif ch.key[:2] in ("i:", "t:", "f:"):
             if ch.plan_id is None:
                 plan = target
             else:

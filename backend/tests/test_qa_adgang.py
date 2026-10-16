@@ -67,6 +67,7 @@ def _seed(client):
         "recipe_id": rid["id"], "line_id": rid["ingredients"][0]["id"], "plan_id": plan["id"],
         "meal_id": meal["id"], "reminder_id": p["days"][0]["meal"]["reminders"][0]["id"],
         "wish_id": p["wishlist"][0]["id"],
+        "staple_id": client.post("/api/staples", json={"text": "2 l mælk"}).json()["id"],
         "extra_id": next(i["key"] for i in shop["items"] if i["name"] == "bleer").removeprefix("e:"),
     }
 
@@ -116,6 +117,8 @@ CASES: dict[tuple[str, str], tuple[dict | None, int]] = {
     ("POST", "/api/shopping/extras?plan_id={plan_id}"): ({"text": "x"}, 404),
     ("PATCH", "/api/shopping/extras/{extra_id}"): ({"ingredient_id": None}, 404),
     ("DELETE", "/api/shopping/extras/{extra_id}"): (None, 404),
+    ("PATCH", "/api/staples/{staple_id}"): ({"text": "1 l mælk"}, 404),
+    ("DELETE", "/api/staples/{staple_id}"): (None, 404),
     ("POST", "/api/shopping/home"): ({"plan_id": "{plan_id}", "key": "i:1", "home": True}, 404),
     # familiens indstillinger (Bea er admin i sin egen familie, men Max er ikke hendes medlem)
     ("DELETE", "/api/household/invites/{invite_id}"): (None, 404),
@@ -146,6 +149,7 @@ NO_FOREIGN_IDS = {
     ("GET", "/api/household"), ("PATCH", "/api/household"), ("POST", "/api/household/invites"),
     ("POST", "/api/me/password"), ("GET", "/api/household/export"), ("POST", "/api/household/erase"),
     ("GET", "/api/shopping"),
+    ("GET", "/api/staples"), ("POST", "/api/staples"),   # egen liste: test_faste_varer.py
     ("GET", "/api/settings/departments"), ("PUT", "/api/settings/departments"),
     ("GET", "/api/push/key"), ("POST", "/api/push/subscriptions"),
 }

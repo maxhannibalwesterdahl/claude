@@ -56,6 +56,33 @@
 		}
 	}
 
+	async function setCollection(add: boolean) {
+		if (!recipe) return;
+		try {
+			recipe = await api<Recipe>(`/recipes/${recipe.id}/collection`, { method: add ? 'POST' : 'DELETE' });
+		} catch (e) {
+			error = say(e);
+		}
+	}
+
+	/** Familiens egen note om barnet (rører ikke den fælles opskrift). */
+	let editingNote = $state(false);
+	let noteText = $state('');
+	function editNote() {
+		noteText = recipe?.child_note ?? '';
+		editingNote = true;
+	}
+	async function saveNote(e: SubmitEvent) {
+		e.preventDefault();
+		if (!recipe) return;
+		try {
+			recipe = await api<Recipe>(`/recipes/${recipe.id}/note`, { method: 'PUT', body: { child_note: noteText } });
+			editingNote = false;
+		} catch (err) {
+			error = say(err);
+		}
+	}
+
 	async function remove() {
 		const id = recipe?.id;
 		if (!recipe || !(await confirmDialog(`Slet "${recipe.title}"?`, 'Slet'))) return;
@@ -99,6 +126,11 @@
 			<div class="btns">
 				<button type="button" class="btn primary" onclick={() => (placing = true)}><Icon name="cal" />Læg på en dag</button>
 				{#if recipe.owned}<a class="btn" href="/opskrift/{recipe.id}/rediger">Rediger</a>{/if}
+				{#if recipe.in_collection}
+					<button type="button" class="btn quiet" onclick={() => setCollection(false)}>Fjern fra vores samling</button>
+				{:else}
+					<button type="button" class="btn" onclick={() => setCollection(true)}>Læg i vores samling</button>
+				{/if}
 			</div>
 		</div>
 
@@ -109,8 +141,17 @@
 			</p>
 		{/if}
 
-		{#if recipe.child_note}
-			<p class="note"><b>Barnet:</b> {recipe.child_note}</p>
+		{#if editingNote}
+			<form class="pad" onsubmit={saveNote}>
+				<label class="field"><span>Note om barnet (kun for jer)</span><textarea rows="2" maxlength="2000" bind:value={noteText}></textarea></label>
+				<button class="btn sm">Gem</button>
+				<button type="button" class="btn quiet sm" onclick={() => (editingNote = false)}>Annuller</button>
+			</form>
+		{:else}
+			{#if recipe.child_note}
+				<p class="note"><b>Barnet:</b> {recipe.child_note}</p>
+			{/if}
+			<p class="pad"><button type="button" class="link" onclick={editNote}>{recipe.child_note ? 'Ret noten om barnet' : 'Skriv en note om barnet'}</button></p>
 		{/if}
 
 		<div class="columns">

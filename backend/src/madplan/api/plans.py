@@ -10,7 +10,7 @@ from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session, object_session, selectinload
 
 from ..config import local_today
-from ..models import Household, Plan, PlanLineState, PlanMeal, Recipe, RecipeIngredient, WishlistItem
+from ..models import Household, HouseholdRecipe, Plan, PlanLineState, PlanMeal, Recipe, RecipeIngredient, WishlistItem
 from ..planning import MULTIPLIERS, scale
 from ..reminders import again_time, first_time
 from .deps import CurrentHousehold, DbSession, pantry_ids
@@ -252,10 +252,13 @@ def _check_multiplier(m: float) -> None:
         raise HTTPException(status_code=422, detail="Gange skal være ½, 1 eller 2")
 
 
-def _check_recipe(session: Session, recipe_id: int | None) -> Recipe:
+def _check_recipe(session: Session, recipe_id: int | None, hh: Household) -> Recipe:
+    """En fælles opskrift. Bruger familien den, kommer den i familiens samling."""
     recipe = session.get(Recipe, recipe_id) if recipe_id else None
     if recipe is None:
         raise HTTPException(status_code=422, detail="Vælg en opskrift")
+    if session.get(HouseholdRecipe, (hh.id, recipe.id)) is None:
+        session.add(HouseholdRecipe(household_id=hh.id, recipe_id=recipe.id))
     return recipe
 
 
@@ -346,7 +349,7 @@ def set_slot(plan_id: int, body: SlotIn, session: DbSession, hh: CurrentHousehol
     _check_multiplier(body.multiplier)
     meal = PlanMeal(date=body.date, for_child=body.for_child, kind=body.kind, multiplier=body.multiplier)
     if body.kind == "opskrift":
-        meal.recipe = _check_recipe(session, body.recipe_id)
+        meal.recipe = _check_recipe(session, body.recipe_id, hh)
     elif body.kind == "fritekst":
         meal.text = body.text.strip()
         if not meal.text:
@@ -447,7 +450,7 @@ def set_line_state(meal_id: int, line_id: int, body: LineStateIn, session: DbSes
 def add_wish(plan_id: int, body: WishIn, session: DbSession, hh: CurrentHousehold) -> PlanOut:
     plan = load_plan(session, plan_id, hh)
     if body.recipe_id is not None:
-        plan.wishlist.append(WishlistItem(recipe=_check_recipe(session, body.recipe_id)))
+        plan.wishlist.append(WishlistItem(recipe=_check_recipe(session, body.recipe_id, hh)))
     elif body.text.strip():
         plan.wishlist.append(WishlistItem(text=body.text.strip()))
     else:
@@ -530,7 +533,8 @@ def suggestions(
         .where(PlanMeal.kind == "opskrift", PlanMeal.recipe_id.is_not(None), Plan.household_id == hh.id)
         .group_by(PlanMeal.recipe_id)
     )
-    stmt = select(Recipe)
+    stmt = select(Recipe).where(
+        Recipe.id.in_(select(HouseholdRecipe.recipe_id).where(HouseholdRecipe.household_id == hh.id)))
     if plan_id is not None:
         planned = planned.where(PlanMeal.plan_id != plan_id)
         on_plan = select(PlanMeal.recipe_id).where(PlanMeal.plan_id == plan_id, PlanMeal.recipe_id.is_not(None))

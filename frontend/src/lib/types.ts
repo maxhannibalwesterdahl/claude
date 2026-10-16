@@ -38,6 +38,9 @@ export interface Recipe {
 	child_note: string;
 	// Familien ejer opskriften og kan rette den. Ellers er den fælles og kun til at bruge.
 	owned: boolean;
+	/** I familiens samling ("Vores samling"). */
+	in_collection: boolean;
+	favorite: boolean;
 	source_url: string | null;
 	image_url: string | null;
 	ingredients: Line[];
@@ -54,6 +57,8 @@ export interface RecipeSummary {
 	ingredients: string[];
 	to_review: number;
 	owned: boolean;
+	in_collection: boolean;
+	favorite: boolean;
 }
 
 export interface HouseholdView {

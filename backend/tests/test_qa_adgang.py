@@ -128,6 +128,8 @@ NO_FOREIGN_IDS = {
     ("GET", "/api/me"), ("GET", "/api/meta"), ("POST", "/api/parse"),
     ("GET", "/api/recipes"), ("POST", "/api/recipes"), ("POST", "/api/recipes/import"),
     ("GET", "/api/recipes/{recipe_id}"),          # fælles at læse (tjekkes i test_shared_recipe_is_readable_but_not_editable)
+    ("POST", "/api/recipes/{recipe_id}/collection"), ("DELETE", "/api/recipes/{recipe_id}/collection"),
+    ("PUT", "/api/recipes/{recipe_id}/favorite"), ("PUT", "/api/recipes/{recipe_id}/note"),   # kun egen samling/note: test_samling.py
     ("POST", "/api/recipes/{recipe_id}/image"),   # som PUT: se test_other_family_cannot_upload_image
     ("GET", "/api/review"),
     ("GET", "/api/search/valdemarsro"), ("GET", "/api/search/nemlig"),
@@ -192,7 +194,8 @@ def test_shared_recipe_is_readable_but_not_editable(client, other):
     theirs = other.get(f"/api/recipes/{ids['recipe_id']}").json()
     assert (mine["owned"], theirs["owned"]) == (True, False)
     assert theirs["title"] == mine["title"] and theirs["child_note"] == ""   # noten er privat
-    listed = {r["id"]: r for r in other.get("/api/recipes").json()}
+    assert other.get("/api/recipes").json() == []                       # ikke i Bea's samling
+    listed = {r["id"]: r for r in other.get("/api/recipes?alle=true").json()}
     assert listed[ids["recipe_id"]]["owned"] is False and listed[ids["recipe_id"]]["to_review"] == 0
     # ... og kan sættes på den andens plan.
     plan = other.post("/api/plans", json={"start_date": "2026-10-26"}).json()
@@ -201,6 +204,8 @@ def test_shared_recipe_is_readable_but_not_editable(client, other):
     # Ejeren kan nu ikke slette den, mens en anden familie bruger den.
     assert client.delete(f"/api/recipes/{ids['recipe_id']}").status_code == 409
     other.delete(f"/api/plans/{plan['id']}")
+    assert client.delete(f"/api/recipes/{ids['recipe_id']}").status_code == 409     # den ligger i Beas samling
+    other.delete(f"/api/recipes/{ids['recipe_id']}/collection")
     assert client.delete(f"/api/recipes/{ids['recipe_id']}").status_code == 204
 
 

@@ -61,7 +61,23 @@
 		return [r.main_ingredients.join(', '), r.source_host].filter(Boolean).join(' · ');
 	}
 
+	/** Delte opskrifter, familien ikke har i sin samling endnu. Hentes første gang, der søges. */
+	let shared = $state<RecipeSummary[] | null>(null);
+	$effect(() => {
+		if (q.trim().length >= 2 && shared === null) {
+			untrack(() => {
+				api<RecipeSummary[]>('/recipes?alle=true')
+					.then((r) => (shared = r.filter((x) => !x.in_collection)))
+					.catch(() => (shared = []));
+			});
+		}
+	});
+	const sharedShown = $derived(
+		(shared ?? []).filter((r) => searchKey([r.title, ...r.ingredients].join(' ')).includes(searchKey(q)))
+	);
+
 	function loadRecipes() {
+		shared = null;
 		return api<RecipeSummary[]>('/recipes')
 			.then((r) => (recipes = r))
 			.catch((e) => (error = say(e)));
@@ -145,6 +161,16 @@
 		{:else}
 			{@render own()}
 		{/if}
+	{/if}
+
+	{#if q.trim() && sharedShown.length}
+		<Fold title="Delte opskrifter" count={sharedShown.length}>
+			<ul class="grid2">
+				{#each sharedShown as r (r.id)}
+					<li><RecipeTile recipe={r} meta="Fra en anden familie" /></li>
+				{/each}
+			</ul>
+		</Fold>
 	{/if}
 
 	<ExternalResults site="valdemarsro" {q} onpick={picked} />

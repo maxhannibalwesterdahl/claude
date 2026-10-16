@@ -3,7 +3,7 @@ from urllib.parse import urlparse
 import uuid
 
 from fastapi import APIRouter, HTTPException, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -11,6 +11,7 @@ from .. import importer, search_nemlig, search_valdemarsro
 from ..catalog import Catalog, learn_alias, suggest_main
 from ..models import (
     Household,
+    HouseholdRecipe,
     HouseholdRecipeNote,
     Ingredient,
     Plan,
@@ -51,7 +52,9 @@ def recipe_out(recipe: Recipe, hh: Household, session: Session, warnings: list[s
     """Opskriften set fra en familie: familiens egen note og basisvarer."""
     pantry = pantry_ids(session, hh.id)
     note = session.get(HouseholdRecipeNote, (hh.id, recipe.id))
+    mine = session.get(HouseholdRecipe, (hh.id, recipe.id))
     return RecipeOut(
+        in_collection=mine is not None, favorite=bool(mine and mine.favorite),
         id=recipe.id,
         title=recipe.title,
         servings=recipe.servings,
@@ -90,6 +93,12 @@ def load_own_recipe(session: Session, recipe_id: int, hh: Household) -> Recipe:
     if recipe.created_by_household != hh.id:
         raise HTTPException(status_code=404, detail="Opskriften findes ikke")
     return recipe
+
+
+def add_to_collection(session: Session, hh_id: int, recipe_id: int) -> None:
+    """Læg opskriften i familiens samling (gør intet, hvis den allerede er der)."""
+    if session.get(HouseholdRecipe, (hh_id, recipe_id)) is None:
+        session.add(HouseholdRecipe(household_id=hh_id, recipe_id=recipe_id))
 
 
 def _set_note(session: Session, hh: Household, recipe: Recipe, text: str) -> None:
@@ -155,7 +164,7 @@ def _fill_recipe(recipe: Recipe, body: RecipeIn) -> None:
     recipe.source_url = (body.source_url or "").strip() or None
 
 
-def _check_duplicate(session: Session, url: str | None, own_id: int | None = None) -> None:
+def _check_duplicate(session: Session, url: str | None, own_id: int | None = None, adopt: Household | None = None) -> None:
     if not url:
         return
     # Samme opskrift med og uden "/" til sidst er den samme.
@@ -163,11 +172,17 @@ def _check_duplicate(session: Session, url: str | None, own_id: int | None = Non
     other = next((r for r in session.scalars(select(Recipe).where(Recipe.source_url.is_not(None)))
                   if r.source_url.strip().rstrip("/").lower() == want), None)
     if other and other.id != own_id:
+        if adopt is not None:
+            # Samme ret importeres igen (fx af en anden familie): den genbruges og lægges i samlingen.
+            add_to_collection(session, adopt.id, other.id)
+            session.commit()
         raise HTTPException(status_code=409, detail={"message": "Opskriften findes allerede", "id": other.id})
 
 
 @router.get("/recipes")
-def list_recipes(session: DbSession, hh: CurrentHousehold, q: str = "") -> list[RecipeSummary]:
+def list_recipes(session: DbSession, hh: CurrentHousehold, q: str = "", alle: bool = False) -> list[RecipeSummary]:
+    """Familiens samling. Med `alle=true` alle fælles opskrifter (også dem, familien ikke bruger)."""
+    mine = {r.recipe_id: r for r in session.scalars(select(HouseholdRecipe).where(HouseholdRecipe.household_id == hh.id))}
     stmt = select(Recipe).options(selectinload(Recipe.ingredients).selectinload(RecipeIngredient.ingredient))
     # Søgning i Python: SQLites LIKE kender kun store/små bogstaver for ASCII (æ/Æ),
     # og % og _ ville være jokertegn.
@@ -175,6 +190,8 @@ def list_recipes(session: DbSession, hh: CurrentHousehold, q: str = "") -> list[
     out = []
     for r in session.scalars(stmt.order_by(func.lower(Recipe.title))):
         if needle and needle not in r.title.casefold():
+            continue
+        if not alle and r.id not in mine:
             continue
         out.append(RecipeSummary(
             id=r.id,
@@ -187,6 +204,7 @@ def list_recipes(session: DbSession, hh: CurrentHousehold, q: str = "") -> list[
             # Kun ejerfamilien kan rette linjerne, så kun den ser dem som "til tjek".
             to_review=sum(1 for l in r.ingredients if l.match_status in NEEDS_REVIEW) if r.created_by_household == hh.id else 0,
             owned=r.created_by_household == hh.id,
+            in_collection=r.id in mine, favorite=bool(r.id in mine and mine[r.id].favorite),
         ))
     return out
 
@@ -199,6 +217,7 @@ def create_recipe(body: RecipeIn, session: DbSession, hh: CurrentHousehold) -> R
     session.add(recipe)
     session.flush()
     _set_note(session, hh, recipe, body.child_note.strip())
+    add_to_collection(session, hh.id, recipe.id)
     catalog = Catalog(session)
     apply_lines(session, recipe, body.ingredients, catalog)
     if not any(l.is_main for l in recipe.ingredients):
@@ -210,7 +229,7 @@ def create_recipe(body: RecipeIn, session: DbSession, hh: CurrentHousehold) -> R
 @router.post("/recipes/import", status_code=201)
 def import_recipe(body: ImportIn, session: DbSession, settings: AppSettings, hh: CurrentHousehold) -> RecipeOut:
     url = body.url.strip()
-    _check_duplicate(session, url)
+    _check_duplicate(session, url, adopt=hh)
     session.commit()  # slip forbindelsen, mens vi venter på den andens side
     try:
         importer.check_url(url)
@@ -231,6 +250,8 @@ def import_recipe(body: ImportIn, session: DbSession, settings: AppSettings, hh:
         if not recipe.image_file:
             warnings.append("Billedet kunne ikke hentes")
     session.add(recipe)
+    session.flush()
+    add_to_collection(session, hh.id, recipe.id)
     catalog = Catalog(session)
     lines = [LineIn(raw=raw[:300], group=g.name[:100]) for g in scraped.groups for raw in g.lines]
     apply_lines(session, recipe, lines, catalog)
@@ -303,6 +324,53 @@ def delete_image(recipe_id: int, session: DbSession, settings: AppSettings, hh: 
     return recipe_out(load_recipe(session, recipe.id), hh, session)
 
 
+@router.post("/recipes/{recipe_id}/collection")
+def put_in_collection(recipe_id: int, session: DbSession, hh: CurrentHousehold) -> RecipeOut:
+    """Læg en fælles opskrift i familiens samling."""
+    recipe = load_recipe(session, recipe_id)
+    add_to_collection(session, hh.id, recipe.id)
+    session.commit()
+    return recipe_out(recipe, hh, session)
+
+
+@router.delete("/recipes/{recipe_id}/collection")
+def take_out_of_collection(recipe_id: int, session: DbSession, hh: CurrentHousehold) -> RecipeOut:
+    """Fjern opskriften fra familiens samling (den slettes ikke). Planer, der bruger den, røres ikke."""
+    recipe = load_recipe(session, recipe_id)
+    row = session.get(HouseholdRecipe, (hh.id, recipe.id))
+    if row is not None:
+        session.delete(row)
+        session.commit()
+    return recipe_out(recipe, hh, session)
+
+
+class FavoriteIn(BaseModel):
+    favorite: bool
+
+
+@router.put("/recipes/{recipe_id}/favorite")
+def set_favorite(recipe_id: int, body: FavoriteIn, session: DbSession, hh: CurrentHousehold) -> RecipeOut:
+    recipe = load_recipe(session, recipe_id)
+    add_to_collection(session, hh.id, recipe.id)
+    session.flush()
+    session.get(HouseholdRecipe, (hh.id, recipe.id)).favorite = body.favorite
+    session.commit()
+    return recipe_out(recipe, hh, session)
+
+
+class NoteIn(BaseModel):
+    child_note: str = Field("", max_length=2000)
+
+
+@router.put("/recipes/{recipe_id}/note")
+def put_note(recipe_id: int, body: NoteIn, session: DbSession, hh: CurrentHousehold) -> RecipeOut:
+    """Familiens egen note om barnet på en fælles opskrift (rører ikke opskriften)."""
+    recipe = load_recipe(session, recipe_id)
+    _set_note(session, hh, recipe, body.child_note.strip())
+    session.commit()
+    return recipe_out(recipe, hh, session)
+
+
 @router.post("/recipes/{recipe_id}/suggest-main")
 def suggest_main_route(recipe_id: int, session: DbSession, hh: CurrentHousehold) -> RecipeOut:
     recipe = load_own_recipe(session, recipe_id, hh)
@@ -322,7 +390,11 @@ def delete_recipe(recipe_id: int, session: DbSession, settings: AppSettings, hh:
         select(func.count()).select_from(WishlistItem).join(Plan).where(
             WishlistItem.recipe_id == recipe.id, Plan.household_id != hh.id)
     )
-    if in_use:
+    in_collection = session.scalar(
+        select(func.count()).select_from(HouseholdRecipe).where(
+            HouseholdRecipe.recipe_id == recipe.id, HouseholdRecipe.household_id != hh.id)
+    )
+    if in_use or in_collection:
         raise HTTPException(status_code=409, detail="Opskriften bruges af en anden familie og kan ikke slettes")
     image = recipe.image_file
     session.delete(recipe)

@@ -1,14 +1,22 @@
 # Flere familier – design
 
-Status: gennemtænkt 30-09-2026, opdateret med jeres svar 01-10-2026. **Trin 1-2 i
-afsnit 10 er bygget (16-10-2026):** datamodel, migration 0007, `CurrentHousehold`,
-alle ruter afgrænset til familien og test-matrixen (`backend/tests/test_qa_adgang.py`).
-Admin-siden på `/admin` er også bygget (familier, brugere, kodeord, spærring, opskrifter; uden tofaktor og invitationslinks). Resten ( invitationer, vores samling, tilpasninger, historik) er ikke bygget.
-Kun ejerfamilien (`recipe.created_by_household`) kan rette en fælles opskrift; andre får
-404. Familiens note om barnet og basisvarer ligger i `household_recipe_note` og
-`household_pantry`; `recipe.child_note` og `ingredient.pantry` er forældede kolonner
-(pantry er startlisten til nye familier). Fælles varekatalog kan i dag endnu rettes af
-alle (skal flyttes til systemadmin, trin 7). Krav fra jer:
+Status 16-10-2026: **trin 1-6 er bygget** (migration 0007-0010):
+- Trin 1-2: datamodel, `CurrentHousehold`, alle ruter afgrænset til familien, test-matrix
+  (`backend/tests/test_qa_adgang.py`). Kun ejerfamilien (`recipe.created_by_household`)
+  kan rette en fælles opskrift; andre får 404.
+- Trin 3: admin-siden på `/admin` (se drift.md): familier, brugere, kodeord, spærring,
+  invitationslink, opskrifter, varer og aliaser. Uden tofaktor.
+- Trin 4: invitationer (`/join/<nøgle>`, 7 dage, nøglen gemmes som hash) og familieindstillinger
+  (Ryd op > Familie): navn, medlemmer, roller, nyt kodeord.
+- Trin 5: "Vores samling" (`household_recipe`), favorit og familiens egen note om barnet på en
+  fælles opskrift. Basisvarer pr. familie (`household_pantry`).
+- Fælles varekatalog (navn, afdeling, omregning) rettes kun af systemadmin; familier kan oprette
+  nye varer og sætte egne basisvarer.
+- Ikke bygget: familiens tilpasninger af linjer (trin 6), historik og fortryd samt "uenighed"
+  i Tjek (trin 7), backup uden for huset og dataudlevering (trin 8), tofaktor på admin-siden.
+- `recipe.child_note` og `ingredient.pantry` er forældede kolonner (pantry er startlisten til nye familier).
+
+Oprindeligt design: gennemtænkt 30-09-2026, opdateret med jeres svar 01-10-2026. Krav fra jer:
 
 - Flere familier (husstande) bruger samme app.
 - **Opskrifterne deles** på tværs af familier.

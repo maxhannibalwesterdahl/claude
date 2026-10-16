@@ -96,6 +96,8 @@ class RecipeOut(BaseModel):
     child_note: str
     # Familien ejer opskriften og kan rette den. Ellers er den kun til at bruge.
     owned: bool
+    in_collection: bool = True
+    favorite: bool = False
     source_url: str | None
     image_url: str | None
     ingredients: list[LineOut]
@@ -113,6 +115,8 @@ class RecipeSummary(BaseModel):
     ingredients: list[str] = []
     to_review: int
     owned: bool
+    in_collection: bool = True
+    favorite: bool = False
 
 
 class ImportIn(BaseModel):

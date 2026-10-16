@@ -83,6 +83,17 @@ class HouseholdPantry(Base):
     ingredient_id: Mapped[int] = mapped_column(ForeignKey("ingredient.id", ondelete="CASCADE"), primary_key=True)
 
 
+class HouseholdRecipe(Base):
+    """Familiens samling: de fælles opskrifter, familien bruger (og favoritter)."""
+
+    __tablename__ = "household_recipe"
+
+    household_id: Mapped[int] = mapped_column(ForeignKey("household.id", ondelete="CASCADE"), primary_key=True)
+    recipe_id: Mapped[int] = mapped_column(ForeignKey("recipe.id", ondelete="CASCADE"), primary_key=True, index=True)
+    favorite: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class HouseholdRecipeNote(Base):
     """Familiens note om barnet på en opskrift. Erstatter recipe.child_note."""
 

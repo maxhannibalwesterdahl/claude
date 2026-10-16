@@ -6,7 +6,7 @@ from ..catalog import Catalog, rematch_open_lines
 from ..ingredients.matcher import DEPARTMENTS, key
 from ..ingredients.parser_da import UNITS
 from ..models import HouseholdPantry, Ingredient, IngredientAlias, RecipeIngredient
-from .deps import CurrentHousehold, DbSession, pantry_ids
+from .deps import CurrentHousehold, CurrentUser, DbSession, pantry_ids
 from .recipes import ingredient_ref
 from .schemas import IngredientIn, IngredientOut, ParsedOut, ParseIn
 
@@ -100,18 +100,38 @@ def create_ingredient(body: IngredientIn, session: DbSession, hh: CurrentHouseho
     return _out(ing, 0, pantry_ids(session, hh.id))
 
 
-@router.put("/ingredients/{ingredient_id}")
-def update_ingredient(ingredient_id: int, body: IngredientIn, session: DbSession, hh: CurrentHousehold) -> IngredientOut:
-    ing = session.get(Ingredient, ingredient_id)
-    if ing is None:
-        raise HTTPException(status_code=404, detail="Varen findes ikke")
+def update_catalog(session, ing: Ingredient, body: IngredientIn) -> None:
+    """Ret den fælles vare (navn, afdeling, omregning). Kun systemadmin."""
     _validate(session, body, ing)
     old = ing.name
     _fill(ing, body)
-    _set_pantry(session, hh.id, ing, body.pantry)
     if key(old) != key(ing.name) and not any(a.key == key(old) for a in ing.aliases):
         # Det gamle navn bliver et alias, så opskrifter og startdata stadig finder varen.
         ing.aliases.append(IngredientAlias(alias=old, key=key(old), source="user"))
+
+
+def _catalog_fields_changed(ing: Ingredient, body: IngredientIn) -> bool:
+    return (
+        " ".join(body.name.lower().split()) != ing.name
+        or body.department != ing.department
+        or body.grams_per_piece != ing.grams_per_piece
+        or body.grams_per_dl != ing.grams_per_dl
+    )
+
+
+@router.put("/ingredients/{ingredient_id}")
+def update_ingredient(ingredient_id: int, body: IngredientIn, session: DbSession, hh: CurrentHousehold,
+                      user: CurrentUser) -> IngredientOut:
+    """Familien kan sætte sin egen basisvare. Varens navn, afdeling og omregning er
+    fælles for alle familier og rettes kun af systemadmin (flere-familier.md §3)."""
+    ing = session.get(Ingredient, ingredient_id)
+    if ing is None:
+        raise HTTPException(status_code=404, detail="Varen findes ikke")
+    if _catalog_fields_changed(ing, body):
+        if not user.is_system_admin:
+            raise HTTPException(status_code=403, detail="Varekataloget er fælles. Kun administratoren kan rette en vare")
+        update_catalog(session, ing, body)
+    _set_pantry(session, hh.id, ing, body.pantry)
     session.commit()
     used = session.scalar(
         select(func.count(func.distinct(RecipeIngredient.recipe_id))).where(RecipeIngredient.ingredient_id == ing.id)

@@ -18,11 +18,25 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from ..auth import HASH_GATE, RateLimiter, hash_password, make_session, read_session, verify_password
 from ..households import add_member, create_household
-from ..models import Household, HouseholdMember, Plan, PlanMeal, Recipe, ShoppingExtra, User, WishlistItem
+from ..ingredients.matcher import DEPARTMENTS
+from ..models import (
+    Household,
+    HouseholdMember,
+    Ingredient,
+    IngredientAlias,
+    Plan,
+    PlanMeal,
+    Recipe,
+    RecipeIngredient,
+    User,
+    WishlistItem,
+)
+from .ingredients import update_catalog
+from .schemas import IngredientIn
 from .deps import AppSettings, DbSession, client_ip
 
 log = logging.getLogger("madplan.admin")
@@ -311,8 +325,6 @@ class RecipeRow(BaseModel):
 
 @protected.get("/recipes")
 def list_recipes(session: DbSession) -> list[RecipeRow]:
-    from ..models import RecipeIngredient
-
     lines = dict(session.execute(select(RecipeIngredient.recipe_id, func.count()).group_by(RecipeIngredient.recipe_id)).all())
     used = dict(session.execute(select(PlanMeal.recipe_id, func.count()).where(PlanMeal.recipe_id.is_not(None)).group_by(PlanMeal.recipe_id)).all())
     names = dict(session.execute(select(Household.id, Household.name)).all())
@@ -338,6 +350,89 @@ def delete_recipe(recipe_id: int, session: DbSession, settings: AppSettings, adm
     if image:
         (settings.image_dir / image).unlink(missing_ok=True)
     log.info("%s slettede opskriften %r (id %d)", admin.username, title, recipe_id)
+
+
+# --- Varekatalog ------------------------------------------------------------------------
+
+
+class AliasOut(BaseModel):
+    id: int
+    alias: str
+    source: str
+
+
+class CatalogItem(BaseModel):
+    id: int
+    name: str
+    department: str
+    grams_per_piece: float | None
+    grams_per_dl: float | None
+    aliases: list[AliasOut]
+    used_in: int
+
+
+class CatalogOut(BaseModel):
+    departments: list[dict]
+    items: list[CatalogItem]
+
+
+def _catalog_item(ing: Ingredient, used: int) -> CatalogItem:
+    return CatalogItem(
+        id=ing.id, name=ing.name, department=ing.department, grams_per_piece=ing.grams_per_piece,
+        grams_per_dl=ing.grams_per_dl, used_in=used,
+        aliases=[AliasOut(id=a.id, alias=a.alias, source=a.source) for a in sorted(ing.aliases, key=lambda a: a.alias)],
+    )
+
+
+@protected.get("/ingredients")
+def list_catalog(session: DbSession) -> CatalogOut:
+    used = dict(session.execute(
+        select(RecipeIngredient.ingredient_id, func.count(func.distinct(RecipeIngredient.recipe_id)))
+        .group_by(RecipeIngredient.ingredient_id)).all())
+    rows = session.scalars(select(Ingredient).options(selectinload(Ingredient.aliases)).order_by(Ingredient.name))
+    return CatalogOut(
+        departments=[{"code": c, "name": n} for c, n in DEPARTMENTS.items()],
+        items=[_catalog_item(i, used.get(i.id, 0)) for i in rows],
+    )
+
+
+@protected.put("/ingredients/{ingredient_id}")
+def update_catalog_item(ingredient_id: int, body: IngredientIn, session: DbSession, admin: User = Admin) -> CatalogItem:
+    ing = session.get(Ingredient, ingredient_id)
+    if ing is None:
+        raise HTTPException(status_code=404, detail="Varen findes ikke")
+    before = ing.name
+    update_catalog(session, ing, body)
+    session.commit()
+    log.info("%s rettede varen %r (nu %r)", admin.username, before, ing.name)
+    used = session.scalar(select(func.count(func.distinct(RecipeIngredient.recipe_id)))
+                          .where(RecipeIngredient.ingredient_id == ing.id)) or 0
+    return _catalog_item(ing, used)
+
+
+@protected.delete("/ingredients/{ingredient_id}", status_code=204)
+def delete_catalog_item(ingredient_id: int, session: DbSession, admin: User = Admin) -> None:
+    ing = session.get(Ingredient, ingredient_id)
+    if ing is None:
+        raise HTTPException(status_code=404, detail="Varen findes ikke")
+    if session.scalar(select(func.count()).select_from(RecipeIngredient).where(RecipeIngredient.ingredient_id == ing.id)):
+        raise HTTPException(status_code=409, detail="Varen bruges i opskrifter og kan ikke slettes")
+    name = ing.name
+    session.delete(ing)
+    session.commit()
+    log.info("%s slettede varen %r", admin.username, name)
+
+
+@protected.delete("/aliases/{alias_id}", status_code=204)
+def delete_alias(alias_id: int, session: DbSession, admin: User = Admin) -> None:
+    """Fjern et forkert alias (fx et, en familie har lært af en fejl)."""
+    alias = session.get(IngredientAlias, alias_id)
+    if alias is None:
+        raise HTTPException(status_code=404, detail="Aliaset findes ikke")
+    text = alias.alias
+    session.delete(alias)
+    session.commit()
+    log.info("%s slettede aliaset %r", admin.username, text)
 
 
 # --- Siden ------------------------------------------------------------------------------

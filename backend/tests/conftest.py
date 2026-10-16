@@ -30,6 +30,12 @@ def add_user(app, username: str, household: str | int, role: str = "admin") -> i
         return h.id
 
 
+def make_system_admin(app, username: str = "max") -> None:
+    with app.state.db.sessionmaker() as s:
+        s.query(User).filter_by(username=username).one().is_system_admin = True
+        s.commit()
+
+
 def login(app, username: str) -> TestClient:
     c = TestClient(app)
     assert c.post("/api/login", json={"username": username, "password": PASSWORD}).status_code == 200

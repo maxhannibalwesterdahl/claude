@@ -1,7 +1,7 @@
 """Alias-læring må aldrig i stilhed omdøbe varer på tværs af opskrifter.
 Fejlene her blev fundet i en gennemgang og genskabt, før de blev rettet."""
 
-from conftest import ingredient_id
+from conftest import ingredient_id, make_system_admin
 from sqlalchemy import select
 
 from madplan.catalog import Catalog, sync_seed
@@ -20,7 +20,8 @@ def parse(client, text):
     return client.post("/api/parse", json={"lines": [text]}).json()[0]["ingredient"]["name"]
 
 
-def test_confirming_a_name_as_another_ingredient_stays_local(client):
+def test_confirming_a_name_as_another_ingredient_stays_local(app, client):
+    make_system_admin(app)
     a = recipe(client, "A", ["2 løg"])
     b = recipe(client, "B", ["1 løg"])
     rodlog = ingredient_id(client, "rødløg")

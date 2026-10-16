@@ -3,7 +3,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from conftest import PASSWORD
+from conftest import PASSWORD, make_system_admin
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 64
 JPG = b"\xff\xd8\xff\xe0" + b"0" * 64
@@ -195,7 +195,8 @@ def test_ingredient_name_is_unique_case_and_alias_insensitive(client):
     assert client.post("/api/ingredients", json={"name": "Kyllingebryst  ", "department": "kod"}).status_code in (201, 409)
 
 
-def test_ingredient_update_404_and_rename_keeps_old_name_as_alias(client):
+def test_ingredient_update_404_and_rename_keeps_old_name_as_alias(app, client):
+    make_system_admin(app)
     assert client.put("/api/ingredients/999999", json={"name": "x", "department": "fg"}).status_code == 404
     r = client.post("/api/ingredients", json={"name": "dragefrugt", "department": "fg"}).json()
     client.put(f"/api/ingredients/{r['id']}", json={"name": "pitaya", "department": "fg"})

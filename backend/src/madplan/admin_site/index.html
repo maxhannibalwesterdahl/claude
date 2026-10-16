@@ -13,6 +13,7 @@
   <nav id="nav" hidden>
     <button data-tab="households" class="tab">Familier</button>
     <button data-tab="recipes" class="tab">Opskrifter</button>
+    <button data-tab="catalog" class="tab">Varer</button>
     <button id="logout" class="quiet">Log ud</button>
   </nav>
 </header>
@@ -40,6 +41,10 @@
     <thead><tr><th>Titel</th><th>Ejer</th><th>Linjer</th><th>I planer</th><th></th></tr></thead>
     <tbody id="recipe-rows"></tbody>
   </table>
+</main>
+<main id="catalog" hidden>
+  <input id="catalog-filter" type="search" placeholder="Søg i varer og aliaser">
+  <div id="catalog-list"></div>
 </main>
 <script src="/admin/admin.js"></script>
 </body>

@@ -152,3 +152,38 @@ def test_admin_site_is_served_with_strict_headers(app):
     assert c.get("/admin/hemmeligt").status_code == 404
     # Ingen data eller inline-script i siden selv.
     assert "<script>" not in r.text and "onclick=" not in r.text
+
+
+def test_catalog_is_locked_to_system_admin_in_the_app(app, client, admin):
+    """Familier kan sætte basisvare, men ikke omdøbe/flytte en fælles vare (§3)."""
+    add_user(app, "bea", "Familie B")
+    bea = login(app, "bea")
+    løg = next(i for i in bea.get("/api/ingredients").json() if i["name"] == "løg")
+    body = {"name": "løg", "department": løg["department"], "pantry": not løg["pantry"],
+            "grams_per_piece": løg["grams_per_piece"], "grams_per_dl": løg["grams_per_dl"]}
+    assert bea.put(f"/api/ingredients/{løg['id']}", json=body).status_code == 200
+    assert bea.put(f"/api/ingredients/{løg['id']}", json={**body, "name": "rødløg"}).status_code == 403
+    assert bea.put(f"/api/ingredients/{løg['id']}", json={**body, "department": "kg" if løg["department"] != "kg" else "fg"}).status_code == 403
+    # Nye varer kan familien stadig oprette (det kun føjer til kataloget).
+    assert bea.post("/api/ingredients", json={"name": "nyt-mærke", "department": "fg"}).status_code == 201
+    # Systemadmin kan rette i appen (Max er systemadmin i denne test).
+    maxc = login(app, "max")
+    assert maxc.put(f"/api/ingredients/{løg['id']}", json={**body, "name": "rødløg"}).status_code == 200
+
+
+def test_admin_edits_catalog_and_aliases(app, client, admin):
+    cat = admin.get("/api/admin/ingredients").json()
+    assert {"code": "fg", "name": "Frugt & grønt"} in cat["departments"] or cat["departments"]
+    løg = next(i for i in cat["items"] if i["name"] == "løg")
+    r = admin.put(f"/api/admin/ingredients/{løg['id']}", json={"name": "gult løg", "department": løg["department"], "grams_per_piece": 110})
+    assert r.status_code == 200 and r.json()["name"] == "gult løg" and r.json()["grams_per_piece"] == 110
+    # Det gamle navn lever videre som alias.
+    assert "løg" in [a["alias"] for a in r.json()["aliases"]]
+    alias = r.json()["aliases"][0]
+    assert admin.delete(f"/api/admin/aliases/{alias['id']}").status_code == 204
+    assert admin.put(f"/api/admin/ingredients/{løg['id']}", json={"name": "hvedemel", "department": løg["department"]}).status_code == 409
+    # En vare i brug kan ikke slettes.
+    client.post("/api/recipes", json={"title": "Suppe", "ingredients": [{"raw": "2 gult løg"}]})
+    assert admin.delete(f"/api/admin/ingredients/{løg['id']}").status_code == 409
+    free = next(i for i in admin.get("/api/admin/ingredients").json()["items"] if i["used_in"] == 0)
+    assert admin.delete(f"/api/admin/ingredients/{free['id']}").status_code == 204

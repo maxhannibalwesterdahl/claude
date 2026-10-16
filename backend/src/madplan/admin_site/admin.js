@@ -39,7 +39,7 @@ const run = (fn) => async (...a) => { msg(); try { await fn(...a); } catch (e) {
 let tab = 'households';
 function show(name) {
   tab = name;
-  for (const id of ['login', 'households', 'recipes']) $(id).hidden = id !== name;
+  for (const id of ['login', 'households', 'recipes', 'catalog']) $(id).hidden = id !== name;
   $('nav').hidden = name === 'login';
   for (const b of document.querySelectorAll('.tab')) b.classList.toggle('on', b.dataset.tab === name);
 }
@@ -57,7 +57,9 @@ for (const b of document.querySelectorAll('.tab')) b.addEventListener('click', r
 
 async function open(name) {
   show(name);
-  if (name === 'households') await loadHouseholds(); else await loadRecipes();
+  if (name === 'households') await loadHouseholds();
+  else if (name === 'recipes') await loadRecipes();
+  else await loadCatalog();
 }
 
 // --- Familier ---
@@ -148,6 +150,52 @@ function drawRecipes() {
   }
 }
 $('recipe-filter').addEventListener('input', drawRecipes);
+
+// --- Varekatalog ---
+let catalog = { departments: [], items: [] };
+async function loadCatalog() { catalog = await api('/ingredients'); drawCatalog(); }
+const num = (v) => (v.trim() === '' ? null : Number(v.replace(',', '.')));
+
+function drawCatalog() {
+  const q = $('catalog-filter').value.trim().toLowerCase();
+  const box = $('catalog-list');
+  box.replaceChildren();
+  const shown = catalog.items.filter((i) => !q || i.name.includes(q) || i.aliases.some((a) => a.alias.toLowerCase().includes(q)));
+  for (const i of shown.slice(0, 60)) box.append(catalogCard(i));
+  if (shown.length > 60) box.append(el('p', { class: 'muted' }, `${shown.length - 60} flere. Søg for at indsnævre.`));
+}
+
+function catalogCard(i) {
+  const dept = el('select', { name: 'd' }, ...catalog.departments.map((d) => {
+    const o = el('option', { value: d.code }, d.name);
+    if (d.code === i.department) o.selected = true;
+    return o;
+  }));
+  const form = el('form', { class: 'row', onsubmit: run(async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    await api('/ingredients/' + i.id, 'PUT', { name: f.n.value, department: f.d.value, grams_per_piece: num(f.p.value), grams_per_dl: num(f.l.value) });
+    await loadCatalog(); msg('Gemt.');
+  }) },
+    el('input', { name: 'n', value: i.name, maxlength: '100', required: '' }), dept,
+    el('input', { name: 'p', value: i.grams_per_piece ?? '', placeholder: 'g pr. stk', size: '6', inputmode: 'decimal' }),
+    el('input', { name: 'l', value: i.grams_per_dl ?? '', placeholder: 'g pr. dl', size: '6', inputmode: 'decimal' }),
+    el('button', { type: 'submit', class: 'sm' }, 'Gem'),
+    el('button', { type: 'button', class: 'danger sm', onclick: run(async () => {
+      if (!confirm('Slet varen ' + i.name + '?')) return;
+      await api('/ingredients/' + i.id, 'DELETE'); await loadCatalog();
+    }) }, 'Slet'));
+  const aliases = el('div', { class: 'muted' }, `Bruges i ${i.used_in} opskrifter. Andre navne: `);
+  if (!i.aliases.length) aliases.append('ingen');
+  for (const a of i.aliases) {
+    aliases.append(el('span', { class: 'tag' }, a.alias + (a.source === 'user' ? ' (lært)' : ''), ' ',
+      el('button', { class: 'danger sm', title: 'Fjern alias', onclick: run(async () => {
+        await api('/aliases/' + a.id, 'DELETE'); await loadCatalog();
+      }) }, '×')));
+  }
+  return el('div', { class: 'card' }, form, aliases);
+}
+$('catalog-filter').addEventListener('input', drawCatalog);
 
 // --- Start ---
 run(async () => {

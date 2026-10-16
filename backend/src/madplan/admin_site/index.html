@@ -38,11 +38,28 @@
 </main>
 
 <main id="recipes" hidden>
-  <input id="recipe-filter" type="search" placeholder="Søg i opskrifter">
-  <table>
-    <thead><tr><th>Titel</th><th>Ejer</th><th>Linjer</th><th>I planer</th><th></th></tr></thead>
-    <tbody id="recipe-rows"></tbody>
-  </table>
+  <div id="recipe-list">
+    <input id="recipe-filter" type="search" placeholder="Søg i opskrifter">
+    <table>
+      <thead><tr><th>Titel</th><th>Ejer</th><th>Linjer</th><th>I planer</th><th></th></tr></thead>
+      <tbody id="recipe-rows"></tbody>
+    </table>
+  </div>
+  <form id="recipe-edit" class="card" hidden>
+    <header><h2>Ret opskrift</h2><span id="re-owner" class="muted"></span></header>
+    <p class="muted">Rettelsen gælder den fælles opskrift for alle familier, der bruger den. Den gamle udgave gemmes i historikken.</p>
+    <label>Titel <input name="rtitle" maxlength="200" required></label>
+    <div class="row">
+      <label>Portioner <input name="servings" inputmode="numeric" maxlength="3"></label>
+      <label>Kilde (https://) <input name="source" maxlength="500"></label>
+    </div>
+    <label>Fremgangsmåde (ét trin pr. linje) <textarea name="steps" rows="6"></textarea></label>
+    <h3>Ingredienser</h3>
+    <p class="muted">Ændrer du teksten på en linje, læses den igen ud fra teksten.</p>
+    <div id="re-lines"></div>
+    <p class="row"><button type="button" id="re-add" class="quiet sm">Tilføj linje</button></p>
+    <p class="row"><button type="submit">Gem</button> <button type="button" id="re-cancel" class="quiet">Annullér</button></p>
+  </form>
 </main>
 <main id="catalog" hidden>
   <details class="card"><summary>Seneste rettelser (med fortryd)</summary><div id="change-list"></div></details>

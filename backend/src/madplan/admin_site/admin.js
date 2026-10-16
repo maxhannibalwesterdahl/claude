@@ -140,7 +140,7 @@ $('new-household').addEventListener('submit', run(async (e) => {
 
 // --- Opskrifter ---
 let recipes = [];
-async function loadRecipes() { recipes = await api('/recipes'); drawRecipes(); }
+async function loadRecipes() { showRecipeList(); recipes = await api('/recipes'); drawRecipes(); }
 function drawRecipes() {
   const q = $('recipe-filter').value.trim().toLowerCase();
   const rows = $('recipe-rows');
@@ -148,13 +148,83 @@ function drawRecipes() {
   for (const r of recipes.filter((r) => !q || r.title.toLowerCase().includes(q) || (r.owner || '').toLowerCase().includes(q))) {
     rows.append(el('tr', {},
       el('td', {}, r.title), el('td', {}, r.owner || '–'), el('td', {}, String(r.lines)), el('td', {}, String(r.used_in_plans)),
-      el('td', {}, el('button', { class: 'danger sm', onclick: run(async () => {
-        if (!confirm(`Slet "${r.title}"? Den fjernes fra alle familiers planer.`)) return;
-        await api('/recipes/' + r.id, 'DELETE'); await loadRecipes();
-      }) }, 'Slet'))));
+      el('td', {},
+        el('button', { class: 'quiet sm', onclick: run(() => openRecipe(r.id)) }, 'Ret'), ' ',
+        el('button', { class: 'danger sm', onclick: run(async () => {
+          if (!confirm(`Slet "${r.title}"? Den fjernes fra alle familiers planer.`)) return;
+          await api('/recipes/' + r.id, 'DELETE'); await loadRecipes();
+        }) }, 'Slet'))));
   }
 }
 $('recipe-filter').addEventListener('input', drawRecipes);
+
+// Redigering af en opskrift (også andre familiers). Ændrede linjer læses igen af serveren ud fra teksten;
+// uændrede linjer sendes med, som de er, så varevalget og mængderne bevares.
+let editing = null;
+function showRecipeList() { editing = null; $('recipe-list').hidden = false; $('recipe-edit').hidden = true; }
+
+async function openRecipe(id) {
+  const r = await api('/recipes/' + id);
+  const f = $('recipe-edit');
+  editing = id;
+  f.rtitle.value = r.title;
+  f.servings.value = r.servings ?? '';
+  f.source.value = r.source_url ?? '';
+  f.steps.value = r.instructions.join('\n');
+  $('re-owner').textContent = r.owner ? 'Ejer: ' + r.owner : 'Ingen ejer';
+  $('re-lines').replaceChildren(...r.ingredients.map(lineRow));
+  $('recipe-list').hidden = true;
+  f.hidden = false;
+  msg();
+}
+
+function lineRow(line = {}) {
+  const row = el('div', { class: 'row line' });
+  row.orig = line;
+  row.isMain = !!line.is_main;
+  const star = el('button', { type: 'button', class: 'quiet sm', title: 'Hovedingrediens' }, row.isMain ? '★' : '☆');
+  star.addEventListener('click', () => { row.isMain = !row.isMain; star.textContent = row.isMain ? '★' : '☆'; });
+  row.append(
+    el('input', { name: 'group', placeholder: 'Gruppe', maxlength: '100', value: line.group || '' }),
+    el('input', { name: 'raw', placeholder: 'fx 2 dl mælk', maxlength: '300', value: line.raw || '' }),
+    star,
+    el('button', { type: 'button', class: 'danger sm', title: 'Fjern linjen', onclick: () => row.remove() }, '×'));
+  return row;
+}
+
+function linePayload(row) {
+  const raw = row.querySelector('[name=raw]').value.trim();
+  const group = row.querySelector('[name=group]').value.trim();
+  const o = row.orig;
+  if (!raw) return null;
+  if (o.id != null && raw === o.raw) {
+    return { id: o.id, raw, group, is_main: row.isMain, quantity: o.quantity, quantity_max: o.quantity_max,
+      unit: o.unit, item: o.item, note: o.note, ingredient_id: o.ingredient_id, match_status: o.match_status };
+  }
+  return { id: o.id ?? null, raw, group, is_main: row.isMain, item: null };
+}
+
+$('re-add').addEventListener('click', () => {
+  const row = lineRow({});
+  $('re-lines').append(row);
+  row.querySelector('[name=raw]').focus();
+});
+$('re-cancel').addEventListener('click', () => { showRecipeList(); msg(); });
+
+$('recipe-edit').addEventListener('submit', run(async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  const servings = f.servings.value.trim();
+  await api('/recipes/' + editing, 'PUT', {
+    title: f.rtitle.value,
+    servings: servings === '' ? null : Number(servings),
+    source_url: f.source.value.trim() || null,
+    instructions: f.steps.value.split('\n').map((s) => s.trim()).filter(Boolean),
+    ingredients: [...$('re-lines').children].map(linePayload).filter(Boolean),
+  });
+  await loadRecipes();
+  msg('Opskriften er gemt.');
+}));
 
 // --- Varekatalog ---
 let catalog = { departments: [], items: [] };

@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from conftest import PASSWORD, add_user, login
-from madplan.models import User
+from madplan.models import HouseholdLineMatch, User
 
 
 @pytest.fixture
@@ -139,6 +139,37 @@ def test_admin_lists_and_deletes_recipes(app, client, admin):
     assert admin.delete(f"/api/admin/recipes/{rows[0]['id']}").status_code == 204
     assert admin.get("/api/admin/recipes").json() == []
     assert admin.delete("/api/admin/recipes/999").status_code == 404
+
+
+def test_admin_edits_a_recipe_another_family_owns(app, client, admin):
+    """Systemadmin kan rette andres opskrifter. Linjer beholder id, rettelsen gemmes i historikken
+    (ejerfamilien kan sætte den tilbage), og der skrives ingen familie-valg."""
+    rid = client.post("/api/recipes", json={"title": "Suppe", "ingredients": [{"raw": "2 gule løg"}, {"raw": "1 dl fløde"}]}).json()["id"]
+    before = admin.get(f"/api/admin/recipes/{rid}").json()
+    assert before["owner"] == "Familie A"
+    onion, cream = before["ingredients"]
+    body = {
+        "title": "Løgsuppe", "servings": 4, "source_url": None, "instructions": ["Svits løgene", "Kog op"],
+        "ingredients": [
+            {**onion, "raw": "3 gule løg", "item": None},     # ny tekst: serveren læser den igen
+            {**cream, "is_main": True},                       # uændret: beholder sin vare
+        ],
+    }
+    r = admin.put(f"/api/admin/recipes/{rid}", json=body)
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["title"] == "Løgsuppe" and out["instructions"] == ["Svits løgene", "Kog op"]
+    assert [l["id"] for l in out["ingredients"]] == [onion["id"], cream["id"]]
+    assert out["ingredients"][0]["quantity"] == 3 and out["ingredients"][1]["is_main"] is True
+    assert client.get(f"/api/recipes/{rid}").json()["title"] == "Løgsuppe"      # ejerfamilien ser rettelsen
+
+    versions = client.get(f"/api/recipes/{rid}/versions").json()
+    assert len(versions) == 1 and versions[0]["by"] == "max"
+    with app.state.db.sessionmaker() as s:
+        assert s.query(HouseholdLineMatch).count() == 0
+
+    assert admin.put(f"/api/admin/recipes/{rid}", json={**body, "ingredients": [{"id": 99999, "raw": "x"}]}).status_code == 422
+    assert admin.put("/api/admin/recipes/999", json=body).status_code == 404
 
 
 def test_admin_site_is_served_with_strict_headers(app):

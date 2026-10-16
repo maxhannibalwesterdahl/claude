@@ -177,6 +177,11 @@ ret fra Valdemarsro, genbruges den (samme `source_url`).
 - Fælles katalog: familiernes varevalg samlet, med "Gør til fælles alias", og
   historik med fortryd (afsnit 3).
 - Seneste rettelser af opskrifter (ejerens) med fortryd (afsnit 4).
+- **Ret alles opskrifter** (16-10-2026): på fanen Opskrifter kan systemadmin rette titel, portioner, kilde,
+  trin og linjer på enhver fælles opskrift ("Ret"). Det er den eneste undtagelse fra "kun ejeren retter"
+  (afsnit 4): admin-ruten `PUT /api/admin/recipes/{id}` gemmer den gamle udgave i historikken (uden familie,
+  med admin som bruger), så ejeren kan sætte den tilbage. Linjer med id beholdes, og admin-redigering skriver
+  aldrig familiers bekræftelser eller præferencer.
 - Senere: **ansøgninger** fra folk, der har skrevet sig op, med godkend/afvis.
 
 Ruterne under `/api/admin/*` kræver `is_system_admin`. Test-matrixen (afsnit 6)

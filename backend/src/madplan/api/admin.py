@@ -23,7 +23,8 @@ from sqlalchemy.orm import Session, selectinload
 from .. import totp
 from ..auth import HASH_GATE, RateLimiter, hash_password, make_session, read_session, verify_password
 from ..households import add_member, create_household, create_invite, erase_household
-from ..history import CannotUndo, ingredient_state, record_change, undo_change
+from ..catalog import Catalog
+from ..history import CannotUndo, ingredient_state, record_change, save_version, undo_change
 from ..ingredients.matcher import DEPARTMENTS
 from ..ingredients.matcher import key as match_key
 from ..models import (
@@ -40,7 +41,8 @@ from ..models import (
     WishlistItem,
 )
 from .ingredients import update_catalog
-from .schemas import IngredientIn
+from .recipes import _check_duplicate, _fill_recipe, load_recipe
+from .schemas import IngredientIn, LineIn, RecipeIn
 from .deps import AppSettings, DbSession, client_ip
 
 log = logging.getLogger("madplan.admin")
@@ -423,6 +425,101 @@ def delete_recipe(recipe_id: int, session: DbSession, settings: AppSettings, adm
     if image:
         (settings.image_dir / image).unlink(missing_ok=True)
     log.info("%s slettede opskriften %r (id %d)", admin.username, title, recipe_id)
+
+
+class AdminLineOut(BaseModel):
+    id: int
+    raw: str
+    group: str
+    quantity: float | None
+    quantity_max: float | None
+    unit: str | None
+    item: str
+    note: str | None
+    ingredient_id: int | None
+    match_status: str
+    is_main: bool
+
+
+class AdminRecipeOut(BaseModel):
+    id: int
+    title: str
+    servings: int | None
+    instructions: list[str]
+    source_url: str | None
+    owner: str | None
+    ingredients: list[AdminLineOut]
+
+
+def _admin_recipe(session: Session, recipe: Recipe) -> AdminRecipeOut:
+    """Den fælles udgave, uden familiens tilpasninger (admin ser opskriften, som den er gemt)."""
+    owner = session.get(Household, recipe.created_by_household) if recipe.created_by_household else None
+    return AdminRecipeOut(
+        id=recipe.id, title=recipe.title, servings=recipe.servings,
+        instructions=[s for s in recipe.instructions.split("\n") if s.strip()],
+        source_url=recipe.source_url, owner=owner.name if owner else None,
+        ingredients=[
+            AdminLineOut(id=l.id, raw=l.raw, group=l.group, quantity=l.quantity, quantity_max=l.quantity_max,
+                         unit=l.unit, item=l.item, note=l.note, ingredient_id=l.ingredient_id,
+                         match_status=l.match_status, is_main=l.is_main)
+            for l in sorted(recipe.ingredients, key=lambda l: l.position)
+        ],
+    )
+
+
+def _apply_shared_lines(session: Session, recipe: Recipe, lines: list[LineIn], catalog: Catalog) -> None:
+    """Som `apply_lines` i recipes.py, men uden familiens lag: systemadmin retter den fælles
+    udgave direkte, så der skrives ingen familie-bekræftelser eller præferencer. Linjer med id
+    beholdes (planer og "har hjemme" peger på dem). Linjer uden `item` læses ud fra `raw`."""
+    existing = {l.id: l for l in recipe.ingredients}
+    keep: list[RecipeIngredient] = []
+    for pos, li in enumerate(lines):
+        if not li.raw.strip():
+            continue
+        if li.id is not None and li.id not in existing:
+            raise HTTPException(status_code=422, detail=f"Linje {li.id} hører ikke til opskriften")
+        line = existing.get(li.id) if li.id is not None else None
+        if line is None:
+            line = RecipeIngredient()
+            recipe.ingredients.append(line)
+        line.position = pos
+        line.group = li.group.strip()
+        line.raw = li.raw.strip()
+        line.is_main = li.is_main
+        if li.item is None:
+            p = catalog.parse(li.raw)
+            line.quantity, line.quantity_max, line.unit = p.quantity, p.quantity_max, p.unit
+            line.item, line.note = p.item, p.note
+            line.ingredient_id, line.match_status = p.ingredient_id, p.match_status
+        else:
+            if li.ingredient_id is not None and li.ingredient_id not in catalog.by_id:
+                raise HTTPException(status_code=422, detail="Ukendt vare")
+            line.quantity, line.quantity_max, line.unit = li.quantity, li.quantity_max, li.unit or None
+            line.item, line.note = li.item.strip(), (li.note or "").strip() or None
+            line.ingredient_id, line.match_status = li.ingredient_id, li.match_status
+        keep.append(line)
+    recipe.ingredients[:] = keep
+    session.flush()
+
+
+@protected.get("/recipes/{recipe_id}")
+def get_recipe(recipe_id: int, session: DbSession) -> AdminRecipeOut:
+    return _admin_recipe(session, load_recipe(session, recipe_id))
+
+
+@protected.put("/recipes/{recipe_id}")
+def update_recipe(recipe_id: int, body: RecipeIn, session: DbSession, admin: User = Admin) -> AdminRecipeOut:
+    """Ret en opskrift uanset hvilken familie der ejer den. Den gamle udgave gemmes i historikken
+    (uden familie, med admin som bruger), så ejerfamilien stadig kan sætte den tilbage."""
+    recipe = load_recipe(session, recipe_id)
+    _check_duplicate(session, body.source_url, recipe.id)
+    save_version(session, recipe, None, admin.id)
+    _fill_recipe(recipe, body)
+    _apply_shared_lines(session, recipe, body.ingredients, Catalog(session))
+    session.commit()
+    session.expire_all()
+    log.info("%s rettede opskriften %r (id %d)", admin.username, recipe.title, recipe_id)
+    return _admin_recipe(session, load_recipe(session, recipe.id))
 
 
 # --- Varekatalog ------------------------------------------------------------------------

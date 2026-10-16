@@ -162,13 +162,13 @@ def test_catalog_is_locked_to_system_admin_in_the_app(app, client, admin):
     body = {"name": "løg", "department": løg["department"], "pantry": not løg["pantry"],
             "grams_per_piece": løg["grams_per_piece"], "grams_per_dl": løg["grams_per_dl"]}
     assert bea.put(f"/api/ingredients/{løg['id']}", json=body).status_code == 200
-    assert bea.put(f"/api/ingredients/{løg['id']}", json={**body, "name": "rødløg"}).status_code == 403
+    assert bea.put(f"/api/ingredients/{løg['id']}", json={**body, "name": "gult løg"}).status_code == 403
     assert bea.put(f"/api/ingredients/{løg['id']}", json={**body, "department": "kg" if løg["department"] != "kg" else "fg"}).status_code == 403
     # Nye varer kan familien stadig oprette (det kun føjer til kataloget).
     assert bea.post("/api/ingredients", json={"name": "nyt-mærke", "department": "fg"}).status_code == 201
     # Systemadmin kan rette i appen (Max er systemadmin i denne test).
     maxc = login(app, "max")
-    assert maxc.put(f"/api/ingredients/{løg['id']}", json={**body, "name": "rødløg"}).status_code == 200
+    assert maxc.put(f"/api/ingredients/{løg['id']}", json={**body, "name": "gult løg"}).status_code == 200
 
 
 def test_admin_edits_catalog_and_aliases(app, client, admin):

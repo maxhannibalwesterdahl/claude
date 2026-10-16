@@ -6,7 +6,7 @@
 
 from datetime import date, datetime, timezone
 
-from sqlalchemy import BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, false, true
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, false, true
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -127,6 +127,17 @@ class HouseholdRecipeNote(Base):
     child_note: Mapped[str] = mapped_column(Text, default="")
 
 
+class HouseholdRecipeTag(Base):
+    """Familiens egne mærker på en opskrift ("hurtig", "vegetar"). Hver familie har sine egne."""
+
+    __tablename__ = "household_recipe_tag"
+    __table_args__ = (Index("ix_household_recipe_tag_household_id_tag", "household_id", "tag"),)
+
+    household_id: Mapped[int] = mapped_column(ForeignKey("household.id", ondelete="CASCADE"), primary_key=True)
+    recipe_id: Mapped[int] = mapped_column(ForeignKey("recipe.id", ondelete="CASCADE"), primary_key=True)
+    tag: Mapped[str] = mapped_column(String(40), primary_key=True)
+
+
 class HouseholdIngredientPref(Base):
     """Familiens eget valg af vare for et varenavn (lag oven på de fælles aliaser).
     Endnu ikke i brug (trin 7 i docs/flere-familier.md)."""
@@ -200,6 +211,8 @@ class Recipe(Base):
     image_file: Mapped[str | None] = mapped_column(String(100))
     # Forældet: noten ligger nu pr. familie i household_recipe_note.
     child_note: Mapped[str] = mapped_column(Text, default="")
+    # Tilberedningstid i minutter. Hører til den fælles opskrift: kun ejerfamilien retter den.
+    total_minutes: Mapped[int | None] = mapped_column(Integer)
     # Ejerfamilien: kun den kan rette den fælles opskrift (docs/flere-familier.md §4).
     created_by_household: Mapped[int | None] = mapped_column(
         ForeignKey("household.id", ondelete="SET NULL"), index=True

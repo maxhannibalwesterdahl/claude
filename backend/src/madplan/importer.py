@@ -50,6 +50,8 @@ class ScrapedRecipe:
     image_url: str | None
     source_url: str
     warnings: list[str] = field(default_factory=list)
+    # Tilberedningstid i minutter, hvis siden har den.
+    total_minutes: int | None = None
 
 
 def check_url(url: str) -> str:
@@ -124,6 +126,24 @@ def _safe(fn, default):
     return value if value else default
 
 
+def _minutes(value) -> int | None:
+    """Minutter fra recipe-scrapers. 0, tomt, ikke et helt tal eller over et døgn giver None."""
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 < value <= 1440:
+        return None
+    return value
+
+
+def _total_minutes(s) -> int | None:
+    """Den samlede tid. Mangler den, lægges forberedelse og tilberedning sammen."""
+    total = _minutes(_safe(s.total_time, None))
+    if total is None:
+        prep = _minutes(_safe(s.prep_time, None))
+        cook = _minutes(_safe(s.cook_time, None))
+        if prep and cook:
+            total = _minutes(prep + cook)
+    return total
+
+
 def scrape(html: str, url: str) -> ScrapedRecipe:
     try:
         s = scrape_html(html, org_url=url, supported_only=False)
@@ -153,6 +173,7 @@ def scrape(html: str, url: str) -> ScrapedRecipe:
         image_url=_safe(s.image, None),
         source_url=url,
         warnings=warnings,
+        total_minutes=_total_minutes(s),
     )
 
 

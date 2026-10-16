@@ -15,21 +15,27 @@
 	import { say } from '$lib/ui/copy';
 	import Icon from '$lib/ui/Icon.svelte';
 	import ScreenHeader from '$lib/ui/ScreenHeader.svelte';
-	import type { Plan, RecipeSummary } from '$lib/types';
+	import type { Plan, RecipeSummary, TagCount } from '$lib/types';
 
-	type Filter = 'alle' | 'onsker' | 'laenge';
+	/** "tid" = under 30 minutter, "maerke:<mærke>" = familiens eget mærke. */
+	type Filter = 'alle' | 'onsker' | 'laenge' | 'tid' | `maerke:${string}`;
+
+	/** Filteret fra ?filter=, eller "alle", hvis det ikke kendes. */
+	function fromUrl(f: string | null): Filter {
+		if (f === 'onsker' || f === 'laenge' || f === 'tid') return f;
+		return f?.startsWith('maerke:') && f.length > 7 ? (f as Filter) : 'alle';
+	}
+	const tagOf = (f: Filter): string | null => (f.startsWith('maerke:') ? f.slice(7) : null);
 
 	let recipes = $state<RecipeSummary[] | null>(null);
 	let error = $state('');
 	let q = $state('');
 	let adding = $state(false);
-	// ?filter=onsker|laenge vælger et filter fra start.
-	let filter = $state<Filter>(
-		untrack(() => {
-			const f = page.url.searchParams.get('filter');
-			return f === 'onsker' || f === 'laenge' ? f : 'alle';
-		})
-	);
+	// ?filter=onsker|laenge|tid|maerke:<mærke> vælger et filter fra start.
+	let filter = $state<Filter>(untrack(() => fromUrl(page.url.searchParams.get('filter'))));
+	/** Familiens mærker med antal (til chips). */
+	let tagCounts = $state<TagCount[]>([]);
+	const hasTime = $derived((recipes ?? []).some((r) => r.total_minutes !== null));
 	/** Opskrifter på ønskelisten i den aktuelle uge. null = der er ingen uge (filteret vises ikke). */
 	let wished = $state<Set<number> | null>(null);
 	/** Opskrifterne, længst siden først. null eller tom = filteret vises ikke. */
@@ -37,7 +43,12 @@
 
 	// Et filter, der ikke findes (endnu), tæller som "Alle".
 	const active = $derived<Filter>(
-		(filter === 'onsker' && !wished) || (filter === 'laenge' && !longAgo?.length) ? 'alle' : filter
+		(filter === 'onsker' && !wished) ||
+			(filter === 'laenge' && !longAgo?.length) ||
+			(filter === 'tid' && !hasTime) ||
+			(!!tagOf(filter) && !tagCounts.some((t) => t.tag === tagOf(filter)))
+			? 'alle'
+			: filter
 	);
 	const lastPlanned = $derived(new Map((longAgo ?? []).map((s) => [s.recipe.id, s.last_planned])));
 
@@ -48,6 +59,9 @@
 			const byId = new Map(all.map((r) => [r.id, r]));
 			return (longAgo ?? []).flatMap((s) => byId.get(s.recipe.id) ?? []);
 		}
+		if (active === 'tid') return all.filter((r) => r.total_minutes !== null && r.total_minutes <= 30);
+		const tag = tagOf(active);
+		if (tag) return all.filter((r) => r.tags.includes(tag));
 		return all;
 	});
 	// Søger i titel og alle varer, så "kylling" også finder retter med kylling i.
@@ -94,6 +108,9 @@
 			fetchSuggestions({ limit: 500 })
 				.then((s) => (longAgo = s))
 				.catch(() => (longAgo = null));
+			api<TagCount[]>('/tags')
+				.then((t) => (tagCounts = t))
+				.catch(() => (tagCounts = []));
 		});
 	});
 
@@ -125,7 +142,7 @@
 			<input type="search" placeholder="Søg i egne, Valdemarsro og nemlig" bind:value={q} aria-label="Søg i opskrifter" />
 		</div>
 
-		{#if recipes.length > 0 && (wished || longAgo?.length)}
+		{#if recipes.length > 0 && (wished || longAgo?.length || hasTime || tagCounts.length)}
 			<div class="chips pad filters" role="group" aria-label="Vis">
 				<button type="button" class="chip" aria-pressed={active === 'alle'} onclick={() => (filter = 'alle')}>Alle</button>
 				{#if wished}
@@ -136,6 +153,12 @@
 				{#if longAgo?.length}
 					<button type="button" class="chip" aria-pressed={active === 'laenge'} onclick={() => (filter = 'laenge')}>Længe siden</button>
 				{/if}
+				{#if hasTime}
+					<button type="button" class="chip" aria-pressed={active === 'tid'} onclick={() => (filter = 'tid')}>Under 30 min</button>
+				{/if}
+				{#each tagCounts.slice(0, 8) as t (t.tag)}
+					<button type="button" class="chip" aria-pressed={tagOf(active) === t.tag} onclick={() => (filter = `maerke:${t.tag}`)}>{t.tag}</button>
+				{/each}
 			</div>
 		{/if}
 	{/if}
@@ -151,6 +174,10 @@
 			<p class="none muted">Ingen af jeres opskrifter matcher "{q.trim()}".</p>
 		{:else if active === 'onsker'}
 			<p class="none muted">Der er ingen opskrifter på ønskelisten.</p>
+		{:else if active === 'tid'}
+			<p class="none muted">Ingen opskrifter under 30 minutter.</p>
+		{:else if tagOf(active)}
+			<p class="none muted">Ingen opskrifter med mærket "{tagOf(active)}".</p>
 		{/if}
 	{/snippet}
 

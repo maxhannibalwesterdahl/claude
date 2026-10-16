@@ -122,6 +122,8 @@ CASES: dict[tuple[str, str], tuple[dict | None, int]] = {
     ("POST", "/api/household/members/{user_id}/password"): ({"password": "et-helt-nyt-kodeord"}, 404),
     ("DELETE", "/api/household/members/{user_id}"): (None, 404),
     ("PUT", "/api/household/members/{user_id}/role"): ({"role": "medlem"}, 404),
+    # familiens egne mærker: en opskrift, familien hverken ejer eller har i samlingen
+    ("PUT", "/api/recipes/{recipe_id}/tags"): ({"tags": ["hurtig"]}, 404),
     # sync svarer altid med den andens egen uge og gemmer intet på en fremmed plan
     ("POST", "/api/shopping/sync"): ({"plan_id": "{plan_id}", "changes": [], "view_plan_id": "{plan_id}"}, 200),
 }
@@ -138,6 +140,7 @@ NO_FOREIGN_IDS = {
     ("PUT", "/api/recipes/{recipe_id}/favorite"), ("PUT", "/api/recipes/{recipe_id}/note"),   # kun egen samling/note: test_samling.py
     ("POST", "/api/recipes/{recipe_id}/image"),   # som PUT: se test_other_family_cannot_upload_image
     ("GET", "/api/review"),
+    ("GET", "/api/tags"),                          # familiens egne mærker: test_maerker_og_tid.py
     ("POST", "/api/lines/{line_id}/confirm"), ("POST", "/api/lines/{line_id}/ignore"),   # familiens eget lag: test_varekobling.py
     ("GET", "/api/search/valdemarsro"), ("GET", "/api/search/nemlig"),
     ("GET", "/api/ingredients"), ("POST", "/api/ingredients"), ("PUT", "/api/ingredients/{ingredient_id}"),

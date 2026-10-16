@@ -13,7 +13,7 @@
 	import Hero from '$lib/ui/Hero.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import IngredientRow from '$lib/ui/IngredientRow.svelte';
-	import type { Line, Plan, Recipe } from '$lib/types';
+	import type { Line, Plan, Recipe, TagCount } from '$lib/types';
 
 	let recipe = $state<Recipe | null>(null);
 	let error = $state('');
@@ -151,6 +151,41 @@
 		}
 	}
 
+	// --- Mærker: familiens egne ord på opskriften ---
+	let editingTags = $state(false);
+	let draftTags = $state<string[]>([]);
+	let newTag = $state('');
+	/** Familiens alle mærker, til forslag på opskriften. */
+	let allTags = $state<TagCount[]>([]);
+	const suggestions = $derived(allTags.filter((t) => !draftTags.includes(t.tag)).slice(0, 10));
+
+	function editTags() {
+		draftTags = [...(recipe?.tags ?? [])];
+		newTag = '';
+		editingTags = true;
+		api<TagCount[]>('/tags')
+			.then((t) => (allTags = t))
+			.catch(() => (allTags = []));
+	}
+	function addTag(raw: string) {
+		const tag = raw.trim().replace(/\s+/g, ' ').toLowerCase();
+		if (tag && !draftTags.includes(tag) && draftTags.length < 12) draftTags = [...draftTags, tag];
+	}
+	function addTagFromInput(e: SubmitEvent) {
+		e.preventDefault();
+		addTag(newTag);
+		newTag = '';
+	}
+	async function saveTags() {
+		if (!recipe) return;
+		try {
+			recipe = await api<Recipe>(`/recipes/${recipe.id}/tags`, { method: 'PUT', body: { tags: draftTags } });
+			editingTags = false;
+		} catch (e) {
+			error = say(e);
+		}
+	}
+
 	async function toggleFavorite() {
 		if (!recipe) return;
 		try {
@@ -189,14 +224,16 @@
 		<div class="pad head">
 			<!-- Titlen står i siden og ikke i en fast top, så lange navne kan læses helt. -->
 			<h1 class="serif">{recipe.title}</h1>
-			{#if recipe.servings || source || wished}
+			{#if recipe.servings || recipe.total_minutes || source || wished}
 				<p class="ey meta">
 					{#if recipe.servings}{recipe.servings} pers.{/if}
-					{#if recipe.servings && source}<span aria-hidden="true"> · </span>{/if}
+					{#if recipe.servings && recipe.total_minutes}<span aria-hidden="true"> · </span>{/if}
+					{#if recipe.total_minutes}{recipe.total_minutes} min{/if}
+					{#if (recipe.servings || recipe.total_minutes) && source}<span aria-hidden="true"> · </span>{/if}
 					{#if source}
 						<a href={source} target="_blank" rel="noopener noreferrer">{new URL(source).hostname.replace(/^www\./, '')}</a>
 					{/if}
-					{#if (recipe.servings || source) && wished}<span aria-hidden="true"> · </span>{/if}
+					{#if (recipe.servings || recipe.total_minutes || source) && wished}<span aria-hidden="true"> · </span>{/if}
 					{#if wished}på ønskelisten{/if}
 				</p>
 			{/if}
@@ -210,6 +247,43 @@
 					<button type="button" class="btn" onclick={() => setCollection(true)}>Læg i vores samling</button>
 				{/if}
 			</div>
+
+			{#if recipe.in_collection}
+				<div class="tags">
+					{#if recipe.tags.length}
+						<div class="chips">
+							{#each recipe.tags as t (t)}<span class="chip">{t}</span>{/each}
+						</div>
+					{/if}
+					<button type="button" class="link" aria-expanded={editingTags} onclick={() => (editingTags ? (editingTags = false) : editTags())}>Mærker</button>
+				</div>
+				{#if editingTags}
+					<div class="tag-edit">
+						<div class="chips" role="group" aria-label="Jeres mærker på opskriften">
+							{#each draftTags as t (t)}
+								<button type="button" class="chip" aria-pressed="true" onclick={() => (draftTags = draftTags.filter((x) => x !== t))}>{t}</button>
+							{:else}
+								<p class="muted">Ingen mærker endnu.</p>
+							{/each}
+						</div>
+						<form class="tag-add" onsubmit={addTagFromInput}>
+							<label class="field"><span>Nyt mærke</span><input bind:value={newTag} maxlength="40" placeholder="fx hurtig" /></label>
+							<button class="btn sm" disabled={!newTag.trim() || draftTags.length >= 12}>Tilføj</button>
+						</form>
+						{#if suggestions.length}
+							<div class="chips">
+								{#each suggestions as s (s.tag)}
+									<button type="button" class="chip quiet-chip" onclick={() => addTag(s.tag)}>{s.tag}</button>
+								{/each}
+							</div>
+						{/if}
+						<div class="tag-btns">
+							<button type="button" class="btn sm" onclick={saveTags}>Gem</button>
+							<button type="button" class="btn quiet sm" onclick={() => (editingTags = false)}>Annuller</button>
+						</div>
+					</div>
+				{/if}
+			{/if}
 		</div>
 
 		{#if placed}
@@ -392,6 +466,39 @@
 	}
 	.btns {
 		margin-top: 14px;
+	}
+	.tags {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 8px 12px;
+		margin-top: 12px;
+	}
+	.tags .link {
+		padding-block: 12px;
+	}
+	.tag-edit {
+		display: grid;
+		gap: 12px;
+		margin-top: 10px;
+	}
+	.tag-add {
+		display: flex;
+		align-items: flex-end;
+		gap: 10px;
+	}
+	.tag-add .field {
+		flex: 1;
+		min-width: 0;
+	}
+	/* Forslag: dæmpede, så de ikke ligner det, der allerede er valgt. */
+	.quiet-chip {
+		color: var(--muted);
+		font-weight: 500;
+	}
+	.tag-btns {
+		display: flex;
+		gap: 8px;
 	}
 	.placed {
 		display: flex;

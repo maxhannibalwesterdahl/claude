@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session, selectinload
 
 from .. import importer, search_nemlig, search_valdemarsro
 from ..adjustments import load_adjustments
-from ..catalog import Catalog, learn_alias, suggest_main
+from ..catalog import Catalog, suggest_main
+from ..matching import Overlay, ingredient_map, learn_preference, set_line_match
 from ..models import (
     Household,
     HouseholdRecipe,
@@ -54,12 +55,14 @@ def image_url(recipe: Recipe) -> str | None:
 def recipe_out(recipe: Recipe, hh: Household, session: Session, warnings: list[str] | None = None) -> RecipeOut:
     """Opskriften set fra en familie: familiens egen note og basisvarer."""
     pantry = pantry_ids(session, hh.id)
+    overlay = Overlay.load(session, hh.id)
+    ings = ingredient_map(session)
     note = session.get(HouseholdRecipeNote, (hh.id, recipe.id))
     mine = session.get(HouseholdRecipe, (hh.id, recipe.id))
     adj = load_adjustments(session, hh.id, {recipe.id})[recipe.id]
     extras = []
     if adj.extras:
-        catalog = Catalog(session)
+        catalog = Catalog(session, hh.id)
         for a in adj.extras:
             p = catalog.parse(a.value)
             ing = catalog.by_id.get(p.ingredient_id) if p.match_status in ("sikker", "bekræftet") else None
@@ -79,8 +82,8 @@ def recipe_out(recipe: Recipe, hh: Household, session: Session, warnings: list[s
         ingredients=[
             LineOut(
                 id=l.id, raw=l.raw, group=l.group, quantity=l.quantity, quantity_max=l.quantity_max,
-                unit=l.unit, item=l.item, note=l.note, ingredient=ingredient_ref(l.ingredient, pantry),
-                match_status=l.match_status, is_main=l.is_main,
+                unit=l.unit, item=l.item, note=l.note, ingredient=ingredient_ref(ings.get(overlay.resolve(l)[0]), pantry),
+                match_status=overlay.resolve(l)[1], is_main=l.is_main,
                 skipped=l.id in adj.skip, my_quantity=adj.quantity.get(l.id),
             )
             for l in recipe.ingredients
@@ -127,19 +130,21 @@ def _clean_steps(steps: list[str]) -> str:
     return "\n".join(" ".join(s.split()) for s in steps if s.strip())
 
 
-def apply_lines(session: Session, recipe: Recipe, lines: list[LineIn], catalog: Catalog) -> None:
+def apply_lines(session: Session, recipe: Recipe, lines: list[LineIn], catalog: Catalog, hh: Household) -> None:
     """Opdatér opskriftens linjer. Linjer med id beholdes (planen peger på dem),
     nye oprettes, og linjer, der ikke er med, slettes."""
     existing = {l.id: l for l in recipe.ingredients}
+    overlay = Overlay.load(session, hh.id)
     keep: list[RecipeIngredient] = []
     confirmed: list[RecipeIngredient] = []
+    overlay_choice: dict[int, int] = {}
     for pos, li in enumerate(lines):
         if not li.raw.strip():
             continue
         if li.id is not None and li.id not in existing:
             raise HTTPException(status_code=422, detail=f"Linje {li.id} hører ikke til opskriften")
         line = existing.get(li.id) if li.id is not None else None
-        before = (line.ingredient_id, line.match_status) if line is not None else (None, None)
+        before = overlay.resolve(line) if line is not None else (None, None)   # som familien ser den
         if line is None:
             line = RecipeIngredient()
             recipe.ingredients.append(line)
@@ -157,18 +162,25 @@ def apply_lines(session: Session, recipe: Recipe, lines: list[LineIn], catalog: 
                 raise HTTPException(status_code=422, detail="Ukendt vare")
             line.quantity, line.quantity_max, line.unit = li.quantity, li.quantity_max, li.unit or None
             line.item, line.note = li.item.strip(), (li.note or "").strip() or None
-            line.ingredient_id = li.ingredient_id
-            # "bekræftet" uden vare betyder, at linjen bevidst ikke er koblet.
-            line.match_status = li.match_status if li.ingredient_id or li.match_status == "bekræftet" else "ingen"
+            # Uændret i forhold til det, familien så (der kan være familiens eget valg i
+            # laget), så gemmes den fælles linjes vare ikke om.
+            if before != (li.ingredient_id, li.match_status):
+                line.ingredient_id = li.ingredient_id
+                # "bekræftet" uden vare betyder, at linjen bevidst ikke er koblet.
+                line.match_status = li.match_status if li.ingredient_id or li.match_status == "bekræftet" else "ingen"
             # Lær kun af NYE bekræftelser. Ellers ville hver gemning genlære alle
             # opskriftens gamle valg og rette andre opskrifter frem og tilbage.
-            if line.match_status == "bekræftet" and line.ingredient_id and before != (line.ingredient_id, "bekræftet"):
+            if li.match_status == "bekræftet" and li.ingredient_id and before != (li.ingredient_id, "bekræftet"):
                 confirmed.append(line)
+                overlay_choice[id(line)] = li.ingredient_id
         keep.append(line)
     recipe.ingredients[:] = keep
     session.flush()
     for line in confirmed:
-        learn_alias(session, line.item, catalog.by_id[line.ingredient_id])
+        # Ejerens valg i redigeringen gælder ejerens egen familie (ikke de andre).
+        iid = overlay_choice[id(line)]
+        set_line_match(session, hh.id, line.id, iid)
+        learn_preference(session, hh.id, line.item, catalog.by_id[iid])
 
 
 def _fill_recipe(recipe: Recipe, body: RecipeIn) -> None:
@@ -197,7 +209,9 @@ def _check_duplicate(session: Session, url: str | None, own_id: int | None = Non
 def list_recipes(session: DbSession, hh: CurrentHousehold, q: str = "", alle: bool = False) -> list[RecipeSummary]:
     """Familiens samling. Med `alle=true` alle fælles opskrifter (også dem, familien ikke bruger)."""
     mine = {r.recipe_id: r for r in session.scalars(select(HouseholdRecipe).where(HouseholdRecipe.household_id == hh.id))}
-    stmt = select(Recipe).options(selectinload(Recipe.ingredients).selectinload(RecipeIngredient.ingredient))
+    stmt = select(Recipe).options(selectinload(Recipe.ingredients))
+    overlay = Overlay.load(session, hh.id)
+    ings = ingredient_map(session)
     # Søgning i Python: SQLites LIKE kender kun store/små bogstaver for ASCII (æ/Æ),
     # og % og _ ville være jokertegn.
     needle = q.strip().casefold()
@@ -213,10 +227,12 @@ def list_recipes(session: DbSession, hh: CurrentHousehold, q: str = "", alle: bo
             servings=r.servings,
             image_url=image_url(r),
             source_host=urlparse(r.source_url).hostname.removeprefix("www.") if r.source_url else None,
-            main_ingredients=[l.ingredient.name for l in r.ingredients if l.is_main and l.ingredient],
-            ingredients=sorted({l.ingredient.name if l.ingredient else l.item for l in r.ingredients}),
-            # Kun ejerfamilien kan rette linjerne, så kun den ser dem som "til tjek".
-            to_review=sum(1 for l in r.ingredients if l.match_status in NEEDS_REVIEW) if r.created_by_household == hh.id else 0,
+            main_ingredients=[ings[overlay.resolve(l)[0]].name for l in r.ingredients
+                              if l.is_main and overlay.resolve(l)[0] in ings],
+            ingredients=sorted({ings[overlay.resolve(l)[0]].name if overlay.resolve(l)[0] in ings else l.item
+                                for l in r.ingredients}),
+            # Linjer, familien selv skal tage stilling til (i dens samling).
+            to_review=sum(1 for l in r.ingredients if overlay.resolve(l)[1] in NEEDS_REVIEW) if r.id in mine else 0,
             owned=r.created_by_household == hh.id,
             in_collection=r.id in mine, favorite=bool(r.id in mine and mine[r.id].favorite),
         ))
@@ -232,8 +248,8 @@ def create_recipe(body: RecipeIn, session: DbSession, hh: CurrentHousehold) -> R
     session.flush()
     _set_note(session, hh, recipe, body.child_note.strip())
     add_to_collection(session, hh.id, recipe.id)
-    catalog = Catalog(session)
-    apply_lines(session, recipe, body.ingredients, catalog)
+    catalog = Catalog(session, hh.id)
+    apply_lines(session, recipe, body.ingredients, catalog, hh)
     if not any(l.is_main for l in recipe.ingredients):
         suggest_main(recipe.ingredients, catalog.by_id)
     session.commit()
@@ -266,9 +282,9 @@ def import_recipe(body: ImportIn, session: DbSession, settings: AppSettings, hh:
     session.add(recipe)
     session.flush()
     add_to_collection(session, hh.id, recipe.id)
-    catalog = Catalog(session)
+    catalog = Catalog(session, hh.id)
     lines = [LineIn(raw=raw[:300], group=g.name[:100]) for g in scraped.groups for raw in g.lines]
-    apply_lines(session, recipe, lines, catalog)
+    apply_lines(session, recipe, lines, catalog, hh)
     suggest_main(recipe.ingredients, catalog.by_id)
     session.commit()
     return recipe_out(load_recipe(session, recipe.id), hh, session, warnings)
@@ -285,7 +301,7 @@ def update_recipe(recipe_id: int, body: RecipeIn, session: DbSession, hh: Curren
     _check_duplicate(session, body.source_url, recipe.id)
     _fill_recipe(recipe, body)
     _set_note(session, hh, recipe, body.child_note.strip())
-    apply_lines(session, recipe, body.ingredients, Catalog(session))
+    apply_lines(session, recipe, body.ingredients, Catalog(session, hh.id), hh)
     session.commit()
     session.expire_all()
     return recipe_out(load_recipe(session, recipe.id), hh, session)
@@ -554,35 +570,37 @@ def _own_line(session: Session, line_id: int, hh: Household) -> RecipeIngredient
 
 @router.get("/review")
 def review(session: DbSession, hh: CurrentHousehold) -> list[ReviewLine]:
-    """Linjer, hvor varen er usikker eller mangler (kun i familiens egne opskrifter)."""
+    """Linjer i familiens samling, hvor varen er usikker eller mangler (set med familiens egne valg)."""
     pantry = pantry_ids(session, hh.id)
+    overlay = Overlay.load(session, hh.id)
+    ings = ingredient_map(session)
+    mine = select(HouseholdRecipe.recipe_id).where(HouseholdRecipe.household_id == hh.id)
     rows = session.execute(
         select(RecipeIngredient, Recipe.title)
         .join(Recipe)
-        .where(RecipeIngredient.match_status.in_(NEEDS_REVIEW), Recipe.created_by_household == hh.id)
-        .options(selectinload(RecipeIngredient.ingredient))
+        .where(Recipe.id.in_(mine))
         .order_by(RecipeIngredient.item, Recipe.title)
     )
     return [
         ReviewLine(
             id=l.id, recipe_id=l.recipe_id, recipe_title=title, raw=l.raw, item=l.item, unit=l.unit,
-            ingredient=ingredient_ref(l.ingredient, pantry), match_status=l.match_status,
+            ingredient=ingredient_ref(ings.get(overlay.resolve(l)[0]), pantry), match_status=overlay.resolve(l)[1],
         )
-        for l, title in rows
+        for l, title in rows if overlay.resolve(l)[1] in NEEDS_REVIEW
     ]
 
 
 @router.post("/lines/{line_id}/confirm")
 def confirm_line(line_id: int, body: LineConfirmIn, session: DbSession, hh: CurrentHousehold) -> dict:
-    """Bekræft varen for en linje. Samme varenavn i andre opskrifter rettes også."""
-    line = _own_line(session, line_id, hh)
+    """Bekræft varen for en linje, for familiens egen skyld: samme varenavn i familiens andre
+    opskrifter følger med. De fælles opskrifter og aliaser ændres ikke."""
+    line = session.get(RecipeIngredient, line_id)
     ing = session.get(Ingredient, body.ingredient_id)
     if line is None or ing is None:
         raise HTTPException(status_code=404, detail="Linje eller vare findes ikke")
-    line.ingredient_id = ing.id
-    line.match_status = "bekræftet"
+    set_line_match(session, hh.id, line.id, ing.id)
     session.flush()
-    also = learn_alias(session, line.item, ing)
+    also = learn_preference(session, hh.id, line.item, ing)
     session.commit()
     return {"also_updated": also}
 
@@ -605,10 +623,9 @@ def set_main(line_id: int, body: MainIn, session: DbSession, hh: CurrentHousehol
 @router.post("/lines/{line_id}/ignore")
 def ignore_line(line_id: int, session: DbSession, hh: CurrentHousehold) -> dict:
     """Linjen skal ikke kobles til en vare (fx "vand" eller en pyntebemærkning)."""
-    line = _own_line(session, line_id, hh)
+    line = session.get(RecipeIngredient, line_id)
     if line is None:
         raise HTTPException(status_code=404, detail="Linjen findes ikke")
-    line.ingredient_id = None
-    line.match_status = "bekræftet"
+    set_line_match(session, hh.id, line.id, None)
     session.commit()
     return {"also_updated": 0}

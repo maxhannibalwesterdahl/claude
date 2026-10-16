@@ -19,7 +19,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from ..adjustments import load_adjustments
-from ..catalog import Catalog, learn_alias
+from ..catalog import Catalog
+from ..matching import Overlay, ingredient_map, learn_preference
 from ..config import local_today
 from ..ingredients.matcher import DEPARTMENTS, key as item_key
 from ..models import (
@@ -199,7 +200,9 @@ def _plan_parts(session: Session, hh: Household, plan: Plan) -> tuple[dict[str, 
     ingredients: dict[str, Ingredient | None] = {}
     names: dict[str, str] = {}
     adjust = load_adjustments(session, hh.id, {m.recipe_id for m in meals if m.recipe_id})
-    catalog = Catalog(session) if any(a.extras for a in adjust.values()) else None
+    catalog = Catalog(session, hh.id) if any(a.extras for a in adjust.values()) else None
+    overlay = Overlay.load(session, hh.id)
+    ings = ingredient_map(session)
     for meal in meals:
         if not meal.recipe:
             continue
@@ -213,7 +216,7 @@ def _plan_parts(session: Session, hh: Household, plan: Plan) -> tuple[dict[str, 
             state = states.get(line.id)
             if state == "rest" or line.id in adj.skip:
                 continue
-            ing = line.ingredient
+            ing = ings.get(overlay.resolve(line)[0])
             k = f"i:{ing.id}" if ing else f"t:{item_key(line.item)}"
             ingredients[k] = ing
             names.setdefault(k, ing.name if ing else line.item)
@@ -399,12 +402,12 @@ def add_extra(body: ExtraIn, session: DbSession, hh: CurrentHousehold, plan_id: 
         elif not _already_on_list(session, hh, plan, text or ing.name, today):
             session.add(ShoppingExtra(household_id=hh.id, text=text or ing.name, ingredient=ing, source="egen", plan=plan))
             if text:
-                _learn_from_extra(session, text, ing)
+                _learn_from_extra(session, hh, text, ing)
     else:
         if not text:
             raise HTTPException(status_code=422, detail="Skriv en vare")
         # Kendt vare? Så kommer den under den rigtige afdeling.
-        found = Catalog(session).parse(text)
+        found = Catalog(session, hh.id).parse(text)
         ing = session.get(Ingredient, found.ingredient_id) if found.match_status == "sikker" else None
         if not _already_on_list(session, hh, plan, text, today):
             session.add(ShoppingExtra(household_id=hh.id, text=text, ingredient=ing, source="egen", plan=plan))
@@ -426,12 +429,12 @@ def _extra(session: Session, extra_id: int, hh: Household) -> ShoppingExtra:
     return extra
 
 
-def _learn_from_extra(session: Session, text: str, ing: Ingredient) -> None:
-    """Husk brugerens valg: varenavnet fra teksten ("2 pk pampers" -> "pampers")
-    bliver et alias for varen, ligesom når en opskriftslinje bekræftes."""
-    item = Catalog(session).parse(text).item
+def _learn_from_extra(session: Session, hh: Household, text: str, ing: Ingredient) -> None:
+    """Husk familiens valg: varenavnet fra teksten ("2 pk pampers" -> "pampers") bliver
+    familiens eget navn for varen, ligesom når en opskriftslinje bekræftes."""
+    item = Catalog(session, hh.id).parse(text).item
     if item:
-        learn_alias(session, item, ing)
+        learn_preference(session, hh.id, item, ing)
 
 
 @router.patch("/shopping/extras/{extra_id}")
@@ -444,7 +447,7 @@ def update_extra(extra_id: int, body: ExtraPatch, session: DbSession, hh: Curren
         raise HTTPException(status_code=404, detail="Varen findes ikke")
     extra.ingredient = ing
     if ing is not None and extra.source == "egen":
-        _learn_from_extra(session, extra.text, ing)
+        _learn_from_extra(session, hh, extra.text, ing)
     session.commit()
     return build(session, hh, choose_plan(session, hh, plan_id, today), today=today)
 
@@ -466,12 +469,14 @@ def set_home(body: HomeIn, session: DbSession, hh: CurrentHousehold) -> Shopping
         select(PlanMeal).where(PlanMeal.plan_id == plan.id, PlanMeal.kind == "opskrift").options(
             selectinload(PlanMeal.recipe).selectinload(Recipe.ingredients), selectinload(PlanMeal.line_states))
     ).all()
+    overlay = Overlay.load(session, hh.id)
     for meal in meals:
         if not meal.recipe:
             continue
         states = {s.line_id: s for s in meal.line_states}
         for line in meal.recipe.ingredients:
-            k = f"i:{line.ingredient_id}" if line.ingredient_id else f"t:{item_key(line.item)}"
+            ing_id = overlay.resolve(line)[0]
+            k = f"i:{ing_id}" if ing_id else f"t:{item_key(line.item)}"
             if k != body.key:
                 continue
             st = states.get(line.id)

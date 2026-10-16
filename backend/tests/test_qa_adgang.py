@@ -89,9 +89,7 @@ CASES: dict[tuple[str, str], tuple[dict | None, int]] = {
     ("DELETE", "/api/recipes/{recipe_id}"): (None, 404),
     ("DELETE", "/api/recipes/{recipe_id}/image"): (None, 404),
     ("POST", "/api/recipes/{recipe_id}/suggest-main"): (None, 404),
-    ("POST", "/api/lines/{line_id}/confirm"): ({"ingredient_id": 1}, 404),
     ("PUT", "/api/lines/{line_id}/main"): ({"is_main": True}, 404),
-    ("POST", "/api/lines/{line_id}/ignore"): (None, 404),
     # planer
     ("GET", "/api/plans/{plan_id}"): (None, 404),
     ("DELETE", "/api/plans/{plan_id}"): (None, 404),
@@ -136,6 +134,7 @@ NO_FOREIGN_IDS = {
     ("PUT", "/api/recipes/{recipe_id}/favorite"), ("PUT", "/api/recipes/{recipe_id}/note"),   # kun egen samling/note: test_samling.py
     ("POST", "/api/recipes/{recipe_id}/image"),   # som PUT: se test_other_family_cannot_upload_image
     ("GET", "/api/review"),
+    ("POST", "/api/lines/{line_id}/confirm"), ("POST", "/api/lines/{line_id}/ignore"),   # familiens eget lag: test_varekobling.py
     ("GET", "/api/search/valdemarsro"), ("GET", "/api/search/nemlig"),
     ("GET", "/api/ingredients"), ("POST", "/api/ingredients"), ("PUT", "/api/ingredients/{ingredient_id}"),
     ("GET", "/api/images/{name}"),

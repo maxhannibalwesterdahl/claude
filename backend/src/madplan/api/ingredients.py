@@ -24,7 +24,7 @@ def meta(_: CurrentHousehold) -> dict:
 @router.post("/parse")
 def parse(body: ParseIn, session: DbSession, hh: CurrentHousehold) -> list[ParsedOut]:
     """Læs ingredienslinjer uden at gemme dem (til redigering)."""
-    catalog = Catalog(session)
+    catalog = Catalog(session, hh.id)
     pantry = pantry_ids(session, hh.id)
     out = []
     for raw in body.lines:

@@ -43,7 +43,7 @@
 		);
 	}
 
-	const onLogin = $derived(page.url.pathname === '/login');
+	const onLogin = $derived(page.url.pathname === '/login' || page.url.pathname.startsWith('/join/'));
 	// Ingen fanelinje på login og mens der laves mad.
 	const showNav = $derived(!onLogin && !page.url.pathname.startsWith('/lav/'));
 

@@ -18,6 +18,17 @@ def user_out(session, user: User) -> UserOut:
     return UserOut(id=user.id, username=user.username, is_system_admin=user.is_system_admin, household=household)
 
 
+def start_session(response: Response, request: Request, settings, user: User) -> None:
+    response.set_cookie(
+        COOKIE,
+        make_session(settings.secret, user.id, user.session_version),
+        max_age=SESSION_DAYS * 86400,
+        httponly=True,
+        secure=request.url.scheme == "https" or "x-forwarded-for" in request.headers,
+        samesite="lax",
+    )
+
+
 @router.post("/login")
 def login(body: LoginIn, request: Request, response: Response, session: DbSession, settings: AppSettings) -> UserOut:
     limiter = request.app.state.login_limiter
@@ -36,14 +47,7 @@ def login(body: LoginIn, request: Request, response: Response, session: DbSessio
     if not ok:
         raise HTTPException(status_code=401, detail="Forkert brugernavn eller kodeord")
     limiter.succeeded(ip)
-    response.set_cookie(
-        COOKIE,
-        make_session(settings.secret, user.id, user.session_version),
-        max_age=SESSION_DAYS * 86400,
-        httponly=True,
-        secure=request.url.scheme == "https" or "x-forwarded-for" in request.headers,
-        samesite="lax",
-    )
+    start_session(response, request, settings, user)
     return user_out(session, user)
 
 

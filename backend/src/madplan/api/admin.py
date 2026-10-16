@@ -21,7 +21,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from ..auth import HASH_GATE, RateLimiter, hash_password, make_session, read_session, verify_password
-from ..households import add_member, create_household
+from ..households import add_member, create_household, create_invite
 from ..ingredients.matcher import DEPARTMENTS
 from ..models import (
     Household,
@@ -234,6 +234,21 @@ def add_user(household_id: int, body: UserIn, session: DbSession, admin: User = 
     session.commit()
     log.info("%s oprettede brugeren %r i familie %d (%s)", admin.username, name, h.id, body.role)
     return _household_out(session, h)
+
+
+class InviteIn(BaseModel):
+    role: str = Field("admin", pattern="^(admin|medlem)$")
+
+
+@protected.post("/households/{household_id}/invites", status_code=201)
+def add_invite(household_id: int, body: InviteIn, session: DbSession, admin: User = Admin) -> dict:
+    """Invitationslink til en familie (typisk til dens første admin). Gælder i 7 dage;
+    nøglen vises kun her."""
+    h = _household(session, household_id)
+    invite, token = create_invite(session, h, body.role, admin)
+    session.commit()
+    log.info("%s lavede en invitation til familie %d (%s)", admin.username, h.id, body.role)
+    return {"token": token, "path": f"/join/{token}", "expires_at": invite.expires_at.isoformat()}
 
 
 class PasswordIn(BaseModel):

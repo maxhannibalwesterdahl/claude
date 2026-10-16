@@ -16,7 +16,8 @@ from madplan.models import User
 
 def _routes(app):
     """Alle /api-ruter (fra OpenAPI-skemaet) undtagen login og helbred."""
-    skip = {"/api/login", "/api/logout", "/api/health", "/api/{rest}"}
+    skip = {"/api/login", "/api/logout", "/api/health", "/api/{rest}",
+            "/api/invites/{token}", "/api/invites/{token}/accept"}   # åbnes af den inviterede (test_household.py)
     for path, ops in app.openapi()["paths"].items():
         # /api/admin har sin egen matrix (test_admin.py): 404 uden admin-session.
         if path.startswith("/api") and not path.startswith("/api/admin") and path not in skip:
@@ -57,7 +58,9 @@ def _seed(client):
     p = client.post(f"/api/meals/{meal['id']}/reminders", json={"text": "kød op"}).json()
     p = client.post(f"/api/plans/{plan['id']}/wishlist", json={"text": "pizza"}).json()
     shop = client.post("/api/shopping/extras?plan_id=%d" % plan["id"], json={"text": "bleer"}).json()
+    invite = client.post("/api/household/invites", json={}).json()
     return {
+        "invite_id": invite["id"], "user_id": client.get("/api/me").json()["id"],
         "recipe_id": rid["id"], "line_id": rid["ingredients"][0]["id"], "plan_id": plan["id"],
         "meal_id": meal["id"], "reminder_id": p["days"][0]["meal"]["reminders"][0]["id"],
         "wish_id": p["wishlist"][0]["id"],
@@ -110,6 +113,11 @@ CASES: dict[tuple[str, str], tuple[dict | None, int]] = {
     ("PATCH", "/api/shopping/extras/{extra_id}"): ({"ingredient_id": None}, 404),
     ("DELETE", "/api/shopping/extras/{extra_id}"): (None, 404),
     ("POST", "/api/shopping/home"): ({"plan_id": "{plan_id}", "key": "i:1", "home": True}, 404),
+    # familiens indstillinger (Bea er admin i sin egen familie, men Max er ikke hendes medlem)
+    ("DELETE", "/api/household/invites/{invite_id}"): (None, 404),
+    ("POST", "/api/household/members/{user_id}/password"): ({"password": "et-helt-nyt-kodeord"}, 404),
+    ("DELETE", "/api/household/members/{user_id}"): (None, 404),
+    ("PUT", "/api/household/members/{user_id}/role"): ({"role": "medlem"}, 404),
     # sync svarer altid med den andens egen uge og gemmer intet på en fremmed plan
     ("POST", "/api/shopping/sync"): ({"plan_id": "{plan_id}", "changes": [], "view_plan_id": "{plan_id}"}, 200),
 }
@@ -126,6 +134,8 @@ NO_FOREIGN_IDS = {
     ("GET", "/api/ingredients"), ("POST", "/api/ingredients"), ("PUT", "/api/ingredients/{ingredient_id}"),
     ("GET", "/api/images/{name}"),
     ("GET", "/api/plans"), ("POST", "/api/plans"), ("GET", "/api/plans/current"),
+    ("GET", "/api/household"), ("PATCH", "/api/household"), ("POST", "/api/household/invites"),
+    ("POST", "/api/me/password"),
     ("GET", "/api/shopping"),
     ("GET", "/api/settings/departments"), ("PUT", "/api/settings/departments"),
     ("GET", "/api/push/key"), ("POST", "/api/push/subscriptions"),

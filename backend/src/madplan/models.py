@@ -57,6 +57,23 @@ class HouseholdMember(Base):
     role: Mapped[str] = mapped_column(String(10), default="medlem")
 
 
+class Invite(Base):
+    """Invitation til en familie (7 dage). Kun en hash af nøglen gemmes; linket vises én gang."""
+
+    __tablename__ = "invite"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    household_id: Mapped[int] = mapped_column(ForeignKey("household.id", ondelete="CASCADE"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    # Rollen, den inviterede får: "admin" eller "medlem"
+    role: Mapped[str] = mapped_column(String(10), default="medlem")
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("user.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_by: Mapped[int | None] = mapped_column(ForeignKey("user.id", ondelete="SET NULL"))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class HouseholdPantry(Base):
     """Familiens basisvarer (salt, olie, mel …). Erstatter ingredient.pantry."""
 

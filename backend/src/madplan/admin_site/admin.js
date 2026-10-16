@@ -88,6 +88,10 @@ function householdCard(h) {
         if (!confirm((off ? 'Spær alle i ' : 'Åbn for alle i ') + h.name + '?')) return;
         await api(`/households/${h.id}/disabled`, 'POST', { disabled: off }); await reload();
       }) }, 'Spær / åbn alle'),
+      el('button', { class: 'quiet sm', onclick: run(async () => {
+        const inv = await api(`/households/${h.id}/invites`, 'POST', { role: 'admin' });
+        prompt('Invitationslink (gælder 7 dage, vises kun nu). Kopiér og send det:', location.origin + inv.path);
+      }) }, 'Invitation'),
       el('button', { class: 'danger sm', onclick: run(async () => {
         if (prompt(`Sletter ${h.name} med planer, indkøb og brugere. Skriv familiens navn for at bekræfte.`) !== h.name) return;
         await api('/households/' + h.id, 'DELETE'); await reload();

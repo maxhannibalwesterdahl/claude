@@ -56,6 +56,14 @@ export interface RecipeSummary {
 	owned: boolean;
 }
 
+export interface HouseholdView {
+	id: number;
+	name: string;
+	role: 'admin' | 'medlem';
+	members: { id: number; username: string; role: 'admin' | 'medlem'; you: boolean }[];
+	invites: { id: number; role: string; expires_at: string }[];
+}
+
 export interface Me {
 	id: number;
 	username: string;

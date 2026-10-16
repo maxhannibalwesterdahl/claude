@@ -101,6 +101,8 @@ CASES: dict[tuple[str, str], tuple[dict | None, int]] = {
     ("PUT", "/api/plans/{plan_id}/slots"): ({"date": "2026-10-27", "kind": "fritekst", "text": "x"}, 404),
     ("POST", "/api/plans/{plan_id}/wishlist"): ({"text": "x"}, 404),
     ("POST", "/api/plans/{plan_id}/wishlist/distribute"): (None, 404),
+    ("GET", "/api/plans/{plan_id}/fill"): (None, 404),
+    ("POST", "/api/plans/{plan_id}/fill"): ({"days": [{"date": "2026-10-27", "recipe_id": 1}]}, 404),
     ("DELETE", "/api/wishlist/{wish_id}"): (None, 404),
     ("POST", "/api/wishlist/{wish_id}/place"): ({"date": "2026-10-27"}, 404),
     ("PATCH", "/api/meals/{meal_id}"): ({"multiplier": 2}, 404),

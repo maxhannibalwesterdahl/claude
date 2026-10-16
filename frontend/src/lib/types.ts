@@ -206,6 +206,24 @@ export interface Plan extends PlanBrief {
 	wishlist: Wish[];
 }
 
+/** Fyld ugen: et forslag til en ledig dag. `reason` er "ønske", "favorit" eller "længe siden". */
+export interface FillDay {
+	date: string;
+	recipe: RecipeBrief;
+	reason: string;
+}
+
+export interface FillProposal {
+	days: FillDay[];
+	alternatives: RecipeBrief[];
+}
+
+/** Det, der lægges ind på en dag fra forslaget. */
+export interface FillPick {
+	date: string;
+	recipe_id: number;
+}
+
 /** Det, der kan sættes på en dag. */
 export type SlotChoice =
 	| { kind: 'opskrift'; recipe_id: number }

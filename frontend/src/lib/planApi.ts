@@ -1,5 +1,5 @@
 import { api } from './api';
-import type { Plan, SlotChoice } from './types';
+import type { FillPick, FillProposal, Plan, SlotChoice } from './types';
 
 /** Alle ændringer i planen svarer med hele planen, så siden altid viser serverens udgave. */
 export const planApi = {
@@ -27,5 +27,10 @@ export const planApi = {
 	removeReminder: (id: number) => api<Plan>(`/reminders/${id}`, { method: 'DELETE' }),
 	addWish: (planId: number, body: { recipe_id?: number; text?: string }) =>
 		api<Plan>(`/plans/${planId}/wishlist`, { method: 'POST', body }),
-	removeWish: (wishId: number) => api<Plan>(`/wishlist/${wishId}`, { method: 'DELETE' })
+	removeWish: (wishId: number) => api<Plan>(`/wishlist/${wishId}`, { method: 'DELETE' }),
+	/** Forslag til de tomme dage fra i dag. Gemmer ikke noget. */
+	fillProposal: (planId: number, today: string) => api<FillProposal>(`/plans/${planId}/fill?today=${today}`),
+	/** Lægger de valgte retter på planen i ét hug. Dage, der er fyldt i mellemtiden, springes over. */
+	fill: (planId: number, days: FillPick[], today: string) =>
+		api<Plan>(`/plans/${planId}/fill?today=${today}`, { method: 'POST', body: { days } })
 };

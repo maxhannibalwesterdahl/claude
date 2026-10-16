@@ -17,6 +17,7 @@ from ..models import (
     HouseholdRecipe,
     HouseholdRecipeAdjustment,
     HouseholdRecipeNote,
+    HouseholdRecipeTag,
     Ingredient,
     RecipeVersion,
     Plan,
@@ -41,6 +42,7 @@ from .schemas import (
 
 router = APIRouter(prefix="/api")
 NEEDS_REVIEW = ("usikker", "ingen")
+MAX_TAGS = 12
 
 
 def ingredient_ref(ing: Ingredient | None, pantry: set[int] | frozenset[int] = frozenset()) -> IngredientRef | None:
@@ -54,13 +56,24 @@ def image_url(recipe: Recipe) -> str | None:
     return f"/api/images/{recipe.image_file}" if recipe.image_file else None
 
 
+def tags_by_recipe(session: Session, hh_id: int) -> dict[int, list[str]]:
+    """Familiens mærker pr. opskrift, sorteret."""
+    out: dict[int, list[str]] = {}
+    for row in session.execute(select(HouseholdRecipeTag.recipe_id, HouseholdRecipeTag.tag)
+                               .where(HouseholdRecipeTag.household_id == hh_id)
+                               .order_by(HouseholdRecipeTag.tag)):
+        out.setdefault(row.recipe_id, []).append(row.tag)
+    return out
+
+
 def recipe_out(recipe: Recipe, hh: Household, session: Session, warnings: list[str] | None = None) -> RecipeOut:
-    """Opskriften set fra en familie: familiens egen note og basisvarer."""
+    """Opskriften set fra en familie: familiens egen note, mærker og basisvarer."""
     pantry = pantry_ids(session, hh.id)
     overlay = Overlay.load(session, hh.id)
     ings = ingredient_map(session)
     note = session.get(HouseholdRecipeNote, (hh.id, recipe.id))
     mine = session.get(HouseholdRecipe, (hh.id, recipe.id))
+    tags = tags_by_recipe(session, hh.id).get(recipe.id, [])
     adj = load_adjustments(session, hh.id, {recipe.id})[recipe.id]
     extras = []
     if adj.extras:
@@ -76,6 +89,8 @@ def recipe_out(recipe: Recipe, hh: Household, session: Session, warnings: list[s
         id=recipe.id,
         title=recipe.title,
         servings=recipe.servings,
+        total_minutes=recipe.total_minutes,
+        tags=tags,
         instructions=[s for s in recipe.instructions.split("\n") if s.strip()],
         child_note=note.child_note if note else "",
         owned=recipe.created_by_household == hh.id,
@@ -188,6 +203,7 @@ def apply_lines(session: Session, recipe: Recipe, lines: list[LineIn], catalog: 
 def _fill_recipe(recipe: Recipe, body: RecipeIn) -> None:
     recipe.title = body.title.strip()
     recipe.servings = body.servings
+    recipe.total_minutes = body.total_minutes
     recipe.instructions = _clean_steps(body.instructions)
     recipe.source_url = (body.source_url or "").strip() or None
 
@@ -211,6 +227,7 @@ def _check_duplicate(session: Session, url: str | None, own_id: int | None = Non
 def list_recipes(session: DbSession, hh: CurrentHousehold, q: str = "", alle: bool = False) -> list[RecipeSummary]:
     """Familiens samling. Med `alle=true` alle fælles opskrifter (også dem, familien ikke bruger)."""
     mine = {r.recipe_id: r for r in session.scalars(select(HouseholdRecipe).where(HouseholdRecipe.household_id == hh.id))}
+    tags = tags_by_recipe(session, hh.id)
     stmt = select(Recipe).options(selectinload(Recipe.ingredients))
     overlay = Overlay.load(session, hh.id)
     ings = ingredient_map(session)
@@ -227,6 +244,8 @@ def list_recipes(session: DbSession, hh: CurrentHousehold, q: str = "", alle: bo
             id=r.id,
             title=r.title,
             servings=r.servings,
+            total_minutes=r.total_minutes,
+            tags=tags.get(r.id, []),
             image_url=image_url(r),
             source_host=urlparse(r.source_url).hostname.removeprefix("www.") if r.source_url else None,
             main_ingredients=[ings[overlay.resolve(l)[0]].name for l in r.ingredients
@@ -272,6 +291,7 @@ def import_recipe(body: ImportIn, session: DbSession, settings: AppSettings, hh:
     recipe = Recipe(
         title=scraped.title[:200],
         servings=scraped.servings if scraped.servings and scraped.servings <= 100 else None,
+        total_minutes=scraped.total_minutes,
         instructions=_clean_steps(scraped.instructions),
         source_url=url,
         created_by_household=hh.id,
@@ -415,6 +435,10 @@ def take_out_of_collection(recipe_id: int, session: DbSession, hh: CurrentHouseh
     row = session.get(HouseholdRecipe, (hh.id, recipe.id))
     if row is not None:
         session.delete(row)
+        # Familiens mærker på opskriften går med, den ligger ikke længere i samlingen.
+        for tag in session.scalars(select(HouseholdRecipeTag).where(
+                HouseholdRecipeTag.household_id == hh.id, HouseholdRecipeTag.recipe_id == recipe.id)):
+            session.delete(tag)
         session.commit()
     return recipe_out(recipe, hh, session)
 
@@ -431,6 +455,55 @@ def set_favorite(recipe_id: int, body: FavoriteIn, session: DbSession, hh: Curre
     session.get(HouseholdRecipe, (hh.id, recipe.id)).favorite = body.favorite
     session.commit()
     return recipe_out(recipe, hh, session)
+
+
+class TagsIn(BaseModel):
+    tags: list[str] = Field([], max_length=50)
+
+
+class TagCount(BaseModel):
+    tag: str
+    count: int
+
+
+def clean_tags(tags: list[str]) -> list[str]:
+    """Mærkerne, som de gemmes: små bogstaver, ét mellemrum, ingen tomme eller dobbelte."""
+    out: list[str] = []
+    for raw in tags:
+        tag = " ".join(raw.split()).lower()[:40]
+        if tag and tag not in out:
+            out.append(tag)
+    if len(out) > MAX_TAGS:
+        raise HTTPException(status_code=422, detail=f"Der må højst være {MAX_TAGS} mærker")
+    return out
+
+
+@router.put("/recipes/{recipe_id}/tags")
+def put_tags(recipe_id: int, body: TagsIn, session: DbSession, hh: CurrentHousehold) -> RecipeOut:
+    """Familiens egne mærker på en opskrift i samlingen eller egen. Erstatter de gamle.
+    Andre familier ser dem ikke."""
+    recipe = load_recipe(session, recipe_id)
+    if recipe.created_by_household != hh.id and session.get(HouseholdRecipe, (hh.id, recipe.id)) is None:
+        raise HTTPException(status_code=404, detail="Opskriften findes ikke")
+    tags = clean_tags(body.tags)
+    for old in session.scalars(select(HouseholdRecipeTag).where(
+            HouseholdRecipeTag.household_id == hh.id, HouseholdRecipeTag.recipe_id == recipe.id)):
+        session.delete(old)
+    session.flush()
+    session.add_all(HouseholdRecipeTag(household_id=hh.id, recipe_id=recipe.id, tag=t) for t in tags)
+    session.commit()
+    return recipe_out(load_recipe(session, recipe.id), hh, session)
+
+
+@router.get("/tags")
+def list_tags(session: DbSession, hh: CurrentHousehold) -> list[TagCount]:
+    """Familiens mærker med antal opskrifter, flest først. Bruges til filter og forslag."""
+    rows = session.execute(
+        select(HouseholdRecipeTag.tag, func.count())
+        .where(HouseholdRecipeTag.household_id == hh.id)
+        .group_by(HouseholdRecipeTag.tag)
+    ).all()
+    return [TagCount(tag=t, count=n) for t, n in sorted(rows, key=lambda r: (-r[1], r[0]))]
 
 
 class NoteIn(BaseModel):

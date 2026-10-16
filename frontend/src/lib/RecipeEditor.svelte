@@ -27,6 +27,7 @@
 	const start = untrack(() => recipe);
 	let title = $state(start?.title ?? '');
 	let servings = $state(start?.servings ? String(start.servings) : '');
+	let totalMinutes = $state(start?.total_minutes ? String(start.total_minutes) : '');
 	let sourceUrl = $state(start?.source_url ?? '');
 	let childNote = $state(start?.child_note ?? '');
 	let steps = $state(start?.instructions.join('\n') ?? '');
@@ -122,6 +123,7 @@
 		return {
 			title: title.trim(),
 			servings: servings.trim() ? Number(servings) : null,
+			total_minutes: totalMinutes.trim() ? Number(totalMinutes) : null,
 			source_url: sourceUrl.trim() || null,
 			child_note: childNote,
 			instructions: steps.split('\n').map((s) => s.trim()).filter(Boolean),
@@ -253,10 +255,14 @@
 				<input bind:value={servings} inputmode="numeric" pattern="[0-9]*" placeholder="4" />
 			</label>
 			<label class="field">
-				<span>Link</span>
-				<input bind:value={sourceUrl} type="url" placeholder="https://…" />
+				<span>Tid (minutter)</span>
+				<input bind:value={totalMinutes} inputmode="numeric" pattern="[0-9]*" placeholder="35" />
 			</label>
 		</div>
+		<label class="field">
+			<span>Link</span>
+			<input bind:value={sourceUrl} type="url" placeholder="https://…" />
+		</label>
 
 		<label class="field">
 			<span>Note om barnet</span>
@@ -409,7 +415,7 @@
 	}
 	.two {
 		display: grid;
-		grid-template-columns: 6.5rem minmax(0, 1fr);
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 		gap: 10px;
 	}
 	.again {

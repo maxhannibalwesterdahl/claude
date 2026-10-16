@@ -78,6 +78,7 @@ class ExtraLineOut(BaseModel):
 class RecipeIn(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     servings: int | None = Field(None, ge=1, le=100)
+    total_minutes: int | None = Field(None, ge=1, le=1440)
     instructions: list[str] = []
     child_note: str = Field("", max_length=2000)
     source_url: str | None = Field(None, max_length=500)
@@ -104,6 +105,8 @@ class RecipeOut(BaseModel):
     id: int
     title: str
     servings: int | None
+    total_minutes: int | None = None
+    tags: list[str] = []
     instructions: list[str]
     child_note: str
     # Familien ejer opskriften og kan rette den. Ellers er den kun til at bruge.
@@ -122,6 +125,9 @@ class RecipeSummary(BaseModel):
     id: int
     title: str
     servings: int | None
+    total_minutes: int | None = None
+    # Familiens egne mærker på opskriften
+    tags: list[str] = []
     image_url: str | None
     source_host: str | None
     main_ingredients: list[str]

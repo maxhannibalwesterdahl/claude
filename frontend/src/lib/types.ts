@@ -46,6 +46,10 @@ export interface Recipe {
 	id: number;
 	title: string;
 	servings: number | null;
+	/** Tilberedningstid i minutter (den fælles opskrift). */
+	total_minutes: number | null;
+	/** Familiens egne mærker på opskriften. */
+	tags: string[];
 	instructions: string[];
 	child_note: string;
 	// Familien ejer opskriften og kan rette den. Ellers er den fælles og kun til at bruge.
@@ -65,6 +69,8 @@ export interface RecipeSummary {
 	id: number;
 	title: string;
 	servings: number | null;
+	total_minutes: number | null;
+	tags: string[];
 	image_url: string | null;
 	source_host: string | null;
 	main_ingredients: string[];
@@ -73,6 +79,12 @@ export interface RecipeSummary {
 	owned: boolean;
 	in_collection: boolean;
 	favorite: boolean;
+}
+
+/** Familiens mærke med antal opskrifter (GET /api/tags). */
+export interface TagCount {
+	tag: string;
+	count: number;
 }
 
 export interface HouseholdView {

@@ -67,7 +67,7 @@ def find_invite(session: Session, token: str) -> Invite | None:
 def export_household(session: Session, household: Household) -> dict:
     """Alt, familien selv har lagt ind, som almindelig JSON. Fælles viden (varekatalog,
     andre familiers opskrifter) er ikke med; opskrifter familien ejer er med i fuld form."""
-    from .models import (HouseholdRecipe, HouseholdRecipeNote, HouseholdStaple, Plan, PlanLineState, PlanMeal,
+    from .models import (HouseholdRecipe, HouseholdRecipeNote, HouseholdRecipeTag, HouseholdStaple, Plan, PlanLineState, PlanMeal,
                          Recipe, RecipeIngredient, Setting, ShoppingCheck, ShoppingExtra, WishlistItem)
 
     hid = household.id
@@ -93,6 +93,11 @@ def export_household(session: Session, household: Household) -> dict:
                 select(HouseholdRecipe, Recipe.title).join(Recipe, Recipe.id == HouseholdRecipe.recipe_id)
                 .where(HouseholdRecipe.household_id == hid).order_by(Recipe.title))
         ],
+        "tags": [
+            {"recipe_id": t.recipe_id, "tag": t.tag}
+            for t in session.scalars(select(HouseholdRecipeTag).where(HouseholdRecipeTag.household_id == hid)
+                                     .order_by(HouseholdRecipeTag.recipe_id, HouseholdRecipeTag.tag))
+        ],
         "child_notes": [
             {"recipe_id": n.recipe_id, "note": n.child_note}
             for n in session.scalars(select(HouseholdRecipeNote).where(HouseholdRecipeNote.household_id == hid))
@@ -100,7 +105,8 @@ def export_household(session: Session, household: Household) -> dict:
         ],
         "recipes_owned": [
             {
-                "id": r.id, "title": r.title, "servings": r.servings, "source_url": r.source_url,
+                "id": r.id, "title": r.title, "servings": r.servings, "total_minutes": r.total_minutes,
+                "source_url": r.source_url,
                 "instructions": [s for s in r.instructions.split("\n") if s.strip()], "image_file": r.image_file,
                 "ingredients": [{"raw": l.raw, "group": l.group} for l in r.ingredients],
             }

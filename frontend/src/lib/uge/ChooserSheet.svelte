@@ -199,7 +199,7 @@
 			<Plate src={r.image_url} seed={r.id} size={44} lazy />
 			<span class="grow">
 				<span class="n">{r.title}</span>
-				<span class="m">{[r.servings ? `${r.servings} pers.` : '', r.main_ingredients.join(', ')].filter(Boolean).join(' · ')}</span>
+				<span class="m">{[r.servings ? `${r.servings} pers.` : '', r.total_minutes ? `${r.total_minutes} min` : '', r.main_ingredients.join(', ')].filter(Boolean).join(' · ')}</span>
 			</span>
 			{#if taken}<span class="tag">på listen</span>{:else}<span class="pc"><Icon name="plus" size={17} stroke={2.4} /></span>{/if}
 		</button>

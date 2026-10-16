@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, object_session, selectinload
 
 from ..adjustments import Adjustments, load_adjustments, parse_extras
 from ..config import local_today
+from ..fill import Option, choose_days
 from ..matching import Overlay, ingredient_map
 from ..models import Household, HouseholdRecipe, Plan, PlanLineState, PlanMeal, Recipe, RecipeIngredient, WishlistItem
 from ..planning import MULTIPLIERS, scale
@@ -592,3 +593,113 @@ def suggestions(
         )
         for r, when in rows
     ]
+
+
+# --- Fyld ugen ----------------------------------------------------------------------
+
+class FillDayOut(BaseModel):
+    date: date
+    recipe: RecipeBrief
+    # "ønske", "favorit" eller "længe siden"
+    reason: str
+
+
+class FillOut(BaseModel):
+    days: list[FillDayOut]
+    alternatives: list[RecipeBrief]
+
+
+class FillDayIn(BaseModel):
+    date: date
+    recipe_id: int
+
+
+class FillIn(BaseModel):
+    days: list[FillDayIn] = Field(max_length=14)
+
+
+def _open_days(plan: Plan, today: date) -> list[date]:
+    """Dagene fra i dag, der hverken har en husstands- eller børneret."""
+    taken = {m.date for m in plan.meals}
+    days = (plan.start_date + timedelta(days=i) for i in range(plan.days))
+    return [d for d in days if d not in taken and d >= today]
+
+
+def _fill_options(session: Session, plan: Plan, hh: Household) -> tuple[list[Option], dict[int, Recipe], dict[int, set[int]], set[int]]:
+    """Kandidaterne i rækkefølge, opskrifterne og hovedingredienserne pr. opskrift.
+    Returnerer også hovedingredienserne på planen. Se `fill.choose_days`."""
+    on_plan = {m.recipe_id for m in plan.meals if m.recipe_id}
+    # Samme "sidst planlagt" som forslagene: alle planer i husstanden tæller.
+    planned = (
+        select(PlanMeal.recipe_id, func.max(PlanMeal.date).label("last"))
+        .join(Plan)
+        .where(PlanMeal.kind == "opskrift", PlanMeal.recipe_id.is_not(None), Plan.household_id == hh.id)
+        .group_by(PlanMeal.recipe_id)
+        .subquery()
+    )
+    last = planned.c.last
+    rows = session.execute(
+        select(Recipe, HouseholdRecipe.favorite, last)
+        .join(HouseholdRecipe, (HouseholdRecipe.recipe_id == Recipe.id) & (HouseholdRecipe.household_id == hh.id))
+        .outerjoin(planned, planned.c.recipe_id == Recipe.id)
+        .order_by(last.is_(None), last, case((last.is_(None), Recipe.created_at)), func.lower(Recipe.title), Recipe.id)
+    ).all()
+    recipes = {r.id: r for r, _, _ in rows}
+    wished = [w.recipe_id for w in plan.wishlist if w.recipe_id in recipes and w.recipe_id not in on_plan]
+    wished_ids = set(wished)
+    # Favoritter og andre må ikke være lavet for nylig før planens start.
+    recent_from = plan.start_date - timedelta(days=14)
+
+    def open_(r: Recipe, when: date | None) -> bool:
+        if r.id in on_plan or r.id in wished_ids:
+            return False
+        return when is None or not recent_from <= when < plan.start_date
+
+    options = [Option(rid, "ønske") for rid in dict.fromkeys(wished)]
+    options += [Option(r.id, "favorit") for r, fav, when in rows if fav and open_(r, when)]
+    options += [Option(r.id, "længe siden") for r, fav, when in rows if not fav and open_(r, when)]
+
+    ids = list(set(recipes) | on_plan)
+    mains: dict[int, set[int]] = {}
+    for rid, ing in session.execute(
+        select(RecipeIngredient.recipe_id, RecipeIngredient.ingredient_id).where(
+            RecipeIngredient.is_main.is_(True), RecipeIngredient.ingredient_id.is_not(None),
+            RecipeIngredient.recipe_id.in_(ids))
+    ):
+        mains.setdefault(rid, set()).add(ing)
+    planned_mains = set().union(*(mains.get(rid, set()) for rid in on_plan))
+    return options, recipes, mains, planned_mains
+
+
+@router.get("/plans/{plan_id}/fill")
+def fill_proposal(plan_id: int, session: DbSession, hh: CurrentHousehold, today: date | None = None) -> FillOut:
+    """Forslag til de tomme dage fra i dag. Gemmer ikke noget."""
+    plan = load_plan(session, plan_id, hh)
+    options, recipes, mains, planned_mains = _fill_options(session, plan, hh)
+    picks, alternatives = choose_days(_open_days(plan, today or local_today()), options, mains, planned_mains)
+    return FillOut(
+        days=[FillDayOut(date=p.date, recipe=_brief(recipes[p.recipe_id]), reason=p.reason) for p in picks],
+        alternatives=[_brief(recipes[o.recipe_id]) for o in alternatives],
+    )
+
+
+@router.post("/plans/{plan_id}/fill")
+def apply_fill(plan_id: int, body: FillIn, session: DbSession, hh: CurrentHousehold, today: date | None = None) -> PlanOut:
+    """Læg forslaget på planen i ét hug. Dage, der er gået, eller som er blevet fyldt
+    i mellemtiden, springes over. En ønskeret, der bliver lagt på, fjernes fra listen."""
+    plan = load_plan(session, plan_id, hh)
+    today = today or local_today()
+    for item in body.days:
+        _check_date(plan, item.date)
+    taken = {m.date for m in plan.meals}
+    for item in body.days:
+        if item.date in taken or item.date < today:
+            continue
+        recipe = _check_recipe(session, item.recipe_id, hh)
+        plan.meals.append(PlanMeal(date=item.date, for_child=False, kind="opskrift", multiplier=1.0, recipe=recipe))
+        taken.add(item.date)
+        wish = next((w for w in plan.wishlist if w.recipe_id == recipe.id), None)
+        if wish is not None:
+            plan.wishlist.remove(wish)
+    session.commit()
+    return plan_out(load_plan(session, plan.id, hh))

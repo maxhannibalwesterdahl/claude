@@ -15,6 +15,7 @@
 	import ChooserSheet from '$lib/uge/ChooserSheet.svelte';
 	import DayRow from '$lib/uge/DayRow.svelte';
 	import DaySheet from '$lib/uge/DaySheet.svelte';
+	import FillSheet from '$lib/uge/FillSheet.svelte';
 	import NewWeekSheet from '$lib/uge/NewWeekSheet.svelte';
 	import ShoppingAside from '$lib/uge/ShoppingAside.svelte';
 	import TonightCard from '$lib/uge/TonightCard.svelte';
@@ -31,6 +32,7 @@
 		| { kind: 'day'; date: string }
 		| { kind: 'chooser'; date: string; forChild: boolean; focusSearch: boolean }
 		| { kind: 'wishlist' }
+		| { kind: 'fill' }
 		| { kind: 'new' }
 		| null;
 	/** Arket, der er åbent. */
@@ -51,6 +53,8 @@
 		plan?.wishlist.length ? plan.days.find((d) => !d.meal && !d.child && d.date >= clock.today)?.date : undefined
 	);
 	const offered = $derived(plan?.wishlist.slice(0, 2) ?? []);
+	// Der er en tom dag, der ikke er gået: så kan ugen fyldes.
+	const canFill = $derived(!!plan?.days.some((d) => !d.meal && !d.child && d.date >= clock.today));
 
 	const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -211,6 +215,7 @@
 					<ScreenHeader title={weekTitle(plan, clock.today)} eyebrow="{periodLong(plan.start_date, plan.end_date)} · {shoppingDayLabel(plan, clock.today)}">
 						{#snippet actions()}
 							<button type="button" class="chip" onclick={() => (sheet = { kind: 'wishlist' })}>Ønskeliste · {plan.wishlist.length}</button>
+							{#if canFill}<button type="button" class="chip" onclick={() => (sheet = { kind: 'fill' })}>Fyld ugen</button>{/if}
 							<WeekNav {plan} plans={week.plans} onselect={select} onnew={() => (sheet = { kind: 'new' })} />
 						{/snippet}
 					</ScreenHeader>
@@ -296,6 +301,10 @@
 
 			{#if hasToday}{@render wishes()}{/if}
 
+			{#if canFill}
+				<p class="fill"><button type="button" class="btn sm" onclick={() => (sheet = { kind: 'fill' })}>Fyld ugen</button></p>
+			{/if}
+
 			{#if !plan.wishlist.length}
 				<p class="sl">
 					Ønskeliste<button type="button" class="link add" onclick={() => (sheet = { kind: 'wishlist' })}>Tilføj</button>
@@ -324,6 +333,8 @@
 {:else if plan && sheet?.kind === 'chooser'}
 	{@const date = sheet.date}
 	<ChooserSheet {plan} {date} forChild={sheet.forChild} focusSearch={sheet.focusSearch} onchoose={choose} onclose={() => closed(date)} />
+{:else if plan && sheet?.kind === 'fill'}
+	<FillSheet {week} onclose={() => closed()} />
 {:else if plan && sheet?.kind === 'wishlist'}
 	<WishlistSheet {week} onadd={() => (addingWishes = true)} onclose={() => closed()} />
 	{#if addingWishes}
@@ -337,6 +348,9 @@
 		text-align: center;
 	}
 	.empty p + p {
+		margin-top: 16px;
+	}
+	.fill {
 		margin-top: 16px;
 	}
 	/* Linket i overskriften skal kunne rammes med en finger. */

@@ -212,6 +212,37 @@ class Recipe(Base):
     )
 
 
+class RecipeVersion(Base):
+    """Den gamle udgave af en fælles opskrift, gemt lige før ejeren rettede den (historik og fortryd)."""
+
+    __tablename__ = "recipe_version"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    recipe_id: Mapped[int] = mapped_column(ForeignKey("recipe.id", ondelete="CASCADE"), index=True)
+    household_id: Mapped[int | None] = mapped_column(ForeignKey("household.id", ondelete="SET NULL"))
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("user.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # Hele udgaven som JSON (titel, trin, linjer)
+    data: Mapped[str] = mapped_column(Text)
+
+
+class CatalogChange(Base):
+    """Rettelse i det fælles varekatalog, med før og efter, så den kan fortrydes af systemadmin."""
+
+    __tablename__ = "catalog_change"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("user.id", ondelete="SET NULL"))
+    # "vare" (rettet), "vare_slettet", "alias_tilfoejet", "alias_slettet"
+    kind: Mapped[str] = mapped_column(String(20))
+    ingredient_id: Mapped[int | None] = mapped_column(Integer)
+    summary: Mapped[str] = mapped_column(String(300), default="")
+    before: Mapped[str] = mapped_column(Text, default="")
+    after: Mapped[str] = mapped_column(Text, default="")
+    undone: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+
+
 class RecipeIngredient(Base):
     """Én ingredienslinje i en opskrift, både som rå tekst og læst."""
 

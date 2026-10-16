@@ -3,6 +3,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from ..catalog import Catalog, rematch_open_lines
+from ..history import ingredient_state, record_change
 from ..ingredients.matcher import DEPARTMENTS, key
 from ..ingredients.parser_da import UNITS
 from ..models import HouseholdPantry, Ingredient, IngredientAlias, RecipeIngredient
@@ -130,7 +131,10 @@ def update_ingredient(ingredient_id: int, body: IngredientIn, session: DbSession
     if _catalog_fields_changed(ing, body):
         if not user.is_system_admin:
             raise HTTPException(status_code=403, detail="Varekataloget er fælles. Kun administratoren kan rette en vare")
+        before = ingredient_state(ing)
         update_catalog(session, ing, body)
+        record_change(session, user.id, "vare", ing.id, f"Rettede {before['name']}"
+                      + (f" til {ing.name}" if before["name"] != ing.name else ""), before, ingredient_state(ing))
     _set_pantry(session, hh.id, ing, body.pantry)
     session.commit()
     used = session.scalar(

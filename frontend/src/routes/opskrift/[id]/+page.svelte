@@ -130,6 +130,36 @@
 		editingOwn = false;
 	}
 
+	// --- Historik (kun ejerfamilien): de gamle udgaver og gendan ---
+	interface Version { id: number; created_at: string; by: string | null; title: string; lines: number }
+	let versions = $state<Version[] | null>(null);
+	async function toggleHistory() {
+		if (versions) { versions = null; return; }
+		try {
+			versions = await api<Version[]>(`/recipes/${recipe?.id}/versions`);
+		} catch (e) {
+			error = say(e);
+		}
+	}
+	async function restore(v: Version) {
+		if (!recipe || !(await confirmDialog(`Sæt opskriften tilbage til udgaven fra ${new Date(v.created_at).toLocaleString('da-DK')}? Den nuværende gemmes først.`, 'Sæt tilbage'))) return;
+		try {
+			recipe = await api<Recipe>(`/recipes/${recipe.id}/versions/${v.id}/restore`, { method: 'POST' });
+			versions = await api<Version[]>(`/recipes/${recipe.id}/versions`);
+		} catch (e) {
+			error = say(e);
+		}
+	}
+
+	async function toggleFavorite() {
+		if (!recipe) return;
+		try {
+			recipe = await api<Recipe>(`/recipes/${recipe.id}/favorite`, { method: 'PUT', body: { favorite: !recipe.favorite } });
+		} catch (e) {
+			error = say(e);
+		}
+	}
+
 	async function remove() {
 		const id = recipe?.id;
 		if (!recipe || !(await confirmDialog(`Slet "${recipe.title}"?`, 'Slet'))) return;
@@ -174,6 +204,7 @@
 				<button type="button" class="btn primary" onclick={() => (placing = true)}><Icon name="cal" />Læg på en dag</button>
 				{#if recipe.owned}<a class="btn" href="/opskrift/{recipe.id}/rediger">Rediger</a>{/if}
 				{#if recipe.in_collection}
+					<button type="button" class="btn quiet" aria-pressed={recipe.favorite} onclick={toggleFavorite}>{recipe.favorite ? '★ Favorit' : '☆ Favorit'}</button>
 					<button type="button" class="btn quiet" onclick={() => setCollection(false)}>Fjern fra vores samling</button>
 				{:else}
 					<button type="button" class="btn" onclick={() => setCollection(true)}>Læg i vores samling</button>
@@ -306,7 +337,21 @@
 			</section>
 		</div>
 
-		{#if recipe.owned}<p class="actions"><button type="button" class="btn quiet" onclick={remove}>Slet opskrift</button></p>{/if}
+		{#if recipe.owned}
+			<p class="actions">
+				<button type="button" class="btn quiet" onclick={toggleHistory}>{versions ? 'Skjul historik' : 'Historik'}</button>
+				<button type="button" class="btn quiet" onclick={remove}>Slet opskrift</button>
+			</p>
+			{#if versions}
+				{#if !versions.length}<p class="pad muted">Opskriften er ikke rettet siden den blev lagt ind.</p>{/if}
+				{#each versions as v (v.id)}
+					<div class="pad version">
+						<span class="grow">{new Date(v.created_at).toLocaleString('da-DK')} · {v.by ?? '?'} · {v.title} · {v.lines} linjer</span>
+						<button type="button" class="btn quiet sm" onclick={() => restore(v)}>Sæt tilbage</button>
+					</div>
+				{/each}
+			{/if}
+		{/if}
 	{/if}
 </main>
 
@@ -315,6 +360,13 @@
 {/if}
 
 <style>
+	.version {
+		display: flex;
+		gap: 8px;
+		align-items: center;
+		flex-wrap: wrap;
+		padding-block: 6px;
+	}
 	/* iPad på tværs og computer: plads til to spalter. */
 	@media (min-width: 900px) {
 		main {

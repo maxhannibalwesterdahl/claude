@@ -158,7 +158,21 @@ $('recipe-filter').addEventListener('input', drawRecipes);
 
 // --- Varekatalog ---
 let catalog = { departments: [], items: [] };
-async function loadCatalog() { catalog = await api('/ingredients'); drawCatalog(); }
+async function loadCatalog() {
+  catalog = await api('/ingredients');
+  drawCatalog();
+  const changes = await api('/changes');
+  const box = $('change-list');
+  box.replaceChildren();
+  if (!changes.length) box.append(el('p', { class: 'muted' }, 'Ingen rettelser endnu.'));
+  for (const c of changes) {
+    box.append(el('div', { class: 'member' + (c.undone ? ' off' : '') },
+      el('span', { class: 'name' }, c.summary, el('span', { class: 'muted' }, ` · ${c.by || '?'} · ${c.created_at.slice(0, 16).replace('T', ' ')}`)),
+      c.undone ? el('span', { class: 'tag' }, 'fortrudt') : el('button', { class: 'quiet sm', onclick: run(async () => {
+        const r = await api('/changes/' + c.id + '/undo', 'POST'); await loadCatalog(); msg(r.message);
+      }) }, 'Fortryd')));
+  }
+}
 const num = (v) => (v.trim() === '' ? null : Number(v.replace(',', '.')));
 
 function drawCatalog() {
@@ -198,7 +212,12 @@ function catalogCard(i) {
         await api('/aliases/' + a.id, 'DELETE'); await loadCatalog();
       }) }, '×')));
   }
-  return el('div', { class: 'card' }, form, aliases);
+  const add = el('form', { class: 'row', onsubmit: run(async (e) => {
+    e.preventDefault();
+    await api(`/ingredients/${i.id}/aliases`, 'POST', { alias: e.target.a.value });
+    await loadCatalog();
+  }) }, el('input', { name: 'a', placeholder: 'Nyt andet navn', maxlength: '100', required: '' }), el('button', { type: 'submit', class: 'sm quiet' }, 'Tilføj alias'));
+  return el('div', { class: 'card' }, form, aliases, add);
 }
 $('catalog-filter').addEventListener('input', drawCatalog);
 

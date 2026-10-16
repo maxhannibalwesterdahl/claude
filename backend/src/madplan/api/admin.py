@@ -23,8 +23,11 @@ from sqlalchemy.orm import Session, selectinload
 from .. import totp
 from ..auth import HASH_GATE, RateLimiter, hash_password, make_session, read_session, verify_password
 from ..households import add_member, create_household, create_invite, erase_household
+from ..history import CannotUndo, ingredient_state, record_change, undo_change
 from ..ingredients.matcher import DEPARTMENTS
+from ..ingredients.matcher import key as match_key
 from ..models import (
+    CatalogChange,
     Household,
     HouseholdMember,
     Ingredient,
@@ -471,10 +474,14 @@ def update_catalog_item(ingredient_id: int, body: IngredientIn, session: DbSessi
     ing = session.get(Ingredient, ingredient_id)
     if ing is None:
         raise HTTPException(status_code=404, detail="Varen findes ikke")
-    before = ing.name
+    before = ingredient_state(ing)
     update_catalog(session, ing, body)
+    after = ingredient_state(ing)
+    if before != after:
+        record_change(session, admin.id, "vare", ing.id, f"Rettede {before['name']}"
+                      + (f" til {after['name']}" if before["name"] != after["name"] else ""), before, after)
     session.commit()
-    log.info("%s rettede varen %r (nu %r)", admin.username, before, ing.name)
+    log.info("%s rettede varen %r (nu %r)", admin.username, before["name"], ing.name)
     used = session.scalar(select(func.count(func.distinct(RecipeIngredient.recipe_id)))
                           .where(RecipeIngredient.ingredient_id == ing.id)) or 0
     return _catalog_item(ing, used)
@@ -488,6 +495,8 @@ def delete_catalog_item(ingredient_id: int, session: DbSession, admin: User = Ad
     if session.scalar(select(func.count()).select_from(RecipeIngredient).where(RecipeIngredient.ingredient_id == ing.id)):
         raise HTTPException(status_code=409, detail="Varen bruges i opskrifter og kan ikke slettes")
     name = ing.name
+    state = ingredient_state(ing) | {"aliases": [{"alias": a.alias, "key": a.key, "source": a.source} for a in ing.aliases]}
+    record_change(session, admin.id, "vare_slettet", ing.id, f"Slettede varen {name}", state)
     session.delete(ing)
     session.commit()
     log.info("%s slettede varen %r", admin.username, name)
@@ -500,9 +509,71 @@ def delete_alias(alias_id: int, session: DbSession, admin: User = Admin) -> None
     if alias is None:
         raise HTTPException(status_code=404, detail="Aliaset findes ikke")
     text = alias.alias
+    record_change(session, admin.id, "alias_slettet", alias.ingredient_id, f"Fjernede aliaset {text}",
+                  {"alias": alias.alias, "key": alias.key, "ingredient_id": alias.ingredient_id, "source": alias.source})
     session.delete(alias)
     session.commit()
     log.info("%s slettede aliaset %r", admin.username, text)
+
+
+class AliasIn(BaseModel):
+    alias: str = Field(min_length=1, max_length=100)
+
+
+@protected.post("/ingredients/{ingredient_id}/aliases", status_code=201)
+def add_alias(ingredient_id: int, body: AliasIn, session: DbSession, admin: User = Admin) -> CatalogItem:
+    """Nyt andet navn for en vare ("fløde" -> piskefløde). Må ikke være navnet på en anden vare."""
+    ing = session.get(Ingredient, ingredient_id)
+    if ing is None:
+        raise HTTPException(status_code=404, detail="Varen findes ikke")
+    text = " ".join(body.alias.lower().split())
+    k = match_key(text)
+    if not k:
+        raise HTTPException(status_code=422, detail="Skriv et navn")
+    clash = next((i for i in session.scalars(select(Ingredient)) if match_key(i.name) == k), None)
+    if clash is not None or session.scalar(select(IngredientAlias.id).where(IngredientAlias.key == k)):
+        raise HTTPException(status_code=409, detail="Navnet bruges allerede af en vare eller et alias")
+    session.add(IngredientAlias(alias=text, key=k, ingredient_id=ing.id, source="user"))
+    record_change(session, admin.id, "alias_tilfoejet", ing.id, f"Tilføjede aliaset {text} til {ing.name}",
+                  after={"alias": text, "key": k})
+    session.commit()
+    session.refresh(ing)
+    log.info("%s tilføjede aliaset %r til %r", admin.username, text, ing.name)
+    used = session.scalar(select(func.count(func.distinct(RecipeIngredient.recipe_id)))
+                          .where(RecipeIngredient.ingredient_id == ing.id)) or 0
+    return _catalog_item(ing, used)
+
+
+class ChangeOut(BaseModel):
+    id: int
+    created_at: str
+    by: str | None
+    summary: str
+    undone: bool
+
+
+@protected.get("/changes")
+def list_changes(session: DbSession) -> list[ChangeOut]:
+    """Seneste rettelser i det fælles varekatalog (med fortryd)."""
+    rows = session.execute(
+        select(CatalogChange, User.username).outerjoin(User, User.id == CatalogChange.user_id)
+        .order_by(CatalogChange.id.desc()).limit(100)
+    ).all()
+    return [ChangeOut(id=c.id, created_at=c.created_at.isoformat(), by=u, summary=c.summary, undone=c.undone) for c, u in rows]
+
+
+@protected.post("/changes/{change_id}/undo")
+def undo(change_id: int, session: DbSession, admin: User = Admin) -> dict:
+    change = session.get(CatalogChange, change_id)
+    if change is None:
+        raise HTTPException(status_code=404, detail="Rettelsen findes ikke")
+    try:
+        message = undo_change(session, change)
+    except CannotUndo as e:
+        raise HTTPException(status_code=409, detail=str(e)) from None
+    session.commit()
+    log.info("%s fortrød rettelse %d: %s", admin.username, change.id, message)
+    return {"message": message}
 
 
 # --- Siden ------------------------------------------------------------------------------

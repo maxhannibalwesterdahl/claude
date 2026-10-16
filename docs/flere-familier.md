@@ -1,6 +1,6 @@
 # Flere familier – design
 
-Status 16-10-2026: **trin 1-6 er bygget** (migration 0007-0012):
+Status 16-10-2026: **trin 1-6 er bygget** (migration 0007-0013):
 - Trin 1-2: datamodel, `CurrentHousehold`, alle ruter afgrænset til familien, test-matrix
   (`backend/tests/test_qa_adgang.py`). Kun ejerfamilien (`recipe.created_by_household`)
   kan rette en fælles opskrift; andre får 404.
@@ -22,7 +22,10 @@ Status 16-10-2026: **trin 1-6 er bygget** (migration 0007-0012):
   og tilknytning af egne varer gemmes i `household_line_match` / `household_ingredient_pref` og gælder kun
   familien. De fælles opskrifter og det fælles katalog ændres ikke af det (katalogets aliaser rettes kun af
   systemadmin), så "uenighed" mellem familier opstår ikke. Rækkefølge: linjevalg, navnevalg, linjens egen vare.
-- Ikke bygget: historik med fortryd for opskrifter og katalog (trin 7b).
+- Trin 7b: historik og fortryd. Hver rettelse af en opskrift gemmer den gamle udgave (`recipe_version`, de 30
+  nyeste); ejerfamilien kan sætte opskriften tilbage (knappen Historik på opskriftssiden). Rettelser i det
+  fælles varekatalog (`catalog_change`) står under Varer på admin-siden med Fortryd.
+- Alt i afsnit 10 er nu bygget, undtagen at kopien uden for huset ikke er sat op på serveren (se drift.md).
 - `recipe.child_note` og `ingredient.pantry` er forældede kolonner (pantry er startlisten til nye familier).
 
 Oprindeligt design: gennemtænkt 30-09-2026, opdateret med jeres svar 01-10-2026. Krav fra jer:

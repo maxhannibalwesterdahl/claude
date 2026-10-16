@@ -58,10 +58,12 @@ def _seed(client):
     p = client.post(f"/api/meals/{meal['id']}/reminders", json={"text": "kød op"}).json()
     p = client.post(f"/api/plans/{plan['id']}/wishlist", json={"text": "pizza"}).json()
     shop = client.post("/api/shopping/extras?plan_id=%d" % plan["id"], json={"text": "bleer"}).json()
+    client.put(f"/api/recipes/{rid['id']}", json={"title": "Familie A's ret", "child_note": "uden chili",
+                                                  "ingredients": [{"raw": "500 g hakket oksekød"}]})
     adj = client.post(f"/api/recipes/{rid['id']}/adjustments/extra", json={"raw": "1 dåse majs"}).json()
     invite = client.post("/api/household/invites", json={}).json()
     return {
-        "adjustment_id": adj["extra_lines"][0]["id"], "invite_id": invite["id"], "user_id": client.get("/api/me").json()["id"],
+        "adjustment_id": adj["extra_lines"][0]["id"], "version_id": client.get(f"/api/recipes/{rid['id']}/versions").json()[0]["id"], "invite_id": invite["id"], "user_id": client.get("/api/me").json()["id"],
         "recipe_id": rid["id"], "line_id": rid["ingredients"][0]["id"], "plan_id": plan["id"],
         "meal_id": meal["id"], "reminder_id": p["days"][0]["meal"]["reminders"][0]["id"],
         "wish_id": p["wishlist"][0]["id"],
@@ -86,6 +88,8 @@ def test_users_in_same_family_share_everything(client, colleague):
 CASES: dict[tuple[str, str], tuple[dict | None, int]] = {
     # opskrifter: fælles at læse, kun ejerfamilien retter
     ("PUT", "/api/recipes/{recipe_id}"): ({"title": "Overtaget"}, 404),
+    ("GET", "/api/recipes/{recipe_id}/versions"): (None, 404),
+    ("POST", "/api/recipes/{recipe_id}/versions/{version_id}/restore"): (None, 404),
     ("DELETE", "/api/recipes/{recipe_id}"): (None, 404),
     ("DELETE", "/api/recipes/{recipe_id}/image"): (None, 404),
     ("POST", "/api/recipes/{recipe_id}/suggest-main"): (None, 404),

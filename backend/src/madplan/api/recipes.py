@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 from .. import importer, search_nemlig, search_valdemarsro
 from ..adjustments import load_adjustments
 from ..catalog import Catalog, suggest_main
+from ..history import restore_version, save_version
 from ..matching import Overlay, ingredient_map, learn_preference, set_line_match
 from ..models import (
     Household,
@@ -17,13 +18,14 @@ from ..models import (
     HouseholdRecipeAdjustment,
     HouseholdRecipeNote,
     Ingredient,
+    RecipeVersion,
     Plan,
     PlanMeal,
     Recipe,
     RecipeIngredient,
     WishlistItem,
 )
-from .deps import AppSettings, CurrentHousehold, DbSession, pantry_ids
+from .deps import AppSettings, CurrentHousehold, CurrentUser, DbSession, pantry_ids
 from .schemas import (
     ExtraLineOut,
     ImportIn,
@@ -296,12 +298,55 @@ def get_recipe(recipe_id: int, session: DbSession, hh: CurrentHousehold) -> Reci
 
 
 @router.put("/recipes/{recipe_id}")
-def update_recipe(recipe_id: int, body: RecipeIn, session: DbSession, hh: CurrentHousehold) -> RecipeOut:
+def update_recipe(recipe_id: int, body: RecipeIn, session: DbSession, hh: CurrentHousehold, user: CurrentUser) -> RecipeOut:
     recipe = load_own_recipe(session, recipe_id, hh)
     _check_duplicate(session, body.source_url, recipe.id)
+    save_version(session, recipe, hh.id, user.id)
     _fill_recipe(recipe, body)
     _set_note(session, hh, recipe, body.child_note.strip())
     apply_lines(session, recipe, body.ingredients, Catalog(session, hh.id), hh)
+    session.commit()
+    session.expire_all()
+    return recipe_out(load_recipe(session, recipe.id), hh, session)
+
+
+# --- Historik og fortryd (kun ejerfamilien) -------------------------------------------------
+
+
+class VersionOut(BaseModel):
+    id: int
+    created_at: str
+    by: str | None
+    title: str
+    lines: int
+
+
+@router.get("/recipes/{recipe_id}/versions")
+def list_versions(recipe_id: int, session: DbSession, hh: CurrentHousehold) -> list[VersionOut]:
+    """De gamle udgaver af opskriften (nyeste først). Ejerfamilien ser dem; andre får 404."""
+    import json
+
+    from ..models import User
+
+    recipe = load_own_recipe(session, recipe_id, hh)
+    out = []
+    for v in session.scalars(select(RecipeVersion).where(RecipeVersion.recipe_id == recipe.id).order_by(RecipeVersion.id.desc())):
+        data = json.loads(v.data)
+        by = session.get(User, v.user_id) if v.user_id else None
+        out.append(VersionOut(id=v.id, created_at=v.created_at.isoformat(), by=by.username if by else None,
+                              title=data["title"], lines=len(data["lines"])))
+    return out
+
+
+@router.post("/recipes/{recipe_id}/versions/{version_id}/restore")
+def restore(recipe_id: int, version_id: int, session: DbSession, hh: CurrentHousehold, user: CurrentUser) -> RecipeOut:
+    """Sæt opskriften tilbage til en gammel udgave. Den nuværende gemmes først, så det kan fortrydes igen."""
+    recipe = load_own_recipe(session, recipe_id, hh)
+    version = session.scalar(select(RecipeVersion).where(RecipeVersion.id == version_id, RecipeVersion.recipe_id == recipe.id))
+    if version is None:
+        raise HTTPException(status_code=404, detail="Udgaven findes ikke")
+    save_version(session, recipe, hh.id, user.id)
+    restore_version(session, recipe, version)
     session.commit()
     session.expire_all()
     return recipe_out(load_recipe(session, recipe.id), hh, session)

@@ -67,8 +67,8 @@ def find_invite(session: Session, token: str) -> Invite | None:
 def export_household(session: Session, household: Household) -> dict:
     """Alt, familien selv har lagt ind, som almindelig JSON. Fælles viden (varekatalog,
     andre familiers opskrifter) er ikke med; opskrifter familien ejer er med i fuld form."""
-    from .models import (HouseholdRecipe, HouseholdRecipeNote, Plan, PlanLineState, PlanMeal, Recipe,
-                         RecipeIngredient, Setting, ShoppingCheck, ShoppingExtra, WishlistItem)
+    from .models import (HouseholdRecipe, HouseholdRecipeNote, HouseholdStaple, Plan, PlanLineState, PlanMeal,
+                         Recipe, RecipeIngredient, Setting, ShoppingCheck, ShoppingExtra, WishlistItem)
 
     hid = household.id
     users = session.execute(
@@ -122,6 +122,11 @@ def export_household(session: Session, household: Household) -> dict:
         "shopping_extras": [
             {"text": e.text, "source": e.source, "checked": e.checked}
             for e in session.scalars(select(ShoppingExtra).where(ShoppingExtra.household_id == hid))
+        ],
+        "staples": [
+            {"text": s.text, "quantity": s.quantity, "unit": s.unit}
+            for s in session.scalars(select(HouseholdStaple).where(HouseholdStaple.household_id == hid)
+                                     .order_by(HouseholdStaple.position, HouseholdStaple.id))
         ],
     }
 

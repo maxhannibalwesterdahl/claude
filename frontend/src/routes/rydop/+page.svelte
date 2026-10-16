@@ -13,7 +13,7 @@
 	import { say } from '$lib/ui/copy';
 	import ScreenHeader from '$lib/ui/ScreenHeader.svelte';
 	import Sheet from '$lib/ui/Sheet.svelte';
-	import type { IngredientRef, Plan, ReviewLine } from '$lib/types';
+	import type { IngredientRef, Plan, ReviewLine, Staple } from '$lib/types';
 
 	let lines = $state<ReviewLine[] | null>(null);
 	let error = $state('');
@@ -22,6 +22,7 @@
 	/** Ugedagen, den aktuelle uge starter på. null = der er ingen uge. */
 	let shoppingDay = $state<string | null>(null);
 	let dayInfo = $state(false);
+	let staples = $state<Staple[] | null>(null);
 
 	const items = $derived.by(() => {
 		const map = new Map<string, ReviewItem>();
@@ -59,6 +60,9 @@
 			load();
 			// Kun til tallene på rækkerne: uden dem står rækkerne der stadig.
 			catalog.load().catch(() => {});
+			api<Staple[]>('/staples')
+				.then((s) => (staples = s))
+				.catch(() => (staples = null));
 			api<Plan>(`/plans/current?today=${clock.today}`)
 				.then((p) => (shoppingDay = weekdayName(p.start_date).toLowerCase()))
 				.catch(() => (shoppingDay = null));
@@ -116,6 +120,10 @@
 	<a class="kv" href="/rydop/basisvarer">
 		<span class="k">Basisvarer<small>Altid hjemme, kommer ikke på listen</small></span>
 		{#if catalog.ingredients.length}<span class="tag">{pantryCount}</span>{/if}
+	</a>
+	<a class="kv" href="/rydop/faste">
+		<span class="k">Faste varer<small>Kommer på listen hver uge</small></span>
+		{#if staples}<span class="tag">{staples.length}</span>{/if}
 	</a>
 	<a class="kv" href="/rydop/butik"><span class="k">Rækkefølge i butikken</span></a>
 	<button type="button" class="kv" onclick={() => (dayInfo = true)}>

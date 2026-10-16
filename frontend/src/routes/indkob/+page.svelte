@@ -349,7 +349,7 @@
 			{#each s.rows as item (item.key)}
 				<li data-key={item.key}>
 					<!-- Træk mod højre er en genvej til "Har hjemme". Det samme står i rækkens ark. -->
-					<SwipeRow label="Har hjemme" icon="home" disabled={item.kind === 'extra'} onaction={() => setHome(item.key, true)}>
+					<SwipeRow label="Har hjemme" icon="home" disabled={item.kind !== 'plan'} onaction={() => setHome(item.key, true)}>
 						<ItemRow
 							{item}
 							checked={isChecked(item)}

@@ -44,10 +44,13 @@
 		<Tick {checked} size="lg" />
 		<span class="grow">
 			<span class="what">{#if amount}<b>{amount}</b>{' '}{/if}{item.name}</span>
-			{#if caption}<span class="cap">{caption}</span>{/if}
+			{#if caption || item.staple}
+				<span class="cap">{#if item.staple}<span class="tag">fast</span>{' '}{/if}{caption}</span>
+			{/if}
 		</span>
 	</button>
-	{#if item.unknown}
+	<!-- Faste varer rettes under Ryd op, så der vælges ikke vare her. -->
+	{#if item.unknown && item.kind !== 'staple'}
 		<button type="button" class="btn sm quiet" aria-label="Vælg vare til {item.name}" onclick={onpick}>Vælg vare</button>
 	{/if}
 	<button type="button" class="more" aria-label="Mere om {item.name}" onclick={onmore}><Icon name="more" size={22} stroke={2.6} /></button>

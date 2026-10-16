@@ -43,6 +43,8 @@
 			{#if item.ingredient_name}Vare: <b>{item.ingredient_name}</b> · {department}
 			{:else}Ingen vare valgt. Den står under Andet.{/if}
 		</p>
+	{:else if item.staple}
+		<p class="pad line">Fast vare: {item.staple}. Rettes under <a href="/rydop/faste">Ryd op</a>.</p>
 	{:else if item.unknown}
 		<p class="pad line">Appen kender ikke varen. Den står under Andet.</p>
 	{/if}
@@ -59,7 +61,7 @@
 			{#if item.kind === 'plan'}
 				{#if item.unknown}<button type="button" class="btn" onclick={() => then(close, onpick)}>Vælg vare</button>{/if}
 				<button type="button" class="btn" onclick={() => then(close, onhome)}><Icon name="home" />Har hjemme</button>
-			{:else}
+			{:else if item.kind === 'extra'}
 				<button type="button" class="btn" onclick={() => then(close, onpick)}>{item.ingredient_name ? 'Skift vare' : 'Vælg vare'}</button>
 				<button type="button" class="btn danger" onclick={() => then(close, onremove)}>Fjern fra listen</button>
 			{/if}

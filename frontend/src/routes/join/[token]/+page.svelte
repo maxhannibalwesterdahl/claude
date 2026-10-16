@@ -45,7 +45,7 @@
 		<p role="alert">Invitationen er ugyldig eller udløbet. Bed om en ny.</p>
 		<p><a class="link" href="/login">Til login</a></p>
 	{:else if info}
-		<p class="muted">Du er inviteret til <b>{info.household}</b>. Vælg et brugernavn og et kodeord (mindst 12 tegn).</p>
+		<p class="muted intro">Du er inviteret til <b>{info.household}</b>. Vælg et brugernavn og et kodeord (mindst 12 tegn).</p>
 		<form onsubmit={submit}>
 			<label class="field">
 				<span>Brugernavn</span>
@@ -71,6 +71,9 @@
 		margin: 12px 0 24px;
 		font-size: var(--fs-title);
 		line-height: 36px;
+	}
+	.intro {
+		margin: 0 0 18px;
 	}
 	form {
 		display: grid;

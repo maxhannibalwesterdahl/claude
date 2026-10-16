@@ -92,7 +92,7 @@ nyeste daglige kopi (og billederne) til et sted uden for maskinen: en anden mask
 `/opt/madplan/deploy/offsite.env` (se toppen af scriptet), afprøv med
 `OFFSITE_DRY_RUN=1 ./offsite-backup.sh`, og læg det i cron efter den daglige kopi
 (`0 4 * * * root /opt/madplan/deploy/offsite-backup.sh >> /var/log/madplan-offsite.log 2>&1`).
-**Scriptet er skrevet, men ikke sat op eller afprøvet på serveren; det skal gøres, før familie nr. 2 kommer ind.**
+Scriptet er afprøvet lokalt (falsk docker, rsync), men ikke på serveren og ikke med `age` eller `rclone`. **Det skal sættes op og køres én gang for hånd, før familie nr. 2 kommer ind.** LXC'en skal have `rsync` (eller `rclone`/`age`) installeret.
 
 ### Gendan databasen fra en daglig kopi
 

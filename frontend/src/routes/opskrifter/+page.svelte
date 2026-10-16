@@ -17,17 +17,17 @@
 	import ScreenHeader from '$lib/ui/ScreenHeader.svelte';
 	import type { Plan, RecipeSummary } from '$lib/types';
 
-	type Filter = 'alle' | 'onsker' | 'laenge';
+	type Filter = 'alle' | 'favoritter' | 'onsker' | 'laenge';
 
 	let recipes = $state<RecipeSummary[] | null>(null);
 	let error = $state('');
 	let q = $state('');
 	let adding = $state(false);
-	// ?filter=onsker|laenge vælger et filter fra start.
+	// ?filter=favoritter|onsker|laenge vælger et filter fra start.
 	let filter = $state<Filter>(
 		untrack(() => {
 			const f = page.url.searchParams.get('filter');
-			return f === 'onsker' || f === 'laenge' ? f : 'alle';
+			return f === 'favoritter' || f === 'onsker' || f === 'laenge' ? f : 'alle';
 		})
 	);
 	/** Opskrifter på ønskelisten i den aktuelle uge. null = der er ingen uge (filteret vises ikke). */
@@ -35,14 +35,19 @@
 	/** Opskrifterne, længst siden først. null eller tom = filteret vises ikke. */
 	let longAgo = $state<Suggestion[] | null>(null);
 
+	const favCount = $derived((recipes ?? []).filter((r) => r.favorite).length);
+
 	// Et filter, der ikke findes (endnu), tæller som "Alle".
 	const active = $derived<Filter>(
-		(filter === 'onsker' && !wished) || (filter === 'laenge' && !longAgo?.length) ? 'alle' : filter
+		(filter === 'favoritter' && !favCount) || (filter === 'onsker' && !wished) || (filter === 'laenge' && !longAgo?.length)
+			? 'alle'
+			: filter
 	);
 	const lastPlanned = $derived(new Map((longAgo ?? []).map((s) => [s.recipe.id, s.last_planned])));
 
 	const filtered = $derived.by(() => {
 		const all = recipes ?? [];
+		if (active === 'favoritter') return all.filter((r) => r.favorite);
 		if (active === 'onsker') return all.filter((r) => wished?.has(r.id));
 		if (active === 'laenge') {
 			const byId = new Map(all.map((r) => [r.id, r]));
@@ -97,6 +102,12 @@
 		});
 	});
 
+	// Filteret skrives i adressen, så det er der, næste gang siden åbnes.
+	function setFilter(f: Filter) {
+		filter = f;
+		goto(f === 'alle' ? page.url.pathname : `?filter=${f}`, { replaceState: true, noScroll: true, keepFocus: true });
+	}
+
 	// Fra Valdemarsro og nemlig.com: ny import bliver på listen (og dukker op i jeres egne); en,
 	// vi allerede har, åbnes.
 	function picked(id: number, imported: boolean) {
@@ -125,16 +136,21 @@
 			<input type="search" placeholder="Søg i egne, Valdemarsro og nemlig" bind:value={q} aria-label="Søg i opskrifter" />
 		</div>
 
-		{#if recipes.length > 0 && (wished || longAgo?.length)}
+		{#if recipes.length > 0 && (wished || longAgo?.length || favCount)}
 			<div class="chips pad filters" role="group" aria-label="Vis">
-				<button type="button" class="chip" aria-pressed={active === 'alle'} onclick={() => (filter = 'alle')}>Alle</button>
+				<button type="button" class="chip" aria-pressed={active === 'alle'} onclick={() => setFilter('alle')}>Alle</button>
+				{#if favCount}
+					<button type="button" class="chip" aria-pressed={active === 'favoritter'} onclick={() => setFilter('favoritter')}>
+						Favoritter · {favCount}
+					</button>
+				{/if}
 				{#if wished}
-					<button type="button" class="chip" aria-pressed={active === 'onsker'} onclick={() => (filter = 'onsker')}>
+					<button type="button" class="chip" aria-pressed={active === 'onsker'} onclick={() => setFilter('onsker')}>
 						Ønskeliste · {wished.size}
 					</button>
 				{/if}
 				{#if longAgo?.length}
-					<button type="button" class="chip" aria-pressed={active === 'laenge'} onclick={() => (filter = 'laenge')}>Længe siden</button>
+					<button type="button" class="chip" aria-pressed={active === 'laenge'} onclick={() => setFilter('laenge')}>Længe siden</button>
 				{/if}
 			</div>
 		{/if}
@@ -149,6 +165,8 @@
 			</ul>
 		{:else if q.trim()}
 			<p class="none muted">Ingen af jeres opskrifter matcher "{q.trim()}".</p>
+		{:else if active === 'favoritter'}
+			<p class="none muted">Der er ingen favoritter endnu.</p>
 		{:else if active === 'onsker'}
 			<p class="none muted">Der er ingen opskrifter på ønskelisten.</p>
 		{/if}

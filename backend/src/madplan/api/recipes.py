@@ -203,7 +203,9 @@ def apply_lines(session: Session, recipe: Recipe, lines: list[LineIn], catalog: 
 def _fill_recipe(recipe: Recipe, body: RecipeIn) -> None:
     recipe.title = body.title.strip()
     recipe.servings = body.servings
-    recipe.total_minutes = body.total_minutes
+    # Admin-siden sender ikke tiden med: mangler feltet, bliver tiden stående.
+    if "total_minutes" in body.model_fields_set:
+        recipe.total_minutes = body.total_minutes
     recipe.instructions = _clean_steps(body.instructions)
     recipe.source_url = (body.source_url or "").strip() or None
 

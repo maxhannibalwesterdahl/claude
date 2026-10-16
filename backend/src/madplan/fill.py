@@ -35,8 +35,8 @@ def choose_days(
 
     Første valg er den første kandidat, der ikke har en hovedingrediens til fælles med
     en ret, der allerede er på planen eller er valgt til en anden dag i ugen. Kan det
-    ikke lade sig gøre, bruges en ny kandidat alligevel. Er alle brugt, gentages en ret,
-    så ingen dag står tom. Ingen kandidater giver ingen forslag.
+    ikke lade sig gøre, bruges en ny kandidat alligevel. Er alle brugt, står de
+    sidste dage uden forslag: samme ret to gange i ugen foreslås ikke.
 
     `mains` viser hovedingredienserne pr. opskrift, og `planned_mains` er dem, der
     allerede er på planen. Returnerer forslagene og op til tolv reserver: de næste
@@ -48,7 +48,7 @@ def choose_days(
     for d in sorted(days):
         fresh = [o for o in options if o.recipe_id not in used]
         pick = next((o for o in fresh if not mains.get(o.recipe_id, set()) & taken_mains), None)
-        pick = pick or next(iter(fresh), None) or next(iter(options), None)
+        pick = pick or next(iter(fresh), None)
         if pick is None:
             continue
         used.add(pick.recipe_id)

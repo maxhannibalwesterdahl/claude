@@ -96,6 +96,13 @@ def test_owner_sets_total_minutes(client, other):
     assert other.get(f"/api/recipes/{r['id']}").json()["total_minutes"] == 50
 
 
+def test_save_without_time_keeps_it(client):
+    # Admin-siden sender ikke tiden med. Den må ikke blive slettet af det.
+    r = make(client, total_minutes=35)
+    out = client.put(f"/api/recipes/{r['id']}", json={"title": "Hakkebøf"}).json()
+    assert out["total_minutes"] == 35
+
+
 def test_total_minutes_is_optional_and_bounded(client):
     r = make(client)
     assert r["total_minutes"] is None

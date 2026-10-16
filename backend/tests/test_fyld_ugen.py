@@ -128,12 +128,13 @@ def test_main_ingredient_on_plan_counts(client, meat):
     assert titles(days)[0] == ("2026-10-04", "Suppe", "længe siden")
 
 
-def test_repeats_when_nothing_else_fits(client, recipes):
+def test_never_repeats_a_dish(client, recipes):
+    # Én opskrift og to ledige dage: den anden dag står uden forslag.
     plan = new_plan(client, days=2)
     client.delete(f"/api/recipes/{recipes['lasagne']['id']}")
     client.delete(f"/api/recipes/{recipes['suppe']['id']}")
     days = fill(client, plan)["days"]
-    assert [d["recipe"]["title"] for d in days] == ["Kødsovs", "Kødsovs"]
+    assert [d["recipe"]["title"] for d in days] == ["Kødsovs"]
 
 
 def test_recently_planned_are_skipped(client, recipes):

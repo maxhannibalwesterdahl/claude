@@ -101,3 +101,45 @@ def test_adjusting_puts_recipe_in_the_collection(client, other):
     assert [x["title"] for x in other.get("/api/recipes").json()] == []
     other.post(f"/api/recipes/{r['id']}/adjustments/extra", json={"raw": "1 dåse majs"})
     assert [x["title"] for x in other.get("/api/recipes").json()] == ["Kødsovs"]
+
+
+def test_extra_line_in_the_meal_can_be_ticked_as_home(client, other):
+    r = sovs(client)
+    bid = week(other, r["id"])
+    other.post(f"/api/recipes/{r['id']}/adjustments/extra", json={"raw": "2 dåser majs"})
+    meal = other.get(f"/api/plans/{bid}").json()["days"][0]["meal"]
+    extra = next(l for l in meal["lines"] if l["item"] == "majs")
+    assert extra["line_id"] < 0 and extra["group"] == "Jeres ekstra" and extra["quantity"] == 2 and extra["state"] is None
+    # Har hjemme på dagen: væk fra indkøbslisten og tilbage igen.
+    out = other.put(f"/api/meals/{meal['id']}/lines/{extra['line_id']}", json={"state": "hjemme"}).json()
+    assert next(l for l in out["days"][0]["meal"]["lines"] if l["item"] == "majs")["state"] == "hjemme"
+    assert "majs" not in shopping(other, bid)
+    other.put(f"/api/meals/{meal['id']}/lines/{extra['line_id']}", json={"state": None})
+    assert "majs" in shopping(other, bid)
+    # Fra indkøbslisten: "har hjemme" på varen markerer også den ekstra linje.
+    key = shopping(other, bid)["majs"]["key"]
+    other.post("/api/shopping/home", json={"plan_id": bid, "key": key, "home": True})
+    assert "majs" not in shopping(other, bid)
+    other.post("/api/shopping/home", json={"plan_id": bid, "key": key, "home": False})
+    assert "majs" in shopping(other, bid)
+
+
+def test_extra_line_state_belongs_to_the_familys_own_meal(client, other):
+    r = sovs(client)
+    aid = week(client, r["id"])
+    other.post(f"/api/recipes/{r['id']}/adjustments/extra", json={"raw": "2 dåser majs"})
+    meal = client.get(f"/api/plans/{aid}").json()["days"][0]["meal"]
+    assert not [l for l in meal["lines"] if l["line_id"] < 0]                       # Maxs dag har ikke Beas ekstra linje
+    extra_id = other.get(f"/api/recipes/{r['id']}").json()["extra_lines"][0]["id"]
+    assert client.put(f"/api/meals/{meal['id']}/lines/{-extra_id}", json={"state": "hjemme"}).status_code == 404
+
+
+def test_extra_line_removed_with_its_state(client):
+    r = sovs(client)
+    pid = week(client, r["id"])
+    out = client.post(f"/api/recipes/{r['id']}/adjustments/extra", json={"raw": "2 dåser majs"}).json()
+    aid = out["extra_lines"][0]["id"]
+    meal = client.get(f"/api/plans/{pid}").json()["days"][0]["meal"]
+    client.put(f"/api/meals/{meal['id']}/lines/{-aid}", json={"state": "hjemme"})
+    assert client.delete(f"/api/recipes/{r['id']}/adjustments/{aid}").status_code == 200
+    assert [l for l in client.get(f"/api/plans/{pid}").json()["days"][0]["meal"]["lines"] if l["line_id"] < 0] == []

@@ -18,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from ..adjustments import load_adjustments
+from ..adjustments import load_adjustments, parse_extras
 from ..catalog import Catalog
 from ..matching import Overlay, ingredient_map, learn_preference
 from ..config import local_today
@@ -200,14 +200,15 @@ def _plan_parts(session: Session, hh: Household, plan: Plan) -> tuple[dict[str, 
     ingredients: dict[str, Ingredient | None] = {}
     names: dict[str, str] = {}
     adjust = load_adjustments(session, hh.id, {m.recipe_id for m in meals if m.recipe_id})
-    catalog = Catalog(session, hh.id) if any(a.extras for a in adjust.values()) else None
+    parsed_extras = parse_extras(session, hh.id, adjust)
     overlay = Overlay.load(session, hh.id)
     ings = ingredient_map(session)
     for meal in meals:
         if not meal.recipe:
             continue
         adj = adjust[meal.recipe.id]
-        states = {s.line_id: s.state for s in meal.line_states}
+        states = {s.line_id: s.state for s in meal.line_states if s.line_id is not None}
+        extra_states = {s.adjustment_id: s.state for s in meal.line_states if s.adjustment_id is not None}
         title = meal_title(meal)
         if meal.multiplier != 1:
             # Linjen vises som i opskriften, så gangen skal fremgå.
@@ -225,13 +226,15 @@ def _plan_parts(session: Session, hh: Household, plan: Plan) -> tuple[dict[str, 
             parts[k].append(_Part(scale(q, line.unit, meal.multiplier), line.unit, meal.date, title, line.raw, state))
         # Familiens ekstra linjer ("1 dåse majs") lægges til som almindelige linjer.
         for extra in adj.extras:
-            p = catalog.parse(extra.value)
-            ing = catalog.by_id.get(p.ingredient_id) if p.match_status in ("sikker", "bekræftet") else None
+            state = extra_states.get(extra.id)
+            if state == "rest":
+                continue
+            p, ing = parsed_extras[extra.id]
             k = f"i:{ing.id}" if ing else f"t:{item_key(p.item)}"
             ingredients[k] = ing
             names.setdefault(k, ing.name if ing else p.item)
             q = p.quantity_max if p.quantity_max is not None else p.quantity
-            parts[k].append(_Part(scale(q, p.unit, meal.multiplier), p.unit, meal.date, title, extra.value, None))
+            parts[k].append(_Part(scale(q, p.unit, meal.multiplier), p.unit, meal.date, title, extra.value, state))
     return parts, ingredients, names
 
 
@@ -470,10 +473,14 @@ def set_home(body: HomeIn, session: DbSession, hh: CurrentHousehold) -> Shopping
             selectinload(PlanMeal.recipe).selectinload(Recipe.ingredients), selectinload(PlanMeal.line_states))
     ).all()
     overlay = Overlay.load(session, hh.id)
+    adjust = load_adjustments(session, hh.id, {m.recipe_id for m in meals if m.recipe_id})
+    parsed_extras = parse_extras(session, hh.id, adjust)
     for meal in meals:
         if not meal.recipe:
             continue
-        states = {s.line_id: s for s in meal.line_states}
+        adj = adjust[meal.recipe.id]
+        states = {s.line_id: s for s in meal.line_states if s.line_id is not None}
+        extra_states = {s.adjustment_id: s for s in meal.line_states if s.adjustment_id is not None}
         for line in meal.recipe.ingredients:
             ing_id = overlay.resolve(line)[0]
             k = f"i:{ing_id}" if ing_id else f"t:{item_key(line.item)}"
@@ -482,6 +489,16 @@ def set_home(body: HomeIn, session: DbSession, hh: CurrentHousehold) -> Shopping
             st = states.get(line.id)
             if body.home and st is None:
                 meal.line_states.append(PlanLineState(line_id=line.id, state="hjemme"))
+            elif not body.home and st is not None and st.state == "hjemme":
+                meal.line_states.remove(st)
+        for extra in adj.extras:
+            p, ing = parsed_extras[extra.id]
+            k = f"i:{ing.id}" if ing else f"t:{item_key(p.item)}"
+            if k != body.key:
+                continue
+            st = extra_states.get(extra.id)
+            if body.home and st is None:
+                meal.line_states.append(PlanLineState(adjustment_id=extra.id, state="hjemme"))
             elif not body.home and st is not None and st.state == "hjemme":
                 meal.line_states.remove(st)
     session.commit()

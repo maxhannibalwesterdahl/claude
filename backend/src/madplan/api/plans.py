@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session, object_session, selectinload
 
-from ..adjustments import Adjustments, load_adjustments
+from ..adjustments import Adjustments, load_adjustments, parse_extras
 from ..config import local_today
 from ..matching import Overlay, ingredient_map
 from ..models import Household, HouseholdRecipe, Plan, PlanLineState, PlanMeal, Recipe, RecipeIngredient, WishlistItem
@@ -171,8 +171,9 @@ def meal_title(meal: PlanMeal) -> str:
 
 
 def _meal_out(meal: PlanMeal, pantry: set[int], adjust: dict[int, Adjustments], overlay: Overlay,
-              ings: dict) -> MealOut:
-    states = {s.line_id: s.state for s in meal.line_states}
+              ings: dict, extras: dict) -> MealOut:
+    states = {s.line_id: s.state for s in meal.line_states if s.line_id is not None}
+    extra_states = {s.adjustment_id: s.state for s in meal.line_states if s.adjustment_id is not None}
     lines = []
     if meal.kind == "opskrift" and meal.recipe:
         adj = adjust[meal.recipe.id]
@@ -186,6 +187,16 @@ def _meal_out(meal: PlanMeal, pantry: set[int], adjust: dict[int, Adjustments], 
                 quantity_max=scale(l.quantity_max, l.unit, meal.multiplier) if own is None else None,
                 unit=l.unit, item=l.item, note=l.note, ingredient=ingredient_ref(ings.get(overlay.resolve(l)[0]), pantry),
                 is_main=l.is_main, state=states.get(l.id),
+            ))
+        # Familiens ekstra linjer får negativt line_id (= minus tilpasningens id).
+        for a in adj.extras:
+            p, ing = extras[a.id]
+            lines.append(MealLine(
+                line_id=-a.id, group="Jeres ekstra", raw=a.value,
+                quantity=scale(p.quantity, p.unit, meal.multiplier),
+                quantity_max=scale(p.quantity_max, p.unit, meal.multiplier),
+                unit=p.unit, item=p.item, note=p.note, ingredient=ingredient_ref(ing, pantry),
+                is_main=False, state=extra_states.get(a.id),
             ))
     src = meal.leftover_from
     return MealOut(
@@ -212,13 +223,14 @@ def plan_out(plan: Plan) -> PlanOut:
     adjust = load_adjustments(object_session(plan), plan.household_id, {m.recipe_id for m in plan.meals if m.recipe_id})
     overlay = Overlay.load(object_session(plan), plan.household_id)
     ings = ingredient_map(object_session(plan))
+    extras = parse_extras(object_session(plan), plan.household_id, adjust)
     by_slot = {(m.date, m.for_child): m for m in plan.meals}
     days = []
     for i in range(plan.days):
         d = plan.start_date + timedelta(days=i)
         main, child = by_slot.get((d, False)), by_slot.get((d, True))
-        days.append(DayOut(date=d, meal=_meal_out(main, pantry, adjust, overlay, ings) if main else None,
-                        child=_meal_out(child, pantry, adjust, overlay, ings) if child else None))
+        days.append(DayOut(date=d, meal=_meal_out(main, pantry, adjust, overlay, ings, extras) if main else None,
+                        child=_meal_out(child, pantry, adjust, overlay, ings, extras) if child else None))
     return PlanOut(
         id=plan.id, start_date=plan.start_date, end_date=_end(plan), days=days,
         wishlist=[WishOut(id=w.id, recipe=_brief(w.recipe), text=w.text, title=_wish_title(w)) for w in plan.wishlist],
@@ -439,18 +451,29 @@ def delete_meal(meal_id: int, session: DbSession, hh: CurrentHousehold) -> PlanO
 def set_line_state(meal_id: int, line_id: int, body: LineStateIn, session: DbSession, hh: CurrentHousehold) -> PlanOut:
     """Markér en ingredienslinje som "har hjemme" eller "dækket af rest"."""
     meal = _meal(session, meal_id, hh)
-    if meal.kind != "opskrift" or not meal.recipe or line_id not in {l.id for l in meal.recipe.ingredients}:
+    if meal.kind != "opskrift" or not meal.recipe:
+        raise HTTPException(status_code=404, detail="Linjen hører ikke til retten")
+    if line_id < 0:
+        # Familiens ekstra linje (line_id = minus tilpasningens id)
+        extra = load_adjustments(session, hh.id, {meal.recipe.id})[meal.recipe.id].extras
+        if -line_id not in {a.id for a in extra}:
+            raise HTTPException(status_code=404, detail="Linjen hører ikke til retten")
+    elif line_id not in {l.id for l in meal.recipe.ingredients}:
         raise HTTPException(status_code=404, detail="Linjen hører ikke til retten")
     if body.state == "rest" and not meal.leftover_from:
         raise HTTPException(status_code=422, detail="Vælg først, hvilken ret resten kommer fra")
-    existing = next((s for s in meal.line_states if s.line_id == line_id), None)
+    if line_id < 0:
+        existing = next((s for s in meal.line_states if s.adjustment_id == -line_id), None)
+    else:
+        existing = next((s for s in meal.line_states if s.line_id == line_id), None)
     if body.state is None:
         if existing:
             meal.line_states.remove(existing)
     elif existing:
         existing.state = body.state
     else:
-        meal.line_states.append(PlanLineState(line_id=line_id, state=body.state))
+        meal.line_states.append(PlanLineState(
+            line_id=line_id if line_id > 0 else None, adjustment_id=-line_id if line_id < 0 else None, state=body.state))
     session.commit()
     return plan_out(load_plan(session, meal.plan_id, hh))
 

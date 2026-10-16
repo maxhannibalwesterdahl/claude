@@ -38,3 +38,18 @@ def load_adjustments(session: Session, household_id: int, recipe_ids: list[int] 
         elif a.type == "note":
             adj.note = a.value
     return out
+
+
+def parse_extras(session: Session, household_id: int, adjust: dict[int, Adjustments]) -> dict:
+    """Familiens ekstra linjer læst som ingredienslinjer: tilpasnings-id -> (læst linje, vare eller None)."""
+    from .catalog import Catalog
+
+    extras = [a for adj in adjust.values() for a in adj.extras]
+    if not extras:
+        return {}
+    catalog = Catalog(session, household_id)
+    out = {}
+    for a in extras:
+        p = catalog.parse(a.value)
+        out[a.id] = (p, catalog.by_id.get(p.ingredient_id) if p.match_status in ("sikker", "bekræftet") else None)
+    return out

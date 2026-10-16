@@ -325,11 +325,15 @@ class PlanLineState(Base):
     """En ingredienslinje i en planlagt ret, der ikke skal købes."""
 
     __tablename__ = "plan_line_state"
-    __table_args__ = (UniqueConstraint("meal_id", "line_id"),)
+    __table_args__ = (UniqueConstraint("meal_id", "line_id"), UniqueConstraint("meal_id", "adjustment_id"))
 
     id: Mapped[int] = mapped_column(primary_key=True)
     meal_id: Mapped[int] = mapped_column(ForeignKey("plan_meal.id", ondelete="CASCADE"), index=True)
-    line_id: Mapped[int] = mapped_column(ForeignKey("recipe_ingredient.id", ondelete="CASCADE"))
+    # Enten en linje i opskriften eller en af familiens ekstra linjer (adjustment_id)
+    line_id: Mapped[int | None] = mapped_column(ForeignKey("recipe_ingredient.id", ondelete="CASCADE"))
+    adjustment_id: Mapped[int | None] = mapped_column(
+        ForeignKey("household_recipe_adjustment.id", ondelete="CASCADE")
+    )
     # "hjemme" (har vi) eller "rest" (dækkes af rest fra en anden dag)
     state: Mapped[str] = mapped_column(String(10))
 

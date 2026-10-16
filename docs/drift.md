@@ -84,10 +84,15 @@ Sat op og afprøvet 30-09-2026.
 
 Log for den daglige kopi: `/var/log/madplan-backup.log` i LXC'en.
 
-**Mangler: en kopi uden for maskinen.** Alt ovenfor ligger på værtens ene
-NVMe-disk. Dør disken, er alt væk. Vælg et sted (Macen med Time Machine,
-en USB-disk eller cloud), så sættes en natlig kopi op. OMV-containeren har i dag
-ingen datadisk og er derfor ikke et alternativ.
+### Kopi uden for maskinen
+
+Alt ovenfor ligger på værtens ene NVMe-disk, så `deploy/offsite-backup.sh` sender den
+nyeste daglige kopi (og billederne) til et sted uden for maskinen: en anden maskine over
+`rsync`/ssh eller en sky via `rclone`, evt. krypteret med `age`. Sæt målet i
+`/opt/madplan/deploy/offsite.env` (se toppen af scriptet), afprøv med
+`OFFSITE_DRY_RUN=1 ./offsite-backup.sh`, og læg det i cron efter den daglige kopi
+(`0 4 * * * root /opt/madplan/deploy/offsite-backup.sh >> /var/log/madplan-offsite.log 2>&1`).
+**Scriptet er skrevet, men ikke sat op eller afprøvet på serveren; det skal gøres, før familie nr. 2 kommer ind.**
 
 ### Gendan databasen fra en daglig kopi
 

@@ -137,7 +137,7 @@ NO_FOREIGN_IDS = {
     ("GET", "/api/images/{name}"),
     ("GET", "/api/plans"), ("POST", "/api/plans"), ("GET", "/api/plans/current"),
     ("GET", "/api/household"), ("PATCH", "/api/household"), ("POST", "/api/household/invites"),
-    ("POST", "/api/me/password"),
+    ("POST", "/api/me/password"), ("GET", "/api/household/export"), ("POST", "/api/household/erase"),
     ("GET", "/api/shopping"),
     ("GET", "/api/settings/departments"), ("PUT", "/api/settings/departments"),
     ("GET", "/api/push/key"), ("POST", "/api/push/subscriptions"),

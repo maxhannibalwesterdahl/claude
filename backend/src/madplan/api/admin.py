@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from .. import totp
 from ..auth import HASH_GATE, RateLimiter, hash_password, make_session, read_session, verify_password
-from ..households import add_member, create_household, create_invite
+from ..households import add_member, create_household, create_invite, erase_household
 from ..ingredients.matcher import DEPARTMENTS
 from ..models import (
     Household,
@@ -364,20 +364,18 @@ def delete_user(user_id: int, session: DbSession, admin: User = Admin) -> None:
 
 
 @protected.delete("/households/{household_id}", status_code=204)
-def delete_household(household_id: int, session: DbSession, admin: User = Admin) -> None:
-    """Sletter familien, dens planer, indkøb og brugere. Opskrifterne bliver (uden ejer)."""
+def delete_household(household_id: int, session: DbSession, settings: AppSettings, admin: User = Admin) -> None:
+    """Sletter familien med alt: planer, indkøb, brugere og opskrifter, ingen andre bruger."""
     h = _household(session, household_id)
     if session.scalar(
         select(func.count()).select_from(HouseholdMember).where(
             HouseholdMember.household_id == h.id, HouseholdMember.user_id == admin.id)
     ):
         raise HTTPException(status_code=422, detail="Du kan ikke slette din egen familie")
-    user_ids = list(session.scalars(select(HouseholdMember.user_id).where(HouseholdMember.household_id == h.id)))
-    # Fremmednøgler kaskaderer planer, indkøb og medlemskaber; brugerne slettes eksplicit.
-    for u in session.scalars(select(User).where(User.id.in_(user_ids))):
-        session.delete(u)
-    session.delete(h)
+    images = erase_household(session, h, settings.image_dir)
     session.commit()
+    for image in images:
+        (settings.image_dir / image).unlink(missing_ok=True)
     log.info("%s slettede familie %d (%r)", admin.username, household_id, h.name)
 
 

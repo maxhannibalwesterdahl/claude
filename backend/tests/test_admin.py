@@ -129,7 +129,7 @@ def test_delete_family_removes_its_data_but_keeps_recipes(app, admin):
     assert admin.delete(f"/api/admin/households/{hid}").status_code == 204
     assert kim.get("/api/me").status_code == 401
     assert all(h["id"] != hid for h in admin.get("/api/admin/households").json())
-    assert [r["owner"] for r in admin.get("/api/admin/recipes").json() if r["title"] == "Kims ret"] == [None]
+    assert [r["title"] for r in admin.get("/api/admin/recipes").json()] == []     # ingen andre brugte den
 
 
 def test_admin_lists_and_deletes_recipes(app, client, admin):

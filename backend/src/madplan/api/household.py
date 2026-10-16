@@ -8,12 +8,14 @@ nye åbner og selv vælger brugernavn og kodeord på (flere-familier.md §5).
 import logging
 
 from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..auth import RateLimiter, hash_password, verify_password
-from ..households import INVITE_DAYS, add_member, create_invite, find_invite
+from ..auth import COOKIE
+from ..households import add_member, create_invite, erase_household, export_household, find_invite
 from ..models import Household, HouseholdMember, Invite, User, utcnow
 from .auth_routes import start_session, user_out
 from .deps import AppSettings, CurrentHousehold, CurrentUser, DbSession, client_ip
@@ -203,6 +205,40 @@ def change_own_password(body: ChangePasswordIn, request: Request, response: Resp
     session.commit()
     start_session(response, request, settings, user)
     return user_out(session, user)
+
+
+@router.get("/household/export")
+def export_data(session: DbSession, hh: CurrentHousehold, user: CurrentUser) -> JSONResponse:
+    """Familiens data som en JSON-fil (flere-familier.md §8)."""
+    _require_admin(session, hh, user)
+    log.info("%s hentede familie %d's data", user.username, hh.id)
+    return JSONResponse(
+        export_household(session, hh),
+        headers={"Content-Disposition": 'attachment; filename="madplan-familie.json"', "Cache-Control": "no-store"},
+    )
+
+
+class EraseIn(BaseModel):
+    password: str = Field(max_length=200)
+    name: str = Field(max_length=100)
+
+
+@router.post("/household/erase", status_code=204)
+def erase(body: EraseIn, response: Response, session: DbSession, hh: CurrentHousehold, user: CurrentUser,
+          settings: AppSettings) -> None:
+    """Slet familien og alle dens data for altid. Kræver kodeord og familiens navn."""
+    _require_admin(session, hh, user)
+    if user.is_system_admin:
+        raise HTTPException(status_code=422, detail="Systemadmin kan ikke slette sin egen familie her")
+    if not verify_password(user.password_hash, body.password) or " ".join(body.name.split()) != hh.name:
+        raise HTTPException(status_code=403, detail="Kodeord eller familiens navn er forkert")
+    hid, name = hh.id, hh.name
+    images = erase_household(session, hh, settings.image_dir)
+    session.commit()
+    for image in images:
+        (settings.image_dir / image).unlink(missing_ok=True)
+    response.delete_cookie(COOKIE)
+    log.info("%s slettede familie %d (%r)", user.username, hid, name)
 
 
 # --- Invitation: åbnes af den nye (ikke logget ind) ---------------------------------------

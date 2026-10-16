@@ -44,8 +44,10 @@
 	}
 
 	const onLogin = $derived(page.url.pathname === '/login' || page.url.pathname.startsWith('/join/'));
+	// Privatlivssiden kan læses uden login (og uden fanelinje).
+	const bare = $derived(onLogin || page.url.pathname === '/privatliv');
 	// Ingen fanelinje på login og mens der laves mad.
-	const showNav = $derived(!onLogin && !page.url.pathname.startsWith('/lav/'));
+	const showNav = $derived(!bare && !page.url.pathname.startsWith('/lav/'));
 
 	// Tallet på Indkøb-fanen: rækker, der ikke er købt endnu. Listen ligger gemt
 	// på telefonen, så tallet også vises uden net.
@@ -54,7 +56,7 @@
 	// Hent listen én gang ved start og når appen åbnes igen, så tallet følger med,
 	// når planen er ændret på en anden telefon. Ikke på login: der er ingen session.
 	$effect(() => {
-		if (onLogin) return;
+		if (bare) return;
 		// Først ved, hvem der er logget ind (listen på telefonen er pr. bruger). Uden net
 		// bruges den bruger, der sidst loggede ind her.
 		untrack(() =>
@@ -69,7 +71,7 @@
 	// Har telefonen sagt ja til beskeder, får serveren den at vide igen (fx efter
 	// en ny prøveudgave af databasen). Ikke på login.
 	$effect(() => {
-		if (!onLogin) untrack(syncPush);
+		if (!bare) untrack(syncPush);
 	});
 
 	// Skærmtastaturet lægger sig oven på siden uden at gøre den lavere (iPhone).

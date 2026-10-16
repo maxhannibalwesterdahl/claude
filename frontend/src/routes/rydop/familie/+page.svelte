@@ -1,6 +1,8 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
 	import { untrack } from 'svelte';
 	import { api } from '$lib/api';
+	import { shopping } from '$lib/shopping.svelte';
 	import { confirmDialog } from '$lib/confirm.svelte';
 	import { say } from '$lib/ui/copy';
 	import ScreenHeader from '$lib/ui/ScreenHeader.svelte';
@@ -80,6 +82,16 @@
 	const setRole = (id: number, role: string) =>
 		run(async () => { await api(`/household/members/${id}/role`, { method: 'PUT', body: { role } }); await load(); });
 
+	let erasing = $state(false);
+	let erasePassword = $state('');
+	let eraseName = $state('');
+	const erase = () =>
+		run(async () => {
+			await api('/household/erase', { method: 'POST', body: { password: erasePassword, name: eraseName } });
+			shopping.clear();
+			await goto('/login');
+		});
+
 	const changeMine = () =>
 		run(async () => {
 			await api('/me/password', { method: 'POST', body: { current, new: mine } });
@@ -139,6 +151,23 @@
 					<button type="button" class="btn danger sm" onclick={() => revoke(i.id)}>Træk tilbage</button>
 				</div>
 			{/each}
+		{/if}
+	{/if}
+
+	{#if admin}
+		<h2 class="sl">Jeres data</h2>
+		<p class="pad"><a class="btn sm" href="/api/household/export" download>Hent familiens data</a></p>
+		<p class="pad muted"><a class="link" href="/privatliv">Sådan passer vi på jeres data</a></p>
+		{#if !erasing}
+			<p class="pad"><button type="button" class="btn danger sm" onclick={() => (erasing = true)}>Slet familien og alle data</button></p>
+		{:else}
+			<form class="pad stack" onsubmit={(e) => { e.preventDefault(); erase(); }}>
+				<p>Det sletter alle planer, indkøb, noter og brugere i familien for altid. Det kan ikke fortrydes.</p>
+				<label class="field"><span>Skriv familiens navn: {view?.name}</span><input bind:value={eraseName} required /></label>
+				<label class="field"><span>Dit kodeord</span><input type="password" bind:value={erasePassword} autocomplete="current-password" required /></label>
+				<button class="btn danger sm">Slet for altid</button>
+				<button type="button" class="btn quiet sm" onclick={() => (erasing = false)}>Annuller</button>
+			</form>
 		{/if}
 	{/if}
 

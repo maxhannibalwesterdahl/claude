@@ -135,3 +135,67 @@ def test_admin_can_make_invite_for_a_family(app, client):
     assert inv["path"] == f"/join/{inv['token']}"
     _, r = _join(app, inv["token"], "nyfamilie")
     assert r.json()["household"] == {"id": hid, "name": "Ny familie", "role": "admin"}
+
+
+# --- Udlevering og sletning ---------------------------------------------------------------
+
+def _fill(client):
+    r = client.post("/api/recipes", json={"title": "Hakkebøf", "child_note": "uden chili", "instructions": ["Steg"],
+                                          "ingredients": [{"raw": "500 g hakket oksekød"}]}).json()
+    p = client.post("/api/plans", json={"start_date": "2026-10-26"}).json()
+    client.put(f"/api/plans/{p['id']}/slots", json={"date": "2026-10-26", "kind": "opskrift", "recipe_id": r["id"]})
+    client.post(f"/api/plans/{p['id']}/wishlist", json={"text": "pizza"})
+    client.post("/api/shopping/extras?plan_id=%d" % p["id"], json={"text": "bleer"})
+    return r
+
+
+def test_export_contains_the_familys_data(client, colleague):
+    r = _fill(client)
+    res = client.get("/api/household/export")
+    assert res.status_code == 200 and "attachment" in res.headers["content-disposition"]
+    d = res.json()
+    assert d["family"]["name"] == "Familie A" and [m["username"] for m in d["members"]] == ["anne", "max"]
+    assert d["recipes_owned"][0]["title"] == "Hakkebøf" and d["recipes_owned"][0]["ingredients"][0]["raw"] == "500 g hakket oksekød"
+    assert d["child_notes"] == [{"recipe_id": r["id"], "note": "uden chili"}]
+    assert d["plans"][0]["meals"][0]["kind"] == "opskrift" and d["plans"][0]["wishlist"][0]["text"] == "pizza"
+    assert d["shopping_extras"][0]["text"] == "bleer" and "salt" in d["pantry"]
+    assert colleague.get("/api/household/export").status_code == 403         # kun familiens admin
+
+
+def test_export_has_nothing_from_other_families(app, client):
+    _fill(client)
+    add_user(app, "bea", "Familie B")
+    bea = login(app, "bea")
+    d = bea.get("/api/household/export").json()
+    assert d["recipes_owned"] == [] and d["plans"] == [] and d["shopping_extras"] == [] and d["child_notes"] == []
+
+
+def test_erase_family(app, client, colleague):
+    _fill(client)
+    add_user(app, "bea", "Familie B")
+    bea = login(app, "bea")
+    bea.post("/api/plans", json={"start_date": "2026-10-26"})
+    assert client.post("/api/household/erase", json={"password": "forkert", "name": "Familie A"}).status_code == 403
+    assert client.post("/api/household/erase", json={"password": PASSWORD, "name": "Anden"}).status_code == 403
+    assert colleague.post("/api/household/erase", json={"password": PASSWORD, "name": "Familie A"}).status_code == 403
+    assert client.post("/api/household/erase", json={"password": PASSWORD, "name": "Familie A"}).status_code == 204
+    assert client.get("/api/me").status_code == 401 and colleague.get("/api/me").status_code == 401
+    assert TestClient(app).post("/api/login", json={"username": "max", "password": PASSWORD}).status_code == 401
+    # Familie B er urørt, og familiens opskrift er væk (ingen andre brugte den).
+    assert len(bea.get("/api/plans").json()) == 1 and bea.get("/api/recipes?alle=true").json() == []
+    with app.state.db.sessionmaker() as s:
+        from madplan.models import Household, Plan, Setting, ShoppingExtra, User
+        assert [h.name for h in s.query(Household)] == ["Familie B"]
+        assert s.query(ShoppingExtra).count() == 0 and s.query(Plan).count() == 1
+        assert [u.username for u in s.query(User)] == ["bea"]
+
+
+def test_erase_keeps_recipes_other_families_use(app, client):
+    r = _fill(client)
+    add_user(app, "bea", "Familie B")
+    bea = login(app, "bea")
+    bea.post(f"/api/recipes/{r['id']}/collection")
+    assert client.post("/api/household/erase", json={"password": PASSWORD, "name": "Familie A"}).status_code == 204
+    kept = bea.get("/api/recipes").json()
+    assert [(x["title"], x["owned"]) for x in kept] == [("Hakkebøf", False)]
+    assert bea.get(f"/api/recipes/{r['id']}").json()["child_note"] == ""           # As note er slettet med familien

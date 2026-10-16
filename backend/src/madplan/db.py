@@ -17,7 +17,10 @@ from .config import local_now
 
 
 def make_engine(url: str) -> Engine:
-    engine = create_engine(url, connect_args={"check_same_thread": False})
+    # Puljen skal være større end trådpuljen (40): ellers venter forespørgsler på en
+    # forbindelse, mens andre tråde sidder med dem under eksterne kald.
+    kwargs = {} if ":memory:" in url else {"pool_size": 20, "max_overflow": 40, "pool_timeout": 30}
+    engine = create_engine(url, connect_args={"check_same_thread": False, "timeout": 15}, **kwargs)
 
     @event.listens_for(engine, "connect")
     def _sqlite_pragmas(dbapi_conn, _record):

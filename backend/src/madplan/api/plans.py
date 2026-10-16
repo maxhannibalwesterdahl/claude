@@ -105,7 +105,7 @@ class PlanOut(PlanBrief):
 
 
 class PlanIn(BaseModel):
-    start_date: date
+    start_date: date = Field(ge=date(2020, 1, 1), le=date(2100, 12, 31))
     days: int = Field(7, ge=1, le=14)
 
 

@@ -169,10 +169,13 @@ def _check_duplicate(session: Session, url: str | None, own_id: int | None = Non
 @router.get("/recipes")
 def list_recipes(session: DbSession, hh: CurrentHousehold, q: str = "") -> list[RecipeSummary]:
     stmt = select(Recipe).options(selectinload(Recipe.ingredients).selectinload(RecipeIngredient.ingredient))
-    if q.strip():
-        stmt = stmt.where(Recipe.title.icontains(q.strip()))
+    # Søgning i Python: SQLites LIKE kender kun store/små bogstaver for ASCII (æ/Æ),
+    # og % og _ ville være jokertegn.
+    needle = q.strip().casefold()
     out = []
     for r in session.scalars(stmt.order_by(func.lower(Recipe.title))):
+        if needle and needle not in r.title.casefold():
+            continue
         out.append(RecipeSummary(
             id=r.id,
             title=r.title,
@@ -208,6 +211,7 @@ def create_recipe(body: RecipeIn, session: DbSession, hh: CurrentHousehold) -> R
 def import_recipe(body: ImportIn, session: DbSession, settings: AppSettings, hh: CurrentHousehold) -> RecipeOut:
     url = body.url.strip()
     _check_duplicate(session, url)
+    session.commit()  # slip forbindelsen, mens vi venter på den andens side
     try:
         importer.check_url(url)
         scraped = importer.load(url)
@@ -345,6 +349,7 @@ def _external_hits(session: Session, q: str, search) -> list[ExternalHit]:
     """Søg på en opskriftsside. Resultater, vi allerede har, markeres med recipe_id."""
     if len(q.strip()) < 3:
         return []
+    session.commit()  # slip forbindelsen, mens vi venter på søgningen
     try:
         hits = search(q)
     except search_valdemarsro.SearchError as e:

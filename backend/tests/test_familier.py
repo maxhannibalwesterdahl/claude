@@ -193,3 +193,23 @@ def test_cli_new_family_gets_the_starter_pantry(cli_env):
 def test_cli_single_family_is_default(cli_env):
     cli.main(["create-household", "Alene"])
     assert cli.main(["create-user", "kim"]) == 0
+
+
+def test_reminder_job_does_not_hold_the_write_lock_while_sending(app, client, plan):
+    """Under et (langsomt) netværkskald må andre kunne skrive til databasen."""
+    meal = thursday(plan)
+    client.post(f"/api/meals/{meal['id']}/reminders", json={"text": "kød op"})
+    phone = Phone()
+    subscribe(client, phone)
+    writes = []
+    real_post = phone.post
+
+    def slow_post(url, content, headers, timeout):
+        r = client.post("/api/plans", json={"start_date": "2026-12-01"})   # en anden skriver imens
+        writes.append(r.status_code)
+        return real_post(url, content, headers, timeout)
+
+    phone.post_during = slow_post
+    from madplan.reminders import send_due
+    assert send_due(app.state.db.sessionmaker, app.state.settings.data_dir, at(7, 19), post=slow_post) == 1
+    assert writes == [201]

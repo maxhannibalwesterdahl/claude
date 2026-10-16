@@ -175,10 +175,14 @@ class DanishRuleParser:
         quantity = quantity_max = None
         m = _QUANTITY_RE.match(text)
         if m:
-            quantity = _to_float(m.group("a"))
-            if m.group("b"):
-                quantity_max = _to_float(m.group("b"))
-            text = text[m.end():]
+            try:
+                quantity = _to_float(m.group("a"))
+                if m.group("b"):
+                    quantity_max = _to_float(m.group("b"))
+                text = text[m.end():]
+            except (ZeroDivisionError, ValueError, OverflowError):
+                # "1/0 dl vand": ingen læsbar mængde, linjen læses som tekst.
+                quantity = quantity_max = None
 
         item_text, note = _split_note(text)
         words = _strip_prep(_clean(item_text).split())

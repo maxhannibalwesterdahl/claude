@@ -108,11 +108,20 @@ def send_to(session: Session, subs: list[PushSubscription], msg: dict, key, post
 
 
 def send_due(sm: sessionmaker, data_dir: Path, now: datetime | None = None, post=None) -> int:
-    """Sender de påmindelser, der skal ud nu. Svarer med antallet, der blev sendt."""
+    """Sender de påmindelser, der skal ud nu. Svarer med antallet, der blev sendt.
+
+    Tre trin, så databasen aldrig er låst under netværkskald (en besked kan tage op
+    til 15 s, og andres skrivninger ville fejle med "database is locked"):
+    1. læs, hvad der skal sendes, og luk sessionen
+    2. send (ingen forbindelse til databasen)
+    3. skriv resultatet i en ny, kort session
+    """
     now = now or local_now()
     today = now.date()
     dates = [today, today + timedelta(days=1)]
     post = post or push.httpx.post
+
+    # 1. Læs
     with sm() as session:
         if not session.scalar(select(PushSubscription.id).limit(1)):
             # Ingen telefoner endnu: påmindelserne venter, så de kan nå frem samme
@@ -134,23 +143,50 @@ def send_due(sm: sessionmaker, data_dir: Path, now: datetime | None = None, post
         due = [r for r in due if slot_due(r, now)]
         if not due:
             return 0
-        key = push.load_key(data_dir)
-        sent = 0
-        by_household: dict[int, list[PushSubscription]] = {}
+        by_household: dict[int, list[push.Target]] = {}
+        sub_ids: dict[str, int] = {}
+        jobs: list[tuple[int, list[push.Target], dict]] = []
         for r in due:
             hid = r.meal.plan.household_id
             if hid not in by_household:
-                by_household[hid] = targets(session, hid)
-            subs = by_household[hid]
-            if not subs:
+                subs = targets(session, hid)
+                by_household[hid] = [push.Target(s.endpoint, s.p256dh, s.auth) for s in subs]
+                sub_ids.update({s.endpoint: s.id for s in subs})
+            if not by_household[hid]:
                 continue  # familien har ingen telefoner endnu; påmindelsen venter
-            # Kom den ikke frem (fx intet net), prøves der igen om lidt.
-            if send_to(session, subs, message(r, today), key, post):
+            jobs.append((r.id, by_household[hid], message(r, today)))
+        sender = subject(session)
+    if not jobs:
+        return 0
+    key = push.load_key(data_dir)
+
+    # 2. Send
+    delivered: list[int] = []
+    gone: set[int] = set()
+    for reminder_id, subs, msg in jobs:
+        ok = False
+        for t in subs:
+            status = push.send(t, msg, key, sender, post=post)
+            if status in push.GONE:
+                gone.add(sub_ids[t.endpoint])
+            elif 200 <= status < 300:
+                ok = True
+        # Kom den ikke frem (fx intet net), prøves der igen om lidt.
+        if ok:
+            delivered.append(reminder_id)
+
+    # 3. Skriv
+    with sm() as session:
+        for rid in delivered:
+            r = session.get(MealReminder, rid)
+            if r is not None:
                 r.sent_on = today
-                sent += 1
-            session.flush()
+        for sid in gone:
+            sub = session.get(PushSubscription, sid)
+            if sub is not None:
+                session.delete(sub)
         session.commit()
-        return sent
+    return len(delivered)
 
 
 async def run_forever(sm: sessionmaker, data_dir: Path, every: float = 60) -> None:

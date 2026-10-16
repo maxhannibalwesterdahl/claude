@@ -89,7 +89,6 @@ def test_reminder_slot_on_dst_night():
     assert not slot_due(r, datetime(2026, 10, 26, 7, 0, tzinfo=TZ))
 
 
-@pytest.mark.xfail(reason="POST /api/plans med start_date 9999-12-30 giver 500 (OverflowError i datoregning)", strict=True)
 def test_plan_with_extreme_date_is_422_not_500(app, anon):
     c = TestClient(app, raise_server_exceptions=False)
     c.post("/api/login", json={"username": "max", "password": PASSWORD})
@@ -190,7 +189,6 @@ def test_out_of_stock_twice_gives_one_row(client):
     assert sum(1 for i in d["items"] if i["source"] == "løbet tør") == 1
 
 
-@pytest.mark.xfail(reason="Dobbeltklik/dobbelt-submit på 'Tilføj' giver to ens egne varer (ingen dublet-tjek)", strict=True)
 def test_double_submit_of_same_extra_gives_one_row(client):
     client.post("/api/shopping/extras", json={"text": "banan"})
     d = client.post("/api/shopping/extras", json={"text": "banan"}).json()
@@ -245,9 +243,6 @@ def test_sync_for_deleted_plan_is_ignored_not_500(client):
     assert res.status_code == 200
 
 
-@pytest.mark.xfail(reason="To telefoner, der første gang krydser samme vare af samtidigt, giver 500 "
-                          "(UNIQUE shopping_check.plan_id,key i sync(): check-then-insert uden håndtering)",
-                   strict=False)
 def test_two_devices_check_same_new_item_at_once(app, client):
     p = client.post("/api/plans", json={"start_date": "2026-10-04"}).json()
     statuses = []

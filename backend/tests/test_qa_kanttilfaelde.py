@@ -30,12 +30,10 @@ def test_recipe_title_too_long_or_empty(client):
     assert client.post("/api/recipes", json={"title": "x" * 201}).status_code == 422
 
 
-@pytest.mark.xfail(reason="Titel af kun mellemrum accepteres og gemmes som tom titel (skal være 422)", strict=True)
 def test_recipe_title_of_only_spaces_is_rejected(client):
     assert client.post("/api/recipes", json={"title": "   "}).status_code == 422
 
 
-@pytest.mark.xfail(reason="Mængde '1/0' i en ingredienslinje giver 500 (ZeroDivisionError i parser_da._to_float)", strict=True)
 @pytest.mark.parametrize("raw", ["1/0 dl vand", "0/0 stk æg", "1 1/0 dl mælk"])
 def test_division_by_zero_in_ingredient_line_is_not_500(app, client, raw):
     c = safe(app, client)
@@ -59,7 +57,6 @@ def test_blank_lines_are_dropped(client):
     assert [l["raw"] for l in r["ingredients"]] == ["2 løg"]
 
 
-@pytest.mark.xfail(reason="Negative og uendelige mængder accepteres ved manuel linje (quantity=-5)", strict=True)
 def test_negative_quantity_in_structured_line_is_rejected(client):
     r = client.post("/api/recipes", json={"title": "x", "ingredients": [
         {"raw": "x", "item": "x", "quantity": -5, "unit": "g"}]})
@@ -71,14 +68,12 @@ def test_servings_out_of_range(client, servings):
     assert client.post("/api/recipes", json={"title": "x", "servings": servings}).status_code == 422
 
 
-@pytest.mark.xfail(reason="GET /api/recipes?q= bruger SQLite LIKE, der kun ignorerer store/små bogstaver for ASCII: 'æble' finder ikke 'Æblegrød' (frontend bruger ikke q i dag)", strict=True)
 def test_recipe_search_is_case_insensitive_for_danish_letters(client):
     client.post("/api/recipes", json={"title": "Æblegrød"})
     assert [r["title"] for r in client.get("/api/recipes", params={"q": "æble"}).json()] == ["Æblegrød"]
     assert [r["title"] for r in client.get("/api/recipes", params={"q": "ÆBLE"}).json()] == ["Æblegrød"]
 
 
-@pytest.mark.xfail(reason="q=% eller q=_ behandles som LIKE-jokertegn og matcher alt (icontains uden autoescape)", strict=True)
 def test_recipe_search_wildcards_are_literal(client):
     client.post("/api/recipes", json={"title": "Suppe"})
     assert client.get("/api/recipes", params={"q": "%"}).json() == []

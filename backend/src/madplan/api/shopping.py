@@ -15,6 +15,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from ..catalog import Catalog, learn_alias
@@ -346,7 +347,14 @@ def sync(body: SyncIn, session: DbSession, hh: CurrentHousehold, today: date | N
                 continue
             row = session.scalar(select(ShoppingCheck).where(ShoppingCheck.plan_id == plan.id, ShoppingCheck.key == ch.key))
             if row is None:
-                session.add(ShoppingCheck(plan_id=plan.id, key=ch.key, checked=ch.checked, updated_ms=ch.ts))
+                try:
+                    with session.begin_nested():
+                        session.add(ShoppingCheck(plan_id=plan.id, key=ch.key, checked=ch.checked, updated_ms=ch.ts))
+                except IntegrityError:
+                    # En anden telefon nåede først: den seneste ændring vinder stadig.
+                    row = session.scalar(select(ShoppingCheck).where(ShoppingCheck.plan_id == plan.id, ShoppingCheck.key == ch.key))
+                    if row is not None and ch.ts > row.updated_ms:
+                        row.checked, row.updated_ms = ch.checked, ch.ts
             elif ch.ts > row.updated_ms:
                 row.checked, row.updated_ms = ch.checked, ch.ts
     session.commit()
@@ -374,7 +382,7 @@ def add_extra(body: ExtraIn, session: DbSession, hh: CurrentHousehold, plan_id: 
             already = any(e.ingredient_id == ing.id and not e.checked for e in plan_extras(session, hh, plan, today))
             if not already:
                 session.add(ShoppingExtra(household_id=hh.id, text=ing.name, ingredient=ing, source="løbet tør", plan=plan))
-        else:
+        elif not _already_on_list(session, hh, plan, text or ing.name, today):
             session.add(ShoppingExtra(household_id=hh.id, text=text or ing.name, ingredient=ing, source="egen", plan=plan))
             if text:
                 _learn_from_extra(session, text, ing)
@@ -384,9 +392,17 @@ def add_extra(body: ExtraIn, session: DbSession, hh: CurrentHousehold, plan_id: 
         # Kendt vare? Så kommer den under den rigtige afdeling.
         found = Catalog(session).parse(text)
         ing = session.get(Ingredient, found.ingredient_id) if found.match_status == "sikker" else None
-        session.add(ShoppingExtra(household_id=hh.id, text=text, ingredient=ing, source="egen", plan=plan))
+        if not _already_on_list(session, hh, plan, text, today):
+            session.add(ShoppingExtra(household_id=hh.id, text=text, ingredient=ing, source="egen", plan=plan))
     session.commit()
     return build(session, hh, plan, today=today)
+
+
+def _already_on_list(session: Session, hh: Household, plan: Plan | None, text: str, today: date | None) -> bool:
+    """Dobbeltklik på "Tilføj": den samme egne vare, der ikke er købt, kommer kun på én gang."""
+    want = text.casefold()
+    return any(e.source == "egen" and not e.checked and e.text.casefold() == want
+               for e in plan_extras(session, hh, plan, today))
 
 
 def _extra(session: Session, extra_id: int, hh: Household) -> ShoppingExtra:

@@ -32,6 +32,10 @@
 	const wishMode = $derived(mode === 'wish');
 	// Opskrifter, der allerede er på ønskelisten (kan ikke vælges igen).
 	const wished = $derived(new Set(plan.wishlist.map((w) => w.recipe?.id).filter(Boolean)));
+	// Opskrifter, der allerede ligger på dagene i ugen. Ikke med, når der vælges til en dag.
+	const onPlan = $derived(
+		new Set(wishMode ? [] : plan.days.flatMap((d) => [d.meal?.recipe?.id, d.child?.recipe?.id]).filter(Boolean))
+	);
 
 	let q = $state('');
 	let text = $state('');
@@ -53,6 +57,13 @@
 
 	const shown = $derived((recipes ?? []).filter((r) => searchKey([r.title, ...r.ingredients].join(' ')).includes(searchKey(q))));
 	const byId = $derived(new Map((recipes ?? []).map((r) => [r.id, r])));
+	// Favoritter, der ikke allerede er på ugen. Højst otte, sorteret efter titel.
+	const favorites = $derived(
+		(recipes ?? [])
+			.filter((r) => r.favorite && !onPlan.has(r.id))
+			.sort((a, b) => a.title.localeCompare(b.title, 'da'))
+			.slice(0, 8)
+	);
 
 	const loadRecipes = () => api<RecipeSummary[]>('/recipes').then((r) => (recipes = r));
 
@@ -134,6 +145,21 @@
 						<span class="m">{wishMeta(w.recipe?.id, w.recipe?.servings)}</span>
 					</span>
 					<span class="pc"><Icon name="plus" size={17} stroke={2.4} /></span>
+				</button>
+			{/each}
+		{/if}
+
+		{#if favorites.length}
+			<p class="sl">Favoritter</p>
+			{#each favorites as r (r.id)}
+				{@const taken = wishMode && wished.has(r.id)}
+				<button type="button" class="op" disabled={taken} onclick={() => onchoose({ kind: 'opskrift', recipe_id: r.id })}>
+					<Plate src={r.image_url} seed={r.id} size={44} lazy />
+					<span class="grow">
+						<span class="n">{r.title}</span>
+						<span class="m">{r.main_ingredients.join(', ')}</span>
+					</span>
+					{#if taken}<span class="tag">på listen</span>{:else}<span class="pc"><Icon name="plus" size={17} stroke={2.4} /></span>{/if}
 				</button>
 			{/each}
 		{/if}

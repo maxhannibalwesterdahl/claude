@@ -18,11 +18,11 @@
 	import type { Plan, RecipeSummary, TagCount } from '$lib/types';
 
 	/** "tid" = under 30 minutter, "maerke:<mærke>" = familiens eget mærke. */
-	type Filter = 'alle' | 'onsker' | 'laenge' | 'tid' | `maerke:${string}`;
+	type Filter = 'alle' | 'favoritter' | 'onsker' | 'laenge' | 'tid' | `maerke:${string}`;
 
 	/** Filteret fra ?filter=, eller "alle", hvis det ikke kendes. */
 	function fromUrl(f: string | null): Filter {
-		if (f === 'onsker' || f === 'laenge' || f === 'tid') return f;
+		if (f === 'favoritter' || f === 'onsker' || f === 'laenge' || f === 'tid') return f;
 		return f?.startsWith('maerke:') && f.length > 7 ? (f as Filter) : 'alle';
 	}
 	const tagOf = (f: Filter): string | null => (f.startsWith('maerke:') ? f.slice(7) : null);
@@ -31,7 +31,7 @@
 	let error = $state('');
 	let q = $state('');
 	let adding = $state(false);
-	// ?filter=onsker|laenge|tid|maerke:<mærke> vælger et filter fra start.
+	// ?filter=favoritter|onsker|laenge|tid|maerke:<mærke> vælger et filter fra start.
 	let filter = $state<Filter>(untrack(() => fromUrl(page.url.searchParams.get('filter'))));
 	/** Familiens mærker med antal (til chips). */
 	let tagCounts = $state<TagCount[]>([]);
@@ -41,9 +41,12 @@
 	/** Opskrifterne, længst siden først. null eller tom = filteret vises ikke. */
 	let longAgo = $state<Suggestion[] | null>(null);
 
+	const favCount = $derived((recipes ?? []).filter((r) => r.favorite).length);
+
 	// Et filter, der ikke findes (endnu), tæller som "Alle".
 	const active = $derived<Filter>(
-		(filter === 'onsker' && !wished) ||
+		(filter === 'favoritter' && !favCount) ||
+			(filter === 'onsker' && !wished) ||
 			(filter === 'laenge' && !longAgo?.length) ||
 			(filter === 'tid' && !hasTime) ||
 			(!!tagOf(filter) && !tagCounts.some((t) => t.tag === tagOf(filter)))
@@ -54,6 +57,7 @@
 
 	const filtered = $derived.by(() => {
 		const all = recipes ?? [];
+		if (active === 'favoritter') return all.filter((r) => r.favorite);
 		if (active === 'onsker') return all.filter((r) => wished?.has(r.id));
 		if (active === 'laenge') {
 			const byId = new Map(all.map((r) => [r.id, r]));
@@ -114,6 +118,12 @@
 		});
 	});
 
+	// Filteret skrives i adressen, så det er der, næste gang siden åbnes.
+	function setFilter(f: Filter) {
+		filter = f;
+		goto(f === 'alle' ? page.url.pathname : `?filter=${encodeURIComponent(f)}`, { replaceState: true, noScroll: true, keepFocus: true });
+	}
+
 	// Fra Valdemarsro og nemlig.com: ny import bliver på listen (og dukker op i jeres egne); en,
 	// vi allerede har, åbnes.
 	function picked(id: number, imported: boolean) {
@@ -142,22 +152,27 @@
 			<input type="search" placeholder="Søg i egne, Valdemarsro og nemlig" bind:value={q} aria-label="Søg i opskrifter" />
 		</div>
 
-		{#if recipes.length > 0 && (wished || longAgo?.length || hasTime || tagCounts.length)}
+		{#if recipes.length > 0 && (wished || longAgo?.length || favCount || hasTime || tagCounts.length)}
 			<div class="chips pad filters" role="group" aria-label="Vis">
-				<button type="button" class="chip" aria-pressed={active === 'alle'} onclick={() => (filter = 'alle')}>Alle</button>
+				<button type="button" class="chip" aria-pressed={active === 'alle'} onclick={() => setFilter('alle')}>Alle</button>
+				{#if favCount}
+					<button type="button" class="chip" aria-pressed={active === 'favoritter'} onclick={() => setFilter('favoritter')}>
+						Favoritter · {favCount}
+					</button>
+				{/if}
 				{#if wished}
-					<button type="button" class="chip" aria-pressed={active === 'onsker'} onclick={() => (filter = 'onsker')}>
+					<button type="button" class="chip" aria-pressed={active === 'onsker'} onclick={() => setFilter('onsker')}>
 						Ønskeliste · {wished.size}
 					</button>
 				{/if}
 				{#if longAgo?.length}
-					<button type="button" class="chip" aria-pressed={active === 'laenge'} onclick={() => (filter = 'laenge')}>Længe siden</button>
+					<button type="button" class="chip" aria-pressed={active === 'laenge'} onclick={() => setFilter('laenge')}>Længe siden</button>
 				{/if}
 				{#if hasTime}
-					<button type="button" class="chip" aria-pressed={active === 'tid'} onclick={() => (filter = 'tid')}>Under 30 min</button>
+					<button type="button" class="chip" aria-pressed={active === 'tid'} onclick={() => setFilter('tid')}>Under 30 min</button>
 				{/if}
 				{#each tagCounts.slice(0, 8) as t (t.tag)}
-					<button type="button" class="chip" aria-pressed={tagOf(active) === t.tag} onclick={() => (filter = `maerke:${t.tag}`)}>{t.tag}</button>
+					<button type="button" class="chip" aria-pressed={tagOf(active) === t.tag} onclick={() => setFilter(`maerke:${t.tag}`)}>{t.tag}</button>
 				{/each}
 			</div>
 		{/if}
@@ -172,6 +187,8 @@
 			</ul>
 		{:else if q.trim()}
 			<p class="none muted">Ingen af jeres opskrifter matcher "{q.trim()}".</p>
+		{:else if active === 'favoritter'}
+			<p class="none muted">Der er ingen favoritter endnu.</p>
 		{:else if active === 'onsker'}
 			<p class="none muted">Der er ingen opskrifter på ønskelisten.</p>
 		{:else if active === 'tid'}

@@ -28,6 +28,18 @@ export interface Line {
 	ingredient: IngredientRef | null;
 	match_status: MatchStatus;
 	is_main: boolean;
+	/** Familiens tilpasning (kun fra serveren). */
+	skipped?: boolean;
+	my_quantity?: number | null;
+}
+
+export interface ExtraLine {
+	id: number;
+	raw: string;
+	quantity: number | null;
+	unit: string | null;
+	item: string;
+	ingredient: IngredientRef | null;
 }
 
 export interface Recipe {
@@ -41,6 +53,8 @@ export interface Recipe {
 	/** I familiens samling ("Vores samling"). */
 	in_collection: boolean;
 	favorite: boolean;
+	extra_lines?: ExtraLine[];
+	own_note?: string;
 	source_url: string | null;
 	image_url: string | null;
 	ingredients: Line[];

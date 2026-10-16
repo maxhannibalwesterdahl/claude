@@ -58,9 +58,10 @@ def _seed(client):
     p = client.post(f"/api/meals/{meal['id']}/reminders", json={"text": "kød op"}).json()
     p = client.post(f"/api/plans/{plan['id']}/wishlist", json={"text": "pizza"}).json()
     shop = client.post("/api/shopping/extras?plan_id=%d" % plan["id"], json={"text": "bleer"}).json()
+    adj = client.post(f"/api/recipes/{rid['id']}/adjustments/extra", json={"raw": "1 dåse majs"}).json()
     invite = client.post("/api/household/invites", json={}).json()
     return {
-        "invite_id": invite["id"], "user_id": client.get("/api/me").json()["id"],
+        "adjustment_id": adj["extra_lines"][0]["id"], "invite_id": invite["id"], "user_id": client.get("/api/me").json()["id"],
         "recipe_id": rid["id"], "line_id": rid["ingredients"][0]["id"], "plan_id": plan["id"],
         "meal_id": meal["id"], "reminder_id": p["days"][0]["meal"]["reminders"][0]["id"],
         "wish_id": p["wishlist"][0]["id"],
@@ -107,6 +108,7 @@ CASES: dict[tuple[str, str], tuple[dict | None, int]] = {
     ("PATCH", "/api/reminders/{reminder_id}"): ({"done": True}, 404),
     ("DELETE", "/api/reminders/{reminder_id}"): (None, 404),
     ("GET", "/api/suggestions?plan_id={plan_id}"): (None, 404),
+    ("DELETE", "/api/recipes/{recipe_id}/adjustments/{adjustment_id}"): (None, 404),
     # indkøb
     ("GET", "/api/shopping?plan_id={plan_id}"): (None, 404),
     ("POST", "/api/shopping/extras?plan_id={plan_id}"): ({"text": "x"}, 404),
@@ -129,6 +131,8 @@ NO_FOREIGN_IDS = {
     ("GET", "/api/recipes"), ("POST", "/api/recipes"), ("POST", "/api/recipes/import"),
     ("GET", "/api/recipes/{recipe_id}"),          # fælles at læse (tjekkes i test_shared_recipe_is_readable_but_not_editable)
     ("POST", "/api/recipes/{recipe_id}/collection"), ("DELETE", "/api/recipes/{recipe_id}/collection"),
+    ("PUT", "/api/recipes/{recipe_id}/adjustments/lines/{line_id}"), ("POST", "/api/recipes/{recipe_id}/adjustments/extra"),
+    ("PUT", "/api/recipes/{recipe_id}/adjustments/note"),   # kun egne tilpasninger: test_tilpasninger.py
     ("PUT", "/api/recipes/{recipe_id}/favorite"), ("PUT", "/api/recipes/{recipe_id}/note"),   # kun egen samling/note: test_samling.py
     ("POST", "/api/recipes/{recipe_id}/image"),   # som PUT: se test_other_family_cannot_upload_image
     ("GET", "/api/review"),

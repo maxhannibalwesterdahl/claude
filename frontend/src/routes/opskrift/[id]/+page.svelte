@@ -83,6 +83,53 @@
 		}
 	}
 
+	// --- Jeres udgave: tilpasninger lagt oven på den fælles opskrift ---
+	let showOriginal = $state(false);
+	let adjusting = $state<number | null>(null);
+	let adjSkip = $state(false);
+	let adjQty = $state('');
+	let extraText = $state('');
+	let ownNote = $state('');
+	let editingOwn = $state(false);
+	const adjusted = $derived(
+		!!recipe && (recipe.ingredients.some((l) => l.skipped || l.my_quantity != null) || !!recipe.extra_lines?.length)
+	);
+
+	async function adjust(path: string, method: string, body?: unknown) {
+		if (!recipe) return;
+		try {
+			recipe = await api<Recipe>(`/recipes/${recipe.id}/adjustments/${path}`, { method, body });
+		} catch (e) {
+			error = say(e);
+		}
+	}
+
+	function openAdjust(l: Line) {
+		adjusting = adjusting === l.id ? null : l.id;
+		adjSkip = !!l.skipped;
+		adjQty = l.my_quantity != null ? String(l.my_quantity).replace('.', ',') : '';
+	}
+
+	async function saveAdjust(l: Line, clear = false) {
+		const q = adjQty.trim() === '' ? null : Number(adjQty.replace(',', '.'));
+		if (!clear && q !== null && !(q >= 0)) return;
+		await adjust(`lines/${l.id}`, 'PUT', clear ? {} : { skip: adjSkip, quantity: adjSkip ? null : q });
+		adjusting = null;
+	}
+
+	async function addExtra(e: SubmitEvent) {
+		e.preventDefault();
+		if (!extraText.trim()) return;
+		await adjust('extra', 'POST', { raw: extraText });
+		extraText = '';
+	}
+
+	async function saveOwnNote(e: SubmitEvent) {
+		e.preventDefault();
+		await adjust('note', 'PUT', { text: ownNote });
+		editingOwn = false;
+	}
+
 	async function remove() {
 		const id = recipe?.id;
 		if (!recipe || !(await confirmDialog(`Slet "${recipe.title}"?`, 'Slet'))) return;
@@ -168,8 +215,16 @@
 					<ul>
 						{#each g.lines as l}
 							<li>
-								<IngredientRow qty={formatQuantity(l.quantity, l.quantity_max, l.unit)} name={l.item} note={l.note}>
+								<IngredientRow
+									qty={!showOriginal && l.my_quantity != null ? formatQuantity(l.my_quantity, null, l.unit) : formatQuantity(l.quantity, l.quantity_max, l.unit)}
+									name={l.item}
+									note={l.note}
+									dim={!showOriginal && l.skipped}
+								>
 									{#snippet trailing()}
+										{#if !showOriginal && l.skipped}<span class="tag">springes over</span>{/if}
+										{#if !showOriginal && l.my_quantity != null}<span class="tag">jeres mængde</span>{/if}
+										<button type="button" class="link tilpas" onclick={() => openAdjust(l)} aria-expanded={adjusting === l.id}>Tilpas</button>
 										{#if l.match_status === 'usikker'}
 											<span class="tag">{l.ingredient?.name}?</span>
 										{:else if l.match_status === 'ingen'}
@@ -186,12 +241,54 @@
 										>
 									{/snippet}
 								</IngredientRow>
+								{#if adjusting === l.id}
+									<form class="pad adjust" onsubmit={(e) => { e.preventDefault(); saveAdjust(l); }}>
+										<label class="check"><input type="checkbox" bind:checked={adjSkip} /> Spring over (kommer ikke på jeres liste)</label>
+										{#if !adjSkip}
+											<label class="field"><span>Jeres mængde{l.unit ? ` (${l.unit})` : ''}</span><input inputmode="decimal" bind:value={adjQty} placeholder="som i opskriften" /></label>
+										{/if}
+										<button class="btn sm">Gem</button>
+										<button type="button" class="btn quiet sm" onclick={() => saveAdjust(l, true)}>Nulstil</button>
+									</form>
+								{/if}
 							</li>
 						{/each}
 					</ul>
 				{:else}
 					<p class="pad muted">Ingen ingredienser.</p>
 				{/each}
+
+				{#if recipe.extra_lines?.length}
+					<h3 class="pad">Jeres ekstra</h3>
+					<ul>
+						{#each recipe.extra_lines as x (x.id)}
+							<li>
+								<IngredientRow qty={formatQuantity(x.quantity, null, x.unit)} name={x.item}>
+									{#snippet trailing()}
+										<button type="button" class="link" onclick={() => adjust(String(x.id), 'DELETE')} aria-label="Fjern {x.raw}">Fjern</button>
+									{/snippet}
+								</IngredientRow>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+				<form class="pad extra" onsubmit={addExtra}>
+					<label class="field"><span>Ekstra linje, kun til jer</span><input bind:value={extraText} placeholder="fx 1 dåse majs" maxlength="300" /></label>
+					<button class="btn sm" disabled={!extraText.trim()}>Tilføj</button>
+				</form>
+				{#if adjusted}
+					<p class="pad"><button type="button" class="link" onclick={() => (showOriginal = !showOriginal)}>{showOriginal ? 'Vis jeres udgave' : 'Vis original'}</button></p>
+				{/if}
+				{#if editingOwn}
+					<form class="pad" onsubmit={saveOwnNote}>
+						<label class="field"><span>Jeres egen note (fx "vi bruger halv chili")</span><textarea rows="2" maxlength="2000" bind:value={ownNote}></textarea></label>
+						<button class="btn sm">Gem</button>
+						<button type="button" class="btn quiet sm" onclick={() => (editingOwn = false)}>Annuller</button>
+					</form>
+				{:else}
+					{#if recipe.own_note}<p class="note">{recipe.own_note}</p>{/if}
+					<p class="pad"><button type="button" class="link" onclick={() => { ownNote = recipe?.own_note ?? ''; editingOwn = true; }}>{recipe.own_note ? 'Ret jeres note' : 'Skriv jeres egen note'}</button></p>
+				{/if}
 			</section>
 
 			<section>

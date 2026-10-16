@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
+from ..adjustments import load_adjustments
 from ..catalog import Catalog, learn_alias
 from ..config import local_today
 from ..ingredients.matcher import DEPARTMENTS, key as item_key
@@ -186,7 +187,7 @@ class _Part:
     state: str | None
 
 
-def _plan_parts(session: Session, plan: Plan) -> tuple[dict[str, list[_Part]], dict[str, Ingredient | None], dict[str, str]]:
+def _plan_parts(session: Session, hh: Household, plan: Plan) -> tuple[dict[str, list[_Part]], dict[str, Ingredient | None], dict[str, str]]:
     """Alle ingredienslinjer i planen, grupperet efter række-nøgle."""
     meals = session.scalars(
         select(PlanMeal).where(PlanMeal.plan_id == plan.id, PlanMeal.kind == "opskrift").options(
@@ -197,9 +198,12 @@ def _plan_parts(session: Session, plan: Plan) -> tuple[dict[str, list[_Part]], d
     parts: dict[str, list[_Part]] = defaultdict(list)
     ingredients: dict[str, Ingredient | None] = {}
     names: dict[str, str] = {}
+    adjust = load_adjustments(session, hh.id, {m.recipe_id for m in meals if m.recipe_id})
+    catalog = Catalog(session) if any(a.extras for a in adjust.values()) else None
     for meal in meals:
         if not meal.recipe:
             continue
+        adj = adjust[meal.recipe.id]
         states = {s.line_id: s.state for s in meal.line_states}
         title = meal_title(meal)
         if meal.multiplier != 1:
@@ -207,14 +211,24 @@ def _plan_parts(session: Session, plan: Plan) -> tuple[dict[str, list[_Part]], d
             title += " (×½)" if meal.multiplier == 0.5 else f" (×{meal.multiplier:g})"
         for line in meal.recipe.ingredients:
             state = states.get(line.id)
-            if state == "rest":
+            if state == "rest" or line.id in adj.skip:
                 continue
             ing = line.ingredient
             k = f"i:{ing.id}" if ing else f"t:{item_key(line.item)}"
             ingredients[k] = ing
             names.setdefault(k, ing.name if ing else line.item)
-            q = line.quantity_max if line.quantity_max is not None else line.quantity
+            own = adj.quantity.get(line.id)
+            q = own if own is not None else (line.quantity_max if line.quantity_max is not None else line.quantity)
             parts[k].append(_Part(scale(q, line.unit, meal.multiplier), line.unit, meal.date, title, line.raw, state))
+        # Familiens ekstra linjer ("1 dåse majs") lægges til som almindelige linjer.
+        for extra in adj.extras:
+            p = catalog.parse(extra.value)
+            ing = catalog.by_id.get(p.ingredient_id) if p.match_status in ("sikker", "bekræftet") else None
+            k = f"i:{ing.id}" if ing else f"t:{item_key(p.item)}"
+            ingredients[k] = ing
+            names.setdefault(k, ing.name if ing else p.item)
+            q = p.quantity_max if p.quantity_max is not None else p.quantity
+            parts[k].append(_Part(scale(q, p.unit, meal.multiplier), p.unit, meal.date, title, extra.value, None))
     return parts, ingredients, names
 
 
@@ -262,7 +276,7 @@ def build(session: Session, hh: Household, plan: Plan | None, now_ms: int | None
 
     if plan is not None:
         checks = {c.key: c.checked for c in session.scalars(select(ShoppingCheck).where(ShoppingCheck.plan_id == plan.id))}
-        parts, ingredients, names = _plan_parts(session, plan)
+        parts, ingredients, names = _plan_parts(session, hh, plan)
         for k, ps in parts.items():
             ing = ingredients[k]
             if ing is not None and ing.id in household_pantry:

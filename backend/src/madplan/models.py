@@ -78,6 +78,25 @@ class Invite(Base):
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class HouseholdRecipeAdjustment(Base):
+    """Familiens tilpasning af en fælles opskrift, lagt oven på den (flere-familier.md §4).
+
+    type "skip": linjen kommer ikke på listen. "quantity": egen mængde på linjen.
+    "extra": ekstra linje (`value` er teksten, fx "1 dåse majs"). "note": familiens egen
+    note (`value`), uden linje. Rører aldrig den fælles opskrift.
+    """
+
+    __tablename__ = "household_recipe_adjustment"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    household_id: Mapped[int] = mapped_column(ForeignKey("household.id", ondelete="CASCADE"), index=True)
+    recipe_id: Mapped[int] = mapped_column(ForeignKey("recipe.id", ondelete="CASCADE"), index=True)
+    line_id: Mapped[int | None] = mapped_column(ForeignKey("recipe_ingredient.id", ondelete="CASCADE"))
+    type: Mapped[str] = mapped_column(String(10))
+    value: Mapped[str] = mapped_column(Text, default="")
+    quantity: Mapped[float | None] = mapped_column(Float)
+
+
 class HouseholdPantry(Base):
     """Familiens basisvarer (salt, olie, mel …). Erstatter ingredient.pantry."""
 

@@ -8,10 +8,12 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from .. import importer, search_nemlig, search_valdemarsro
+from ..adjustments import load_adjustments
 from ..catalog import Catalog, learn_alias, suggest_main
 from ..models import (
     Household,
     HouseholdRecipe,
+    HouseholdRecipeAdjustment,
     HouseholdRecipeNote,
     Ingredient,
     Plan,
@@ -22,6 +24,7 @@ from ..models import (
 )
 from .deps import AppSettings, CurrentHousehold, DbSession, pantry_ids
 from .schemas import (
+    ExtraLineOut,
     ImportIn,
     IngredientRef,
     LineConfirmIn,
@@ -53,7 +56,17 @@ def recipe_out(recipe: Recipe, hh: Household, session: Session, warnings: list[s
     pantry = pantry_ids(session, hh.id)
     note = session.get(HouseholdRecipeNote, (hh.id, recipe.id))
     mine = session.get(HouseholdRecipe, (hh.id, recipe.id))
+    adj = load_adjustments(session, hh.id, {recipe.id})[recipe.id]
+    extras = []
+    if adj.extras:
+        catalog = Catalog(session)
+        for a in adj.extras:
+            p = catalog.parse(a.value)
+            ing = catalog.by_id.get(p.ingredient_id) if p.match_status in ("sikker", "bekræftet") else None
+            extras.append(ExtraLineOut(id=a.id, raw=a.value, quantity=p.quantity, unit=p.unit, item=p.item,
+                                       ingredient=ingredient_ref(ing, pantry)))
     return RecipeOut(
+        extra_lines=extras, own_note=adj.note,
         in_collection=mine is not None, favorite=bool(mine and mine.favorite),
         id=recipe.id,
         title=recipe.title,
@@ -68,6 +81,7 @@ def recipe_out(recipe: Recipe, hh: Household, session: Session, warnings: list[s
                 id=l.id, raw=l.raw, group=l.group, quantity=l.quantity, quantity_max=l.quantity_max,
                 unit=l.unit, item=l.item, note=l.note, ingredient=ingredient_ref(l.ingredient, pantry),
                 match_status=l.match_status, is_main=l.is_main,
+                skipped=l.id in adj.skip, my_quantity=adj.quantity.get(l.id),
             )
             for l in recipe.ingredients
         ],
@@ -367,6 +381,93 @@ def put_note(recipe_id: int, body: NoteIn, session: DbSession, hh: CurrentHouseh
     """Familiens egen note om barnet på en fælles opskrift (rører ikke opskriften)."""
     recipe = load_recipe(session, recipe_id)
     _set_note(session, hh, recipe, body.child_note.strip())
+    session.commit()
+    return recipe_out(recipe, hh, session)
+
+
+# --- Familiens tilpasninger (lagt oven på den fælles opskrift) --------------------------------
+
+
+class LineAdjustIn(BaseModel):
+    skip: bool = False
+    # Egen mængde (samme enhed som linjen). null = den fælles mængde.
+    quantity: float | None = Field(None, ge=0, le=100_000)
+
+
+@router.put("/recipes/{recipe_id}/adjustments/lines/{line_id}")
+def adjust_line(recipe_id: int, line_id: int, body: LineAdjustIn, session: DbSession, hh: CurrentHousehold) -> RecipeOut:
+    """Spring en linje over og/eller brug en egen mængde. Gælder kun denne familie."""
+    recipe = load_recipe(session, recipe_id)
+    if line_id not in {l.id for l in recipe.ingredients}:
+        raise HTTPException(status_code=404, detail="Linjen findes ikke")
+    for a in session.scalars(select(HouseholdRecipeAdjustment).where(
+            HouseholdRecipeAdjustment.household_id == hh.id, HouseholdRecipeAdjustment.line_id == line_id)):
+        session.delete(a)
+    session.flush()
+    if body.skip:
+        session.add(HouseholdRecipeAdjustment(household_id=hh.id, recipe_id=recipe.id, line_id=line_id, type="skip"))
+    elif body.quantity is not None:
+        session.add(HouseholdRecipeAdjustment(household_id=hh.id, recipe_id=recipe.id, line_id=line_id,
+                                              type="quantity", quantity=body.quantity))
+    add_to_collection(session, hh.id, recipe.id)
+    session.commit()
+    return recipe_out(recipe, hh, session)
+
+
+class ExtraLineIn(BaseModel):
+    raw: str = Field(min_length=1, max_length=300)
+
+
+@router.post("/recipes/{recipe_id}/adjustments/extra", status_code=201)
+def add_extra_line(recipe_id: int, body: ExtraLineIn, session: DbSession, hh: CurrentHousehold) -> RecipeOut:
+    """Ekstra linje til familiens udgave ("1 dåse majs")."""
+    recipe = load_recipe(session, recipe_id)
+    raw = " ".join(body.raw.split())
+    if not raw:
+        raise HTTPException(status_code=422, detail="Skriv en linje")
+    n = session.scalar(select(func.count()).select_from(HouseholdRecipeAdjustment).where(
+        HouseholdRecipeAdjustment.household_id == hh.id, HouseholdRecipeAdjustment.recipe_id == recipe.id,
+        HouseholdRecipeAdjustment.type == "extra")) or 0
+    if n >= 30:
+        raise HTTPException(status_code=422, detail="For mange ekstra linjer")
+    session.add(HouseholdRecipeAdjustment(household_id=hh.id, recipe_id=recipe.id, type="extra", value=raw))
+    add_to_collection(session, hh.id, recipe.id)
+    session.commit()
+    return recipe_out(recipe, hh, session)
+
+
+class OwnNoteIn(BaseModel):
+    text: str = Field("", max_length=2000)
+
+
+@router.put("/recipes/{recipe_id}/adjustments/note")
+def put_own_note(recipe_id: int, body: OwnNoteIn, session: DbSession, hh: CurrentHousehold) -> RecipeOut:
+    """Familiens egen note på opskriften ("Vi bruger halv chili"). Noten om barnet er en anden."""
+    recipe = load_recipe(session, recipe_id)
+    row = session.scalar(select(HouseholdRecipeAdjustment).where(
+        HouseholdRecipeAdjustment.household_id == hh.id, HouseholdRecipeAdjustment.recipe_id == recipe.id,
+        HouseholdRecipeAdjustment.type == "note"))
+    text = body.text.strip()
+    if row is not None and not text:
+        session.delete(row)
+    elif row is not None:
+        row.value = text
+    elif text:
+        session.add(HouseholdRecipeAdjustment(household_id=hh.id, recipe_id=recipe.id, type="note", value=text))
+    session.commit()
+    return recipe_out(recipe, hh, session)
+
+
+@router.delete("/recipes/{recipe_id}/adjustments/{adjustment_id}")
+def remove_adjustment(recipe_id: int, adjustment_id: int, session: DbSession, hh: CurrentHousehold) -> RecipeOut:
+    """Fjern en tilpasning (ekstra linje) igen. Andre familiers tilpasninger findes ikke."""
+    recipe = load_recipe(session, recipe_id)
+    row = session.scalar(select(HouseholdRecipeAdjustment).where(
+        HouseholdRecipeAdjustment.id == adjustment_id, HouseholdRecipeAdjustment.household_id == hh.id,
+        HouseholdRecipeAdjustment.recipe_id == recipe.id))
+    if row is None:
+        raise HTTPException(status_code=404, detail="Tilpasningen findes ikke")
+    session.delete(row)
     session.commit()
     return recipe_out(recipe, hh, session)
 

@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session, object_session, selectinload
 
+from ..adjustments import Adjustments, load_adjustments
 from ..config import local_today
 from ..models import Household, HouseholdRecipe, Plan, PlanLineState, PlanMeal, Recipe, RecipeIngredient, WishlistItem
 from ..planning import MULTIPLIERS, scale
@@ -168,15 +169,19 @@ def meal_title(meal: PlanMeal) -> str:
     return meal.text
 
 
-def _meal_out(meal: PlanMeal, pantry: set[int]) -> MealOut:
+def _meal_out(meal: PlanMeal, pantry: set[int], adjust: dict[int, Adjustments]) -> MealOut:
     states = {s.line_id: s.state for s in meal.line_states}
     lines = []
     if meal.kind == "opskrift" and meal.recipe:
+        adj = adjust[meal.recipe.id]
         for l in meal.recipe.ingredients:
+            if l.id in adj.skip:
+                continue  # familien bruger ikke den linje
+            own = adj.quantity.get(l.id)
             lines.append(MealLine(
                 line_id=l.id, group=l.group, raw=l.raw,
-                quantity=scale(l.quantity, l.unit, meal.multiplier),
-                quantity_max=scale(l.quantity_max, l.unit, meal.multiplier),
+                quantity=scale(l.quantity if own is None else own, l.unit, meal.multiplier),
+                quantity_max=scale(l.quantity_max, l.unit, meal.multiplier) if own is None else None,
                 unit=l.unit, item=l.item, note=l.note, ingredient=ingredient_ref(l.ingredient, pantry),
                 is_main=l.is_main, state=states.get(l.id),
             ))
@@ -202,12 +207,13 @@ def _wish_title(w: WishlistItem) -> str:
 
 def plan_out(plan: Plan) -> PlanOut:
     pantry = pantry_ids(object_session(plan), plan.household_id)
+    adjust = load_adjustments(object_session(plan), plan.household_id, {m.recipe_id for m in plan.meals if m.recipe_id})
     by_slot = {(m.date, m.for_child): m for m in plan.meals}
     days = []
     for i in range(plan.days):
         d = plan.start_date + timedelta(days=i)
         main, child = by_slot.get((d, False)), by_slot.get((d, True))
-        days.append(DayOut(date=d, meal=_meal_out(main, pantry) if main else None, child=_meal_out(child, pantry) if child else None))
+        days.append(DayOut(date=d, meal=_meal_out(main, pantry, adjust) if main else None, child=_meal_out(child, pantry, adjust) if child else None))
     return PlanOut(
         id=plan.id, start_date=plan.start_date, end_date=_end(plan), days=days,
         wishlist=[WishOut(id=w.id, recipe=_brief(w.recipe), text=w.text, title=_wish_title(w)) for w in plan.wishlist],

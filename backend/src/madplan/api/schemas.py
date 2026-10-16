@@ -61,6 +61,18 @@ class LineOut(BaseModel):
     ingredient: IngredientRef | None
     match_status: MatchStatus
     is_main: bool
+    # Familiens tilpasninger (flere-familier.md §4). Selve linjen er den fælles.
+    skipped: bool = False
+    my_quantity: float | None = None
+
+
+class ExtraLineOut(BaseModel):
+    id: int  # tilpasningens id (til at fjerne den igen)
+    raw: str
+    quantity: float | None
+    unit: str | None
+    item: str
+    ingredient: IngredientRef | None
 
 
 class RecipeIn(BaseModel):
@@ -101,6 +113,8 @@ class RecipeOut(BaseModel):
     source_url: str | None
     image_url: str | None
     ingredients: list[LineOut]
+    extra_lines: list[ExtraLineOut] = []
+    own_note: str = ""
     warnings: list[str] = []
 
 

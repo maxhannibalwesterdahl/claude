@@ -1,6 +1,6 @@
 # Flere familier – design
 
-Status 16-10-2026: **trin 1-6 er bygget** (migration 0007-0011):
+Status 16-10-2026: **trin 1-6 er bygget** (migration 0007-0012):
 - Trin 1-2: datamodel, `CurrentHousehold`, alle ruter afgrænset til familien, test-matrix
   (`backend/tests/test_qa_adgang.py`). Kun ejerfamilien (`recipe.created_by_household`)
   kan rette en fælles opskrift; andre får 404.
@@ -15,8 +15,10 @@ Status 16-10-2026: **trin 1-6 er bygget** (migration 0007-0011):
 - Trin 8: familiens admin kan hente alle data som JSON og slette familien (Ryd op > Familie);
   privatlivstekst på `/privatliv`; `deploy/offsite-backup.sh` til kopi uden for huset (skrevet,
   ikke sat op på serveren endnu).
-- Ikke bygget: familiens tilpasninger af linjer (trin 6), historik og fortryd samt "uenighed"
-  i Tjek (trin 7).
+- Trin 6: familiens tilpasninger (`household_recipe_adjustment`): spring en linje over, egen mængde,
+  ekstra linje og egen note. De bruges på opskriftssiden ("Jeres udgave" / "Vis original"), i
+  Planlæg-ingredienserne og på indkøbslisten. Ekstra linjer kan endnu ikke markeres "har hjemme".
+- Ikke bygget: varekobling pr. familie og historik med fortryd (trin 7).
 - `recipe.child_note` og `ingredient.pantry` er forældede kolonner (pantry er startlisten til nye familier).
 
 Oprindeligt design: gennemtænkt 30-09-2026, opdateret med jeres svar 01-10-2026. Krav fra jer:

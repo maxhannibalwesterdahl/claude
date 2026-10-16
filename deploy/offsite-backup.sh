@@ -26,15 +26,19 @@ trap 'rm -rf "$work"' EXIT
 
 latest=$(docker compose exec -T app sh -c 'ls -1 /data/backups/madplan-*.db | tail -n 1' | tr -d '\r')
 [ -n "$latest" ] || { echo "Ingen daglig kopi fundet i /data/backups." >&2; exit 1; }
+# Tjek kopien i containeren (python findes dér), før den sendes. Skrivebeskyttet, så der ikke
+# opstår -wal/-shm ved siden af.
+docker compose exec -T app python - "$latest" <<'PY'
+import sqlite3, sys
+try:
+    con = sqlite3.connect(f"file:{sys.argv[1]}?mode=ro&immutable=1", uri=True)
+    assert con.execute("PRAGMA integrity_check").fetchone()[0] == "ok", "integrity_check fejlede"
+    print("kopien kan åbnes:", con.execute("select count(*) from recipe").fetchone()[0], "opskrifter")
+except Exception as e:
+    sys.exit(f"Kopien er ødelagt eller ulæselig ({e}). Intet sendt.")
+PY
 docker compose cp "app:$latest" "$work/$(basename "$latest")"
 docker compose exec -T app sh -c 'cd /data && tar -cf - images 2>/dev/null' > "$work/billeder.tar" || true
-
-python3 - "$work/$(basename "$latest")" <<'PY'
-import sqlite3, sys
-con = sqlite3.connect(sys.argv[1])
-assert con.execute("PRAGMA integrity_check").fetchone()[0] == "ok", "kopien er ødelagt"
-print("kopien kan åbnes:", con.execute("select count(*) from recipe").fetchone()[0], "opskrifter")
-PY
 
 if [ -n "$OFFSITE_AGE_RECIPIENT" ]; then
   for f in "$work"/*; do age -r "$OFFSITE_AGE_RECIPIENT" -o "$f.age" "$f" && rm "$f"; done

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import Icon from './ui/Icon.svelte';
 
 	interface Props {
 		title: string;
@@ -10,56 +11,33 @@
 	let { title, count, children }: Props = $props();
 </script>
 
-<!-- Et afsnit, der er lukket, til man trykker på det. -->
+<!-- Et afsnit, der er lukket, til man trykker på det. Indholdet har ingen luft
+     omkring sig: rækkerne i det bærer deres egen. -->
 <details>
-	<summary>
-		<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
-		<span class="grow">{title}</span>
-		<span class="count" aria-live="polite">{count}</span>
+	<summary class="kv">
+		<Icon name="chev" />
+		<span class="k grow">{title}</span>
+		<span class="tag" aria-live="polite">{count}</span>
 	</summary>
-	<div class="content">{@render children()}</div>
+	{@render children()}
 </details>
 
 <style>
-	details {
-		margin-top: 8px;
-		border-radius: var(--radius-seg);
-		background: var(--card);
-		border: 1px solid var(--line);
-	}
 	summary {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		min-height: 48px;
-		padding: 4px 12px;
-		font-weight: 600;
 		cursor: pointer;
 		list-style: none;
 	}
 	summary::-webkit-details-marker {
 		display: none;
 	}
-	svg {
-		width: 18px;
-		height: 18px;
-		flex: none;
-		fill: none;
-		stroke: var(--muted);
-		stroke-width: 2;
-		stroke-linecap: round;
-		stroke-linejoin: round;
+	summary :global(svg) {
+		color: var(--muted);
 		transition: transform 0.15s;
 	}
-	details[open] svg {
+	details[open] > summary :global(svg) {
 		transform: rotate(90deg);
 	}
-	.count {
-		font-size: 0.85rem;
-		color: var(--muted);
+	.tag {
 		font-variant-numeric: tabular-nums;
-	}
-	.content {
-		padding: 0 8px 8px;
 	}
 </style>

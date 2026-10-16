@@ -69,7 +69,7 @@ def sync_seed(session: Session) -> int:
 class Catalog:
     """Matcher bygget ud fra databasen. Bygges pr. anmodning (få hundrede varer)."""
 
-    def __init__(self, session: Session):
+    def __init__(self, session: Session, household_id: int | None = None):
         rows = session.scalars(select(Ingredient).options(selectinload(Ingredient.aliases))).all()
         self.by_id = {i.id: i for i in rows}
         self._id_by_name = {i.name: i.id for i in rows}
@@ -88,6 +88,13 @@ class Catalog:
                     used.add(k)
             table.append(m.Ingredient(i.name, i.department, i.pantry, tuple(seed)))
         self.matcher = m.RuleMatcher(table)
+        # Familiens egne valg af vare for et varenavn vinder over de fælles aliaser.
+        self.prefs: dict[str, int] = {}
+        if household_id is not None:
+            from .models import HouseholdIngredientPref
+            self.prefs = {p.key: p.ingredient_id for p in session.scalars(
+                select(HouseholdIngredientPref).where(HouseholdIngredientPref.household_id == household_id))
+                if p.ingredient_id in self.by_id}
         # Brugerens rettelser vinder over startdata, men ikke over andre varers navne.
         for i in rows:
             for a in i.aliases:
@@ -97,6 +104,12 @@ class Catalog:
     def parse(self, line: str) -> "ParsedLine":
         p = parser.parse(line)
         found = self.matcher.match(p.item, p.unit) if p.item else None
+        pref = self.prefs.get(m.key(p.item)) if p.item else None
+        if pref is not None:
+            return ParsedLine(
+                raw=line.strip(), quantity=p.quantity, quantity_max=p.quantity_max, unit=p.unit, item=p.item,
+                note=p.note, ingredient_id=pref, match_status="sikker",
+            )
         return ParsedLine(
             raw=line.strip(),
             quantity=p.quantity,
@@ -119,44 +132,6 @@ class ParsedLine:
     note: str | None
     ingredient_id: int | None
     match_status: str
-
-
-def learn_alias(session: Session, item: str, ingredient: Ingredient) -> int:
-    """Brugeren har koblet `item` til en vare. Husk det som alias, og ret andre
-    ubekræftede linjer med samme varenavn. Returnerer antal rettede linjer.
-
-    Regler, så én bekræftelse aldrig kan omdøbe en vare i hele appen:
-    - Er `item` navnet på en ANDEN vare ("løg" bekræftet som rødløg), gælder
-      bekræftelsen kun den ene linje. Der laves intet alias.
-    - Er `item` navnet på den valgte vare, fjernes et tidligere bruger-alias
-      med samme navn (fortryder en gammel omdøbning).
-    """
-    k = m.key(item)
-    if not k:
-        return 0
-    owner = next((i for i in session.scalars(select(Ingredient)) if m.key(i.name) == k), None)
-    alias = session.scalar(select(IngredientAlias).where(IngredientAlias.key == k))
-    if owner is not None and owner.id != ingredient.id:
-        return 0
-    if owner is not None:
-        # Varens eget navn: fjern en gammel omdøbning og ret linjer, den har ramt.
-        if alias is not None and alias.source == "user":
-            session.delete(alias)
-    elif alias is None:
-        session.add(IngredientAlias(alias=" ".join(item.lower().split()), key=k, ingredient=ingredient, source="user"))
-    else:
-        alias.ingredient = ingredient
-        alias.source = "user"
-    # Alle ubekræftede linjer med samme varenavn følger aliaset. Bekræftede linjer
-    # er brugerens egne valg og røres ikke.
-    changed = 0
-    for line in session.scalars(select(RecipeIngredient).where(RecipeIngredient.match_status != "bekræftet")):
-        already = line.ingredient_id == ingredient.id and line.match_status == "sikker"
-        if not already and m.key(line.item) == k:
-            line.ingredient_id = ingredient.id
-            line.match_status = "sikker"
-            changed += 1
-    return changed
 
 
 def rematch_open_lines(session: Session, catalog: "Catalog | None" = None) -> int:

@@ -1,28 +1,55 @@
 <script lang="ts">
-	import { api, ApiError } from '$lib/api';
-	import { today, weekday } from '$lib/dates';
-	import { formatAmounts } from '$lib/format';
-	import IngredientPicker from '$lib/IngredientPicker.svelte';
-	import PeriodNav from '$lib/PeriodNav.svelte';
+	import { tick, untrack } from 'svelte';
+	import { api } from '$lib/api';
+	import { periodLong, today } from '$lib/dates';
+	import Fold from '$lib/Fold.svelte';
+	import { formatAmounts, itemKey } from '$lib/format';
+	import AddBar from '$lib/indkob/AddBar.svelte';
+	import ItemRow from '$lib/indkob/ItemRow.svelte';
+	import ItemSheet from '$lib/indkob/ItemSheet.svelte';
+	import PickSheet from '$lib/indkob/PickSheet.svelte';
+	import { navState } from '$lib/nav.svelte';
 	import { shopping } from '$lib/shopping.svelte';
-	import type { Department, IngredientRef, PlanBrief, ShoppingData, ShoppingItem } from '$lib/types';
+	import type { IngredientRef, PlanBrief, ReviewLine, ShoppingData, ShoppingItem } from '$lib/types';
+	import { OFFLINE, say } from '$lib/ui/copy';
+	import Icon from '$lib/ui/Icon.svelte';
+	import ScreenHeader from '$lib/ui/ScreenHeader.svelte';
+	import SwipeRow from '$lib/ui/SwipeRow.svelte';
+	import WeekNav from '$lib/ui/WeekNav.svelte';
 
-	let hideBought = $state(false);
-	let open = $state<string | null>(null);
+	// Så længe bliver en række, der lige er købt, stående på sin plads med streg
+	// over. Listen hopper ikke under tommelfingeren, og et fejltryk kan fortrydes.
+	const LINGER_MS = 4000;
+	// Så mange basisvarer vises, før resten foldes ind.
+	const PANTRY_SHOWN = 6;
+
+	/** Rækken, hvis ark er åbent. */
+	let sheetKey = $state<string | null>(null);
 	let newItem = $state('');
+	let adding = $state(false);
 	let actionError = $state('');
-	let editingOrder = $state(false);
-	let order = $state<Department[]>([]);
+	let allPantry = $state(false);
+
+	// Rækker, der lige er købt her på telefonen, og som stadig står i deres afdeling.
+	let recent = $state<Record<string, true>>({});
+	const timers = new Map<string, ReturnType<typeof setTimeout>>();
+	function forget() {
+		for (const t of timers.values()) clearTimeout(t);
+		timers.clear();
+	}
 
 	$effect(() => {
 		shopping.start();
-		return () => shopping.stop();
+		return () => {
+			shopping.stop();
+			forget();
+		};
 	});
 
 	const data = $derived(shopping.data);
 
-	// Uge-vælger: listen viser den igangværende uge (som Planlæg), men andre uger
-	// kan vælges (fx næste uges indkøb). Planerne hentes igen, når listen viser en ukendt plan.
+	// Uge-vælger: listen viser den uge, Uge sidst viste, men andre uger kan
+	// vælges (fx næste uges indkøb). Planerne hentes igen, når listen viser en ukendt plan.
 	let plans = $state<PlanBrief[]>([]);
 	$effect(() => {
 		const id = data?.plan?.id;
@@ -35,40 +62,87 @@
 			/* offline: vælgeren vises ikke */
 		}
 	}
-	function showPlan(id: number) {
-		open = null;
+	function showPlan(id: number | null) {
+		sheetKey = null;
 		shopping.show(id);
+		// Uge viser samme uge, når man går tilbage dertil.
+		navState.week = id === null ? '/' : `/?plan=${id}`;
 	}
+	// Uden net kan en anden uge ikke hentes, så pilene vises ikke.
+	const canNavigate = $derived(
+		!!data?.plan && plans.length > 1 && plans.some((p) => p.id === data.plan?.id) && shopping.status !== 'offline'
+	);
+
 	const isChecked = (i: ShoppingItem) => shopping.checked(i.key, i.checked);
 	const total = $derived(data?.items.length ?? 0);
 	const done = $derived(data?.items.filter(isChecked).length ?? 0);
 
+	function toggle(item: ShoppingItem) {
+		const was = isChecked(item);
+		shopping.toggle(item.key, was);
+		clearTimeout(timers.get(item.key));
+		timers.delete(item.key);
+		if (was) delete recent[item.key];
+		else {
+			recent[item.key] = true;
+			timers.set(
+				item.key,
+				setTimeout(() => settle(item.key), LINGER_MS)
+			);
+		}
+	}
+
+	/** Tiden er gået: rækken flytter ned under "Købt". */
+	function settle(key: string) {
+		// Står tastaturets fokus på rækken, venter den, så fokus ikke forsvinder med den.
+		const el = document.activeElement;
+		if (el instanceof HTMLElement && el.matches(':focus-visible') && el.closest<HTMLElement>('[data-key]')?.dataset.key === key) {
+			timers.set(
+				key,
+				setTimeout(() => settle(key), 1000)
+			);
+			return;
+		}
+		timers.delete(key);
+		delete recent[key];
+	}
+
+	// En anden uge har de samme nøgler: ingen rækker hænger ved fra den forrige.
+	let shownPlan: number | null | undefined;
+	$effect(() => {
+		const id = data?.plan?.id ?? null;
+		if (id === shownPlan) return;
+		shownPlan = id;
+		untrack(() => {
+			forget();
+			recent = {};
+		});
+	});
+
+	// Afdelingerne viser det, der mangler (og det, der lige er købt). Resten står under "Købt".
 	const sections = $derived(
 		(data?.departments ?? [])
-			.map((d) => ({
-				...d,
-				items: (data?.items ?? []).filter((i) => i.department === d.code && !(hideBought && isChecked(i)))
-			}))
-			.filter((s) => s.items.length)
+			.map((d) => {
+				const all = (data?.items ?? []).filter((i) => i.department === d.code);
+				return {
+					...d,
+					rows: all.filter((i) => !isChecked(i) || recent[i.key]),
+					left: all.filter((i) => !isChecked(i)).length
+				};
+			})
+			.filter((s) => s.rows.length)
 	);
+	const bought = $derived((data?.items ?? []).filter((i) => isChecked(i) && !recent[i.key]));
+	const pantry = $derived(allPantry ? (data?.pantry ?? []) : (data?.pantry ?? []).slice(0, PANTRY_SHOWN));
 
-	const statusText = $derived.by(() => {
-		const waiting = shopping.pending.length;
-		if (shopping.status === 'offline')
-			return waiting ? `Offline – ${waiting} ${waiting === 1 ? 'ændring venter' : 'ændringer venter'}` : 'Offline – viser gemt liste';
-		if (shopping.status === 'error') return shopping.error || 'Kunne ikke synkronisere';
-		if (shopping.status === 'loading') return data ? 'Opdaterer…' : 'Henter listen…';
-		const t = shopping.syncedAt;
-		return t ? `Synkroniseret ${t.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })}` : '';
-	});
+	const sheetItem = $derived(data?.items.find((i) => i.key === sheetKey) ?? null);
 
 	async function action(fn: () => Promise<ShoppingData>) {
 		actionError = '';
 		try {
 			shopping.set(await fn());
 		} catch (e) {
-			actionError =
-				e instanceof ApiError && e.status === 0 ? 'Kræver forbindelse. Prøv igen, når I har net.' : e instanceof ApiError ? e.message : 'Noget gik galt';
+			actionError = say(e);
 		}
 	}
 
@@ -76,20 +150,25 @@
 
 	// Egne varer kobles til en rigtig vare, så de sorteres efter afdeling. Er
 	// appen ikke sikker, vælger man varen (eller opretter den) i vare-vælgeren.
-	type Picking = { mode: 'new'; text: string; initial: string; suggestion: IngredientRef | null } | { mode: 'change'; key: string; initial: string };
-	let picking = $state<Picking | null>(null);
+	// En ukendt vare fra planen rettes på opskriftens linjer (som under Ryd op).
+	type Picking =
+		| { mode: 'new'; text: string; initial: string; suggestion: IngredientRef | null }
+		| { mode: 'change'; key: string; text: string }
+		| { mode: 'plan'; item: ShoppingItem; lines: ReviewLine[] | null };
+	let picking = $state.raw<Picking | null>(null);
 
-	async function addItem(e: SubmitEvent) {
-		e.preventDefault();
-		const text = newItem.trim();
-		if (!text) return;
+	async function addItem(text: string) {
+		if (adding) return;
 		actionError = '';
+		adding = true;
 		let parsed: { item: string; ingredient: IngredientRef | null; match_status: string };
 		try {
 			[parsed] = await api<(typeof parsed)[]>('/parse', { method: 'POST', body: { lines: [text] } });
-		} catch (err) {
-			actionError = err instanceof ApiError && err.status === 0 ? 'Kræver forbindelse. Prøv igen, når I har net.' : 'Kunne ikke læse varen';
+		} catch (e) {
+			actionError = say(e);
 			return;
+		} finally {
+			adding = false;
 		}
 		newItem = '';
 		if (parsed.ingredient && parsed.match_status === 'sikker') {
@@ -105,31 +184,106 @@
 		);
 	}
 
+	/** Vælg vare for en række: egne varer rettes direkte, planens på opskriftens linjer. */
+	async function pickFor(item: ShoppingItem) {
+		sheetKey = null;
+		// Arket lukkes først, så fokus er tilbage på rækken, før vælgeren åbner.
+		await tick();
+		if (item.kind === 'extra') {
+			picking = { mode: 'change', key: item.key, text: item.name };
+			return;
+		}
+		const mine: Picking = { mode: 'plan', item, lines: null };
+		picking = mine;
+		try {
+			const all = await api<ReviewLine[]>('/review');
+			// Serverens nøgle fjerner også accenter, så navnet alene kan gå galt:
+			// linjens tekst fra opskriften er den anden vej til den samme linje.
+			const key = itemKey(item.name);
+			const lines = all.filter((l) => itemKey(l.item) === key || item.sources.some((s) => s.raw === l.raw));
+			if (picking === mine) picking = { ...mine, lines };
+		} catch (e) {
+			if (picking !== mine) return;
+			picking = null;
+			actionError = say(e);
+		}
+	}
+
 	function picked(ing: IngredientRef | null) {
 		const p = picking;
 		picking = null;
 		if (!p) return;
 		if (p.mode === 'new') saveExtra(p.text, ing?.id ?? null);
-		else
+		else if (p.mode === 'change')
 			action(() =>
 				api<ShoppingData>(`/shopping/extras/${p.key.slice(2)}${planQuery()}`, {
 					method: 'PATCH',
 					body: { ingredient_id: ing?.id ?? null }
 				})
 			);
+		else resolveLines(p.lines ?? [], ing);
 	}
+
+	async function resolveLines(lines: ReviewLine[], ing: IngredientRef | null) {
+		actionError = '';
+		try {
+			if (ing) {
+				// Serveren retter selv de andre linjer med samme varenavn.
+				const seen = new Set<string>();
+				for (const l of lines) {
+					const k = itemKey(l.item);
+					if (seen.has(k)) continue;
+					seen.add(k);
+					await api(`/lines/${l.id}/confirm`, { method: 'POST', body: { ingredient_id: ing.id } });
+				}
+			} else {
+				for (const l of lines) await api(`/lines/${l.id}/ignore`, { method: 'POST' });
+			}
+		} catch (e) {
+			actionError = say(e);
+		}
+		await shopping.sync();
+	}
+
+	/** Vælgeren lukket uden et valg. En ny vare er ikke gemt: teksten kommer tilbage i feltet. */
+	function closePicker() {
+		const p = picking;
+		picking = null;
+		if (p?.mode === 'new' && !newItem) newItem = p.text;
+	}
+
+	const pickText = $derived(!picking ? '' : picking.mode === 'plan' ? picking.item.name : picking.text);
+	const pickInstead = $derived(
+		picking?.mode !== 'plan'
+			? ''
+			: picking.lines === null
+				? 'Henter.'
+				: picking.lines.length
+					? ''
+					: 'Varen er valgt fra i opskriften. I kan rette den under Opskrifter.'
+	);
+	// Appens bud: en vare, den var i tvivl om på en af linjerne.
+	const pickSuggestion = $derived(
+		!picking
+			? null
+			: picking.mode === 'new'
+				? picking.suggestion
+				: picking.mode === 'plan'
+					? (picking.lines?.find((l) => l.match_status === 'usikker' && l.ingredient)?.ingredient ?? null)
+					: null
+	);
 
 	const deptName = (code: string) => data?.departments.find((d) => d.code === code)?.name ?? code;
 
 	function setHome(key: string, home: boolean) {
 		if (!data?.plan) return;
 		const planId = data.plan.id;
-		open = null;
+		sheetKey = null;
 		action(() => api<ShoppingData>('/shopping/home', { method: 'POST', body: { plan_id: planId, key, home } }));
 	}
 
 	function removeExtra(key: string) {
-		open = null;
+		sheetKey = null;
 		action(() => api<ShoppingData>(`/shopping/extras/${key.slice(2)}${planQuery()}`, { method: 'DELETE' }));
 	}
 
@@ -141,360 +295,214 @@
 			})
 		);
 	}
-
-	function startOrder() {
-		order = [...(data?.departments ?? [])];
-	}
-
-	function moveDept(i: number, delta: number) {
-		const j = i + delta;
-		if (j < 0 || j >= order.length) return;
-		[order[i], order[j]] = [order[j], order[i]];
-	}
-
-	async function saveOrder() {
-		try {
-			await api('/settings/departments', { method: 'PUT', body: { order: order.map((d) => d.code) } });
-			editingOrder = false;
-			await shopping.sync();
-		} catch (e) {
-			actionError = e instanceof ApiError ? e.message : 'Kunne ikke gemme rækkefølgen';
-		}
-	}
-
-	const days = (list: string[]) => list.map(weekday).join(', ');
 </script>
 
-<main>
-	<header class="top">
-		<div class="grow">
-			<h1>Indkøb</h1>
-			{#if data?.plan}
-				<!-- Skift mellem planer (uger), som i Planlæg -->
-				<PeriodNav plan={data.plan} {plans} onselect={showPlan} />
-			{/if}
-			<div class="muted small">
-				<span class:warn={shopping.status === 'offline' || shopping.status === 'error'}>{statusText}</span>
-				{#if shopping.selected !== null}
-					· <button class="plain link" onclick={() => shopping.show(null)}>Denne uge</button>
-				{/if}
+<main class="docked">
+	<!-- Toppen bliver stående, så man altid kan se, hvor langt man er. -->
+	<div class="top">
+		<ScreenHeader title="Indkøb" eyebrow={data?.plan ? periodLong(data.plan.start_date, data.plan.end_date) : undefined}>
+			{#snippet actions()}
+				{#if total}<p class="count"><b>{done}</b> af {total}</p>{/if}
+				{#if canNavigate && data?.plan}<WeekNav plan={data.plan} {plans} onselect={showPlan} />{/if}
+			{/snippet}
+		</ScreenHeader>
+		{#if total}
+			<div class="bar" role="progressbar" aria-label="Købt" aria-valuemin="0" aria-valuemax={total} aria-valuenow={done}>
+				<span style:width="{(done / total) * 100}%"></span>
 			</div>
-		</div>
-		{#if total}<div class="progress"><b>{done}</b>/{total}</div>{/if}
-	</header>
-	{#if total}
-		<div class="bar" role="progressbar" aria-label="Købt" aria-valuemin="0" aria-valuemax={total} aria-valuenow={done}>
-			<span style="width: {(done / total) * 100}%"></span>
-		</div>
-	{/if}
+		{/if}
+	</div>
 
-	{#if actionError}<p class="error" role="alert">{actionError}</p>{/if}
+	<!-- Kun når listen ikke er helt opdateret: en rolig sætning om hvorfor. -->
+	<div role="status">
+		{#if shopping.status === 'offline'}
+			{@const waiting = shopping.pending.length}
+			<p class="net">
+				<Icon name="nonet" size={16} />
+				<span><b>{OFFLINE}</b> Listen er gemt her{#if waiting}, {waiting} kryds venter{/if}.</span>
+			</p>
+		{:else if shopping.status === 'error'}
+			<p class="net">{shopping.error || 'Listen kunne ikke hentes lige nu.'}</p>
+		{:else if shopping.status === 'loading' && !data}
+			<p class="net">Henter listen.</p>
+		{/if}
+	</div>
 
-	<form class="add" onsubmit={addItem}>
-		<input bind:value={newItem} placeholder="Tilføj vare, fx bleer eller kaffe" aria-label="Tilføj vare" maxlength="200" />
-		<button disabled={!newItem.trim()}>Tilføj</button>
-	</form>
-	{#if picking?.mode === 'new'}
-		<p class="small muted">Hvilken vare er "{picking.text}"? Så kommer den under den rigtige afdeling.</p>
-		<IngredientPicker
-			initial={picking.initial}
-			suggestion={picking.suggestion}
-			defaultDepartment="andet"
-			onpick={picked}
-			oncancel={() => (picking = null)}
-		/>
+	{#if shopping.selected !== null}
+		<p class="pad back"><button type="button" class="chip" onclick={() => showPlan(null)}>Denne uge</button></p>
 	{/if}
 
 	{#if data && !data.plan && !total}
 		<div class="empty">
-			<p>Ingen madplan endnu.</p>
-			<p><a class="button primary" href="/planlaeg">Lav en madplan</a></p>
+			<p>Der er ingen madplan endnu.</p>
+			<p><a class="btn primary" href="/">Lav en uge</a></p>
 		</div>
 	{:else if data && !total}
-		<div class="empty"><p>Listen er tom. Vælg retter i madplanen, så kommer ingredienserne her.</p></div>
-	{/if}
-
-	{#if total}
-		<div class="tools">
-			<button class="chip" aria-pressed={hideBought} onclick={() => (hideBought = !hideBought)}>
-				{hideBought ? `Vis købte (${done})` : 'Skjul købte'}
-			</button>
-		</div>
+		<p class="empty">Listen er tom. Vælg retter i ugen, så kommer varerne her.</p>
+	{:else if total && !sections.length}
+		<p class="empty">Alt på listen er købt.</p>
 	{/if}
 
 	{#each sections as s (s.code)}
-		<h2 class="section-title">{s.name}</h2>
-		<ul class="list">
-			{#each s.items as item (item.key)}
-				{@const checked = isChecked(item)}
-				<li class:checked>
-					<div class="row-main">
-						<button class="tick" aria-pressed={checked} onclick={() => shopping.toggle(item.key, checked)}>
-							<span class="box" aria-hidden="true">{checked ? '✓' : ''}</span>
-							<span class="grow text">
-								<span class="name">{item.name}</span>
-								{#if item.days.length}<span class="days">{days(item.days)}</span>{/if}
-								{#if item.source === 'løbet tør'}<span class="days">løbet tør</span>{/if}
-							</span>
-							<span class="amount">{formatAmounts(item.amounts, item.unquantified)}</span>
-						</button>
-						<button
-							class="plain more"
-							aria-expanded={open === item.key}
-							aria-label="Mere om {item.name}"
-							onclick={() => (open = open === item.key ? null : item.key)}>⋯</button
-						>
-					</div>
-					{#if open === item.key}
-						<div class="details">
-							{#if item.kind === 'extra'}
-								<p class="small">
-									{#if item.ingredient_name}Vare: <strong>{item.ingredient_name}</strong> · {deptName(item.department)}
-									{:else}<span class="badge">ingen vare</span> Kommer under Andet{/if}
-								</p>
-							{:else if item.unknown}
-								<p class="small"><span class="badge">ukendt vare</span> <a href="/tjek">Vælg vare under Tjek</a></p>
-							{/if}
-							{#each item.sources as src}
-								<div class="small muted">{weekday(src.date)} · {src.meal}: {src.raw}</div>
-							{/each}
-							<div class="row">
-								{#if item.kind === 'plan'}
-									<button onclick={() => setHome(item.key, true)}>Har hjemme</button>
-								{:else}
-									<button onclick={() => (picking = { mode: 'change', key: item.key, initial: item.name })}>
-										{item.ingredient_name ? 'Skift vare' : 'Vælg vare'}
-									</button>
-									<button class="danger" onclick={() => removeExtra(item.key)}>Fjern fra listen</button>
-								{/if}
-							</div>
-							{#if picking?.mode === 'change' && picking.key === item.key}
-								<IngredientPicker initial={picking.initial} defaultDepartment="andet" onpick={picked} oncancel={() => (picking = null)} />
-							{/if}
-						</div>
-					{/if}
+		<h2 class="dep">{s.name}<span>{s.left} tilbage</span></h2>
+		<ul>
+			{#each s.rows as item (item.key)}
+				<li data-key={item.key}>
+					<!-- Træk mod højre er en genvej til "Har hjemme". Det samme står i rækkens ark. -->
+					<SwipeRow label="Har hjemme" icon="home" disabled={item.kind === 'extra'} onaction={() => setHome(item.key, true)}>
+						<ItemRow
+							{item}
+							checked={isChecked(item)}
+							ontoggle={() => toggle(item)}
+							onmore={() => (sheetKey = item.key)}
+							onpick={() => pickFor(item)}
+						/>
+					</SwipeRow>
 				</li>
 			{/each}
 		</ul>
 	{/each}
 
-	{#if data?.home.length}
-		<details class="section">
-			<summary>Har hjemme ({data.home.length})</summary>
-			<ul class="simple">
-				{#each data.home as h (h.key)}
-					<li>
-						<span class="grow">{h.name}</span>
-						<button onclick={() => setHome(h.key, false)}>Fortryd</button>
+	{#if bought.length}
+		<Fold title="Købt" count={bought.length}>
+			<ul>
+				{#each bought as item (item.key)}
+					<li data-key={item.key}>
+						<ItemRow
+							{item}
+							checked
+							ontoggle={() => toggle(item)}
+							onmore={() => (sheetKey = item.key)}
+							onpick={() => pickFor(item)}
+						/>
 					</li>
 				{/each}
 			</ul>
-		</details>
+		</Fold>
+	{/if}
+
+	{#if data?.home.length}
+		<Fold title="Har hjemme" count={data.home.length}>
+			{#each data.home as h (h.key)}
+				<div class="kv">
+					<span class="k">{h.name}</span>
+					<button type="button" class="v" aria-label="Fortryd, {h.name} skal købes" onclick={() => setHome(h.key, false)}>Fortryd</button>
+				</div>
+			{/each}
+		</Fold>
 	{/if}
 
 	{#if data?.pantry.length}
-		<details class="section">
-			<summary>Basisvarer brugt i denne uge ({data.pantry.length})</summary>
-			<p class="muted small">Kommer ikke på listen. Tryk "Løbet tør", hvis I mangler en.</p>
-			<ul class="simple">
-				{#each data.pantry as p (p.ingredient_id)}
-					<li>
-						<span class="grow">
-							{p.name}
-							<span class="muted small">{formatAmounts(p.amounts)}</span>
-						</span>
-						{#if p.requested}
-							<span class="badge ok">på listen</span>
-						{:else}
-							<button onclick={() => outOfStock(p.ingredient_id)}>Løbet tør</button>
-						{/if}
-					</li>
-				{/each}
-			</ul>
-		</details>
+		<h2 class="sl">Basisvarer brugt i ugen<span>altid hjemme</span></h2>
+		{#each pantry as p (p.ingredient_id)}
+			<div class="kv">
+				<span class="k">{p.name} <span class="small muted">{formatAmounts(p.amounts)}</span></span>
+				{#if p.requested}
+					<span class="tag">på listen</span>
+				{:else}
+					<button type="button" class="btn sm" aria-label="Løbet tør for {p.name}" onclick={() => outOfStock(p.ingredient_id)}>Løbet tør</button>
+				{/if}
+			</div>
+		{/each}
+		{#if !allPantry && data.pantry.length > PANTRY_SHOWN}
+			<p class="pad"><button type="button" class="btn quiet sm" onclick={() => (allPantry = true)}>{data.pantry.length - PANTRY_SHOWN} mere</button></p>
+		{/if}
 	{/if}
 
-	{#if data}
-		<details class="section" bind:open={editingOrder} ontoggle={() => editingOrder && startOrder()}>
-			<summary>Rækkefølge i butikken</summary>
-			<p class="muted small">Sæt afdelingerne i den rækkefølge, I går rundt i Bilka.</p>
-			<ol class="order">
-				{#each order as d, i (d.code)}
-					<li>
-						<span class="grow">{d.name}</span>
-						<button class="plain" aria-label="Flyt {d.name} op" disabled={i === 0} onclick={() => moveDept(i, -1)}>↑</button>
-						<button class="plain" aria-label="Flyt {d.name} ned" disabled={i === order.length - 1} onclick={() => moveDept(i, 1)}>↓</button>
-					</li>
-				{/each}
-			</ol>
-			<button class="primary" onclick={saveOrder}>Gem rækkefølge</button>
-		</details>
-	{/if}
+	<AddBar bind:value={newItem} busy={adding} onadd={addItem}>
+		{#snippet above()}
+			<!-- Det, der kræver serveren, siger til her, lige over feltet. -->
+			{#if actionError}
+				<p class="msg said" role="alert" aria-live="assertive">
+					<span class="grow">{actionError}</span>
+					<button type="button" class="rnd" aria-label="Luk beskeden" onclick={() => (actionError = '')}><Icon name="x" size={16} /></button>
+				</p>
+			{/if}
+		{/snippet}
+	</AddBar>
 </main>
 
+{#if sheetItem}
+	{@const item = sheetItem}
+	<ItemSheet
+		{item}
+		department={deptName(item.department)}
+		onhome={() => setHome(item.key, true)}
+		onpick={() => pickFor(item)}
+		onremove={() => removeExtra(item.key)}
+		onclose={() => (sheetKey = null)}
+	/>
+{/if}
+
+{#if picking}
+	{#key picking.mode === 'plan' ? picking.item.key : picking.text}
+		<PickSheet
+			text={pickText}
+			initial={picking.mode === 'new' ? picking.initial : pickText}
+			suggestion={pickSuggestion}
+			instead={pickInstead}
+			onpick={picked}
+			onclose={closePicker}
+		/>
+	{/key}
+{/if}
+
 <style>
-	/* Link i en tekstlinje: undtaget fra knappernes mindste trykflade. */
-	.link {
-		padding: 0;
-		min-width: 0;
-		min-height: 0;
-		font-size: inherit;
-		color: var(--accent);
+	/* Toppen klæber til skærmens kant, så den sikre afstand ligger i den og ikke i main. */
+	main {
+		padding-top: 0;
 	}
-	.progress {
-		font-size: 1.1rem;
+	.top {
+		position: sticky;
+		top: 0;
+		z-index: 5;
+		padding-block: env(safe-area-inset-top) 6px;
+		background: var(--paper);
+	}
+	.count {
 		color: var(--muted);
 		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
 	}
-	.progress b {
-		color: var(--accent);
-	}
-	.warn {
-		color: var(--warn);
-		font-weight: 600;
-	}
-	.add {
-		display: flex;
-		gap: 8px;
-		margin-bottom: 8px;
-	}
-	.add input {
-		flex: 1;
-	}
-	.add button {
-		flex: none;
+	.count b {
+		font-size: 20px;
+		font-weight: 700;
+		color: var(--ink);
 	}
 	.bar {
-		height: 6px;
-		border-radius: 3px;
+		height: 3px;
+		margin-inline: max(var(--gutter), env(safe-area-inset-left)) max(var(--gutter), env(safe-area-inset-right));
+		border-radius: 2px;
 		background: var(--line);
 		overflow: hidden;
-		margin: -4px 0 12px;
 	}
 	.bar span {
 		display: block;
 		height: 100%;
-		background: var(--accent);
+		border-radius: 2px;
+		background: var(--kobt);
 		transition: width 0.3s;
 	}
-	.tools {
-		display: flex;
-		justify-content: flex-end;
-		margin: 4px 0;
+	.net {
+		padding-top: 8px;
 	}
-	.chip {
-		min-height: 36px;
-		padding: 4px 14px;
-		border-radius: var(--radius-pill);
-		font-size: 0.9rem;
+	.back {
+		padding-block: 8px 4px;
 	}
-	.chip[aria-pressed='true'] {
-		background: var(--accent-soft);
-		border-color: var(--accent);
-		color: var(--accent);
+	.empty .btn {
+		margin-top: 16px;
 	}
-	.list {
+	ul {
 		list-style: none;
-		padding: 0;
 		margin: 0;
-	}
-	.list li {
-		border-bottom: 1px solid var(--line);
-	}
-	.row-main {
-		display: flex;
-		align-items: stretch;
-	}
-	/* Store felter til én hånd i butikken */
-	.tick {
-		flex: 1;
-		min-width: 0;
-		display: flex;
-		align-items: center;
-		gap: 14px;
-		min-height: 60px;
-		padding: 8px 4px;
-		border: none;
-		border-radius: 0;
-		background: none;
-		text-align: left;
-	}
-	.box {
-		flex: none;
-		width: 30px;
-		height: 30px;
-		border-radius: var(--radius-thumb);
-		border: 2px solid var(--line-strong);
-		display: grid;
-		place-items: center;
-		font-weight: 800;
-		color: var(--accent-fg);
-	}
-	li.checked .box {
-		background: var(--accent);
-		border-color: var(--accent);
-	}
-	.text {
-		display: flex;
-		flex-direction: column;
-	}
-	.name {
-		font-size: 1.05rem;
-		font-weight: 600;
-	}
-	.days {
-		font-size: 0.8rem;
-		color: var(--muted);
-	}
-	.amount {
-		flex: none;
-		max-width: 45%;
-		text-align: right;
-		font-variant-numeric: tabular-nums;
-		color: var(--fg);
-	}
-	li.checked .name,
-	li.checked .amount {
-		text-decoration: line-through;
-		color: var(--muted);
-	}
-	.more {
-		flex: none;
-		width: 44px;
-		justify-content: center;
-		font-size: 1.3rem;
-		color: var(--muted);
-	}
-	.details {
-		display: grid;
-		gap: 6px;
-		padding: 0 4px 12px 48px;
-	}
-	.section {
-		margin-top: 24px;
-		border-top: 1px solid var(--line);
-		padding-top: 12px;
-	}
-	.section summary {
-		cursor: pointer;
-		font-weight: 600;
-		min-height: 36px;
-	}
-	.simple,
-	.order {
-		list-style: none;
 		padding: 0;
-		margin: 8px 0;
 	}
-	.simple li,
-	.order li {
+	.said {
 		display: flex;
 		align-items: center;
-		gap: 8px;
-		min-height: 48px;
-		border-bottom: 1px solid var(--line);
-	}
-	.order button {
-		font-size: 1.1rem;
+		gap: 10px;
+		margin: 0 0 8px;
+		background: var(--card);
+		box-shadow: var(--shadow-float);
 	}
 </style>

@@ -1,0 +1,35 @@
+:root { --bg:#faf8f5; --fg:#222; --muted:#6b6b6b; --line:#ddd6cc; --card:#fff; --accent:#c8402a; --on:#fff; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#1b1a19; --fg:#eee; --muted:#a39e97; --line:#3a3835; --card:#242220; --accent:#e5664f; --on:#1b1a19; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; font: 16px/1.4 system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+header { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+h1 { font-size: 1.2rem; margin: 0; }
+h2 { font-size: 1.05rem; margin: 0; }
+nav { display: flex; gap: 8px; flex-wrap: wrap; }
+main { padding: 16px; max-width: 960px; margin: 0 auto; }
+[hidden] { display: none !important; }
+button { font: inherit; padding: 8px 14px; border: 1px solid var(--accent); background: var(--accent); color: var(--on); border-radius: 8px; cursor: pointer; }
+button.quiet, nav .tab { background: transparent; color: var(--fg); border-color: var(--line); }
+nav .tab.on { border-color: var(--accent); color: var(--accent); }
+button.danger { background: transparent; color: var(--accent); }
+button.sm { padding: 4px 10px; font-size: .9rem; }
+input, select { font: inherit; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--fg); }
+label { display: block; margin-bottom: 12px; }
+label input { display: block; width: 100%; margin-top: 4px; }
+#login-form { max-width: 360px; margin: 48px auto; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.row input { flex: 1 1 220px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; margin-bottom: 12px; }
+.card header { border: 0; padding: 0 0 8px; justify-content: space-between; }
+.muted { color: var(--muted); font-size: .9rem; }
+.tag { font-size: .8rem; border: 1px solid var(--line); border-radius: 6px; padding: 0 6px; margin-left: 6px; }
+.member { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); }
+.member .name { flex: 1 1 140px; }
+.member.off .name { text-decoration: line-through; color: var(--muted); }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+#recipe-filter { width: 100%; margin-bottom: 12px; }
+#msg { margin: 0; padding: 0 16px; min-height: 1.4em; color: var(--accent); max-width: 960px; margin-inline: auto; }
+@media (max-width: 600px) { th:nth-child(3), td:nth-child(3), th:nth-child(4), td:nth-child(4) { display: none; } }

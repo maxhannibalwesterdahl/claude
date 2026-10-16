@@ -5,7 +5,11 @@ import type { ShoppingData } from './types';
 // Listen og ventende afkrydsninger gemmes på telefonen, så listen kan bruges
 // uden dækning. Samme metode som testet i fase 0 (localStorage + seneste
 // ændring vinder på serveren).
-const STORAGE = 'madplan.indkob.v1';
+// Listen gemmes pr. bruger, så den næste på telefonen ikke ser og sender den forrige
+// brugers liste (en anden families indkøb). Ryddes ved logout.
+const STORAGE = 'madplan.indkob.v2.';
+const LEGACY = 'madplan.indkob.v1'; // én fælles nøgle fra før familier: slettes
+const USER = 'madplan.bruger';
 const POLL_MS = 20_000;
 
 export interface Change {
@@ -18,9 +22,19 @@ export interface Change {
 
 type Status = 'loading' | 'synced' | 'offline' | 'error';
 
-function read(): { data: ShoppingData | null; pending: Change[]; offset?: number } {
+function savedUser(): number | null {
 	try {
-		const raw = localStorage.getItem(STORAGE);
+		const id = Number(localStorage.getItem(USER));
+		return Number.isInteger(id) && id > 0 ? id : null;
+	} catch {
+		return null;
+	}
+}
+
+function read(user: number | null): { data: ShoppingData | null; pending: Change[]; offset?: number } {
+	if (user === null) return { data: null, pending: [] };
+	try {
+		const raw = localStorage.getItem(STORAGE + user);
 		if (raw) return JSON.parse(raw);
 	} catch {
 		/* privat vindue eller ødelagte data: start forfra */
@@ -33,8 +47,8 @@ class ShoppingStore {
 	pending = $state<Change[]>([]);
 	status = $state<Status>('loading');
 	syncedAt = $state<Date | null>(null);
-	// Den uge, der er valgt med uge-vælgeren. null = den igangværende uge.
-	// Gemmes ikke, så appen åbner på den igangværende uge igen.
+	// Den uge, der er valgt (på Uge eller med uge-vælgeren). null = den
+	// igangværende uge. Gemmes ikke, så appen åbner på den igangværende uge igen.
 	selected = $state<number | null>(null);
 	// Forskel mellem serverens og telefonens ur (ms). "Seneste ændring vinder"
 	// sammenligner tidsstempler fra to telefoner, så de skal regnes i samme tid.
@@ -45,16 +59,60 @@ class ShoppingStore {
 	#again = false;
 	#timer: ReturnType<typeof setInterval> | null = null;
 
+	// Brugeren, listen på telefonen tilhører. null = ingen er logget ind her.
+	#user: number | null = null;
+
 	constructor() {
-		const saved = read();
+		try {
+			localStorage.removeItem(LEGACY);
+		} catch {
+			/* blokeret lagring */
+		}
+		this.#user = savedUser();
+		this.#load();
+	}
+
+	#load() {
+		const saved = read(this.#user);
 		this.data = saved.data;
 		this.pending = saved.pending;
 		this.#offset = saved.offset ?? 0;
 	}
 
-	#save() {
+	/** Den indloggede bruger. Skifter brugeren, forlades den forrige brugers liste. */
+	use(userId: number) {
+		if (this.#user === userId) return;
 		try {
-			localStorage.setItem(STORAGE, JSON.stringify({ data: this.data, pending: this.pending, offset: this.#offset }));
+			if (this.#user !== null) localStorage.removeItem(STORAGE + this.#user);
+			localStorage.setItem(USER, String(userId));
+		} catch {
+			/* blokeret lagring */
+		}
+		this.#user = userId;
+		this.selected = null;
+		this.#load();
+	}
+
+	/** Logout: listen og ventende ændringer slettes fra telefonen. */
+	clear() {
+		try {
+			for (const k of Object.keys(localStorage)) if (k.startsWith('madplan.')) localStorage.removeItem(k);
+		} catch {
+			/* blokeret lagring */
+		}
+		this.#user = null;
+		this.selected = null;
+		this.data = null;
+		this.pending = [];
+		this.#offset = 0;
+		this.status = 'loading';
+		this.syncedAt = null;
+	}
+
+	#save() {
+		if (this.#user === null) return;
+		try {
+			localStorage.setItem(STORAGE + this.#user, JSON.stringify({ data: this.data, pending: this.pending, offset: this.#offset }));
 		} catch {
 			/* fuld eller blokeret lagring: listen virker stadig, indtil siden lukkes */
 		}

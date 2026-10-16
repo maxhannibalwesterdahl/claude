@@ -12,9 +12,17 @@ class LoginIn(BaseModel):
     password: str = Field(max_length=200)
 
 
+class HouseholdOut(BaseModel):
+    id: int
+    name: str
+    role: Literal["admin", "medlem"]
+
+
 class UserOut(BaseModel):
     id: int
     username: str
+    is_system_admin: bool = False
+    household: HouseholdOut | None = None
 
 
 class IngredientRef(BaseModel):
@@ -30,8 +38,9 @@ class LineIn(BaseModel):
     id: int | None = None
     raw: str = Field(max_length=300)
     group: str = Field("", max_length=100)
-    quantity: float | None = None
-    quantity_max: float | None = None
+    # Endelige tal, ikke negative: Infinity, NaN og -5 vælter indkøbslisten.
+    quantity: float | None = Field(None, ge=0, le=100_000)
+    quantity_max: float | None = Field(None, ge=0, le=100_000)
     unit: str | None = Field(None, max_length=20)
     item: str | None = Field(None, max_length=200)
     note: str | None = Field(None, max_length=300)
@@ -52,6 +61,18 @@ class LineOut(BaseModel):
     ingredient: IngredientRef | None
     match_status: MatchStatus
     is_main: bool
+    # Familiens tilpasninger (flere-familier.md §4). Selve linjen er den fælles.
+    skipped: bool = False
+    my_quantity: float | None = None
+
+
+class ExtraLineOut(BaseModel):
+    id: int  # tilpasningens id (til at fjerne den igen)
+    raw: str
+    quantity: float | None
+    unit: str | None
+    item: str
+    ingredient: IngredientRef | None
 
 
 class RecipeIn(BaseModel):
@@ -61,6 +82,14 @@ class RecipeIn(BaseModel):
     child_note: str = Field("", max_length=2000)
     source_url: str | None = Field(None, max_length=500)
     ingredients: list[LineIn] = []
+
+    @field_validator("title")
+    @classmethod
+    def _title_not_blank(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Skriv en titel")
+        return v
 
     @field_validator("source_url")
     @classmethod
@@ -77,9 +106,15 @@ class RecipeOut(BaseModel):
     servings: int | None
     instructions: list[str]
     child_note: str
+    # Familien ejer opskriften og kan rette den. Ellers er den kun til at bruge.
+    owned: bool
+    in_collection: bool = True
+    favorite: bool = False
     source_url: str | None
     image_url: str | None
     ingredients: list[LineOut]
+    extra_lines: list[ExtraLineOut] = []
+    own_note: str = ""
     warnings: list[str] = []
 
 
@@ -93,6 +128,9 @@ class RecipeSummary(BaseModel):
     # Alle varer i opskriften, så søgningen også finder "kylling" i ingredienserne
     ingredients: list[str] = []
     to_review: int
+    owned: bool
+    in_collection: bool = True
+    favorite: bool = False
 
 
 class ImportIn(BaseModel):

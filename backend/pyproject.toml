@@ -7,6 +7,7 @@ dependencies = [
     "alembic>=1.16",
     "argon2-cffi>=23",
     "beautifulsoup4>=4.12",
+    "cryptography>=44",
     "fastapi>=0.115",
     "httpx>=0.28",
     "python-multipart>=0.0.9",
@@ -33,4 +34,4 @@ where = ["src"]
 testpaths = ["tests"]
 
 [tool.setuptools.package-data]
-madplan = ["ingredients/data/*.txt", "migrations/*.py", "migrations/script.py.mako", "migrations/versions/*.py"]
+madplan = ["admin_site/*", "ingredients/data/*.txt", "migrations/*.py", "migrations/script.py.mako", "migrations/versions/*.py"]

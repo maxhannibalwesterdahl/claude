@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { api, ApiError } from './api';
 	import Fold from './Fold.svelte';
-	import Thumb from './Thumb.svelte';
 	import type { Recipe } from './types';
+	import { say } from './ui/copy';
+	import Plate from './ui/Plate.svelte';
 
 	interface Hit {
 		title: string;
@@ -54,7 +55,7 @@
 					searched = term;
 				}
 			} catch (e) {
-				if (!stale) error = e instanceof ApiError ? e.message : `Kunne ikke søge på ${where.name}`;
+				if (!stale) error = say(e);
 			} finally {
 				if (!stale) loading = false;
 			}
@@ -78,7 +79,7 @@
 			if (existing) {
 				hit.recipe_id = existing;
 				onpick(existing, false);
-			} else error = e instanceof ApiError ? `${hit.title}: ${e.message}` : 'Kunne ikke importere';
+			} else error = e instanceof ApiError && e.status !== 0 ? `${hit.title}: ${e.message}` : say(e);
 		} finally {
 			importing = null;
 		}
@@ -86,18 +87,19 @@
 </script>
 
 {#if q.trim().length >= 3}
-	<!-- Søgningen giver højst 24; så mange betyder "der er nok flere". -->
-	<Fold title={where.name} count={loading ? 'søger…' : error && !hits.length ? 'fejl' : hits.length >= 24 ? '24+' : hits.length}>
-		{#if error}<p class="error" role="alert">{error}</p>{/if}
+	<!-- Søgningen giver højst 24; så mange betyder "der er nok flere". En streg, når der ikke kunne søges. -->
+	<Fold title={where.name} count={loading ? 'søger…' : error && !hits.length ? '–' : hits.length >= 24 ? '24+' : hits.length}>
+		{#if error}<p class="msg" role="alert">{error}</p>{/if}
 		{#if !loading && searched && !hits.length && !error}
-			<p class="muted small">Ingen opskrifter på {where.name} matcher "{searched}".</p>
+			<p class="muted small line">Ingen opskrifter på {where.name} matcher "{searched}".</p>
 		{/if}
 		<ul>
 			{#each hits as hit (hit.url)}
-				<li>
-					<Thumb src={hit.image_url} size="sm" lazy referrerpolicy="no-referrer" />
-					<span class="grow title">{hit.title}</span>
+				<li class="op">
+					<Plate src={hit.image_url} seed={hit.url} size={44} lazy referrerpolicy="no-referrer" />
+					<span class="grow n">{hit.title}</span>
 					<button
+						class="btn sm"
 						class:primary={!hit.recipe_id}
 						disabled={importing !== null}
 						onclick={() => take(hit)}
@@ -109,8 +111,8 @@
 			{/each}
 		</ul>
 		{#if hits.length}
-			<p class="muted small credit">
-				Opskrifter fra <a href={where.home} target="_blank" rel="noopener noreferrer">{where.domain}</a>. Import gemmer opskriften i jeres egen samling.
+			<p class="muted small line">
+				Opskrifter fra <a class="link" href={where.home} target="_blank" rel="noopener noreferrer">{where.domain}</a>. Import gemmer opskriften i jeres egen samling.
 			</p>
 		{/if}
 	</Fold>
@@ -121,26 +123,11 @@
 		list-style: none;
 		padding: 0;
 		margin: 0;
-		display: grid;
-		gap: 6px;
 	}
 	li {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		padding: 6px;
-		border-radius: var(--radius-seg);
-		background: var(--bg);
-		border: 1px solid var(--line);
+		padding-block: 8px;
 	}
-	.title {
-		font-weight: 600;
-		line-height: 1.3;
-	}
-	button {
-		flex: none;
-	}
-	.credit {
-		margin-top: 8px;
+	.line {
+		margin: 10px var(--gutter);
 	}
 </style>

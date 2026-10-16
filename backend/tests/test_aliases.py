@@ -1,7 +1,7 @@
 """Alias-læring må aldrig i stilhed omdøbe varer på tværs af opskrifter.
 Fejlene her blev fundet i en gennemgang og genskabt, før de blev rettet."""
 
-from conftest import ingredient_id
+from conftest import ingredient_id, make_system_admin
 from sqlalchemy import select
 
 from madplan.catalog import Catalog, sync_seed
@@ -20,7 +20,8 @@ def parse(client, text):
     return client.post("/api/parse", json={"lines": [text]}).json()[0]["ingredient"]["name"]
 
 
-def test_confirming_a_name_as_another_ingredient_stays_local(client):
+def test_confirming_a_name_as_another_ingredient_stays_local(app, client):
+    make_system_admin(app)
     a = recipe(client, "A", ["2 løg"])
     b = recipe(client, "B", ["1 løg"])
     rodlog = ingredient_id(client, "rødløg")
@@ -44,8 +45,10 @@ def test_old_bad_alias_is_ignored_and_can_be_undone(app, client):
     assert parse(client, "2 løg") == "løg"  # ignoreres: navnet tilhører en anden vare
     a = recipe(client, "A", ["2 løg"])
     client.post(f"/api/lines/{a['ingredients'][0]['id']}/confirm", json={"ingredient_id": ingredient_id(client, "løg")})
+    assert line_of(client, a["id"])["ingredient"]["name"] == "løg"
+    # Familiens valg ændrer ikke det fælles katalog: det gamle alias fjernes af systemadmin.
     with app.state.db.sessionmaker() as s:
-        assert s.scalar(select(IngredientAlias).where(IngredientAlias.key == "løg")) is None
+        assert s.scalar(select(IngredientAlias).where(IngredientAlias.key == "løg")) is not None
 
 
 def test_saving_a_recipe_does_not_relearn_old_confirmations(client):

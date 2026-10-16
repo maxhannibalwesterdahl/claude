@@ -306,7 +306,13 @@ def test_create_and_rename_ingredient(app, client):
     assert client.post("/api/ingredients", json={"name": "oksefars", "department": "kod"}).status_code == 409
 
     løg = ingredient_id(client, "løg")
-    r = client.put(f"/api/ingredients/{løg}", json={"name": "gule løg", "department": "fg", "grams_per_piece": 140})
+    body = {"name": "gule løg", "department": "fg", "grams_per_piece": 140}
+    # Det fælles katalog rettes kun af systemadmin.
+    assert client.put(f"/api/ingredients/{løg}", json=body).status_code == 403
+    with app.state.db.sessionmaker() as s:
+        s.query(User).filter_by(username="max").one().is_system_admin = True
+        s.commit()
+    r = client.put(f"/api/ingredients/{løg}", json=body)
     assert r.status_code == 200, r.text
     assert client.post("/api/parse", json={"lines": ["2 løg"]}).json()[0]["ingredient"]["name"] == "gule løg"
 

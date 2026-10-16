@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Madplan – admin</title>
+<link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+<header>
+  <h1>Madplan admin</h1>
+  <nav id="nav" hidden>
+    <button data-tab="households" class="tab">Familier</button>
+    <button data-tab="recipes" class="tab">Opskrifter</button>
+    <button data-tab="catalog" class="tab">Varer</button>
+    <button data-tab="security" class="tab">Sikkerhed</button>
+    <button id="logout" class="quiet">Log ud</button>
+  </nav>
+</header>
+<p id="msg" role="status"></p>
+
+<main id="login" hidden>
+  <form id="login-form">
+    <label>Brugernavn <input name="username" autocomplete="username" autocapitalize="none" required></label>
+    <label>Kodeord <input name="password" type="password" autocomplete="current-password" required></label>
+    <label>Kode fra authenticator-appen (hvis slået til) <input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8"></label>
+    <button type="submit">Log ind</button>
+  </form>
+</main>
+
+<main id="households" hidden>
+  <form id="new-household" class="row">
+    <input name="name" placeholder="Ny familie, fx Familien Hansen" maxlength="100" required>
+    <button type="submit">Opret familie</button>
+  </form>
+  <div id="household-list"></div>
+</main>
+
+<main id="recipes" hidden>
+  <input id="recipe-filter" type="search" placeholder="Søg i opskrifter">
+  <table>
+    <thead><tr><th>Titel</th><th>Ejer</th><th>Linjer</th><th>I planer</th><th></th></tr></thead>
+    <tbody id="recipe-rows"></tbody>
+  </table>
+</main>
+<main id="catalog" hidden>
+  <details class="card"><summary>Seneste rettelser (med fortryd)</summary><div id="change-list"></div></details>
+  <input id="catalog-filter" type="search" placeholder="Søg i varer og aliaser">
+  <div id="catalog-list"></div>
+</main>
+<main id="security" hidden>
+  <div class="card">
+    <h2>Tofaktor</h2>
+    <p id="tf-status" class="muted"></p>
+    <div id="tf-off" hidden>
+      <p>Slå tofaktor til: tilføj hemmeligheden i en authenticator-app (fx 1Password, Google Authenticator eller Authy), og skriv den kode, appen viser.</p>
+      <button id="tf-setup" type="button">Opret hemmelighed</button>
+      <div id="tf-secret" hidden>
+        <p>Hemmelighed: <code id="tf-key"></code></p>
+        <p><a id="tf-link" href="#">Åbn i authenticator-app</a></p>
+        <form id="tf-enable" class="row">
+          <input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="6 cifre" required>
+          <button type="submit">Bekræft og slå til</button>
+        </form>
+      </div>
+    </div>
+    <form id="tf-disable" class="row" hidden>
+      <input name="password" type="password" placeholder="Kodeord" autocomplete="current-password" required>
+      <input name="code" inputmode="numeric" maxlength="8" placeholder="Kode" required>
+      <button type="submit" class="danger">Slå fra</button>
+    </form>
+  </div>
+</main>
+<script src="/admin/admin.js"></script>
+</body>
+</html>

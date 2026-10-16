@@ -28,6 +28,18 @@ export interface Line {
 	ingredient: IngredientRef | null;
 	match_status: MatchStatus;
 	is_main: boolean;
+	/** Familiens tilpasning (kun fra serveren). */
+	skipped?: boolean;
+	my_quantity?: number | null;
+}
+
+export interface ExtraLine {
+	id: number;
+	raw: string;
+	quantity: number | null;
+	unit: string | null;
+	item: string;
+	ingredient: IngredientRef | null;
 }
 
 export interface Recipe {
@@ -36,6 +48,13 @@ export interface Recipe {
 	servings: number | null;
 	instructions: string[];
 	child_note: string;
+	// Familien ejer opskriften og kan rette den. Ellers er den fælles og kun til at bruge.
+	owned: boolean;
+	/** I familiens samling ("Vores samling"). */
+	in_collection: boolean;
+	favorite: boolean;
+	extra_lines?: ExtraLine[];
+	own_note?: string;
 	source_url: string | null;
 	image_url: string | null;
 	ingredients: Line[];
@@ -51,6 +70,24 @@ export interface RecipeSummary {
 	main_ingredients: string[];
 	ingredients: string[];
 	to_review: number;
+	owned: boolean;
+	in_collection: boolean;
+	favorite: boolean;
+}
+
+export interface HouseholdView {
+	id: number;
+	name: string;
+	role: 'admin' | 'medlem';
+	members: { id: number; username: string; role: 'admin' | 'medlem'; you: boolean }[];
+	invites: { id: number; role: string; expires_at: string }[];
+}
+
+export interface Me {
+	id: number;
+	username: string;
+	is_system_admin: boolean;
+	household: { id: number; name: string; role: 'admin' | 'medlem' } | null;
 }
 
 export interface ReviewLine {
@@ -107,6 +144,17 @@ export interface MealLine {
 	state: LineState;
 }
 
+/** "Husk kød op af fryseren": besked kl. 19 dagen før, til den er krydset af. */
+export interface Reminder {
+	id: number;
+	text: string;
+	done: boolean;
+	/** Tidspunkterne, der gælder ("HH:MM"). Standarden, hvis de ikke er ændret. */
+	first_time: string;
+	again_time: string;
+	again_on: boolean;
+}
+
 export interface Meal {
 	id: number;
 	date: string;
@@ -119,6 +167,7 @@ export interface Meal {
 	leftover_from: MealRef | null;
 	suggest_double: boolean;
 	lines: MealLine[];
+	reminders: Reminder[];
 }
 
 export interface Day {

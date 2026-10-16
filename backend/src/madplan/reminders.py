@@ -1,0 +1,201 @@
+"""Påmindelser: "Husk kød op af fryseren" på en ret sendes som besked.
+
+Første gang aftenen før retten (standard kl. 19). Er den ikke krydset af, kommer
+den igen på selve dagen (standard kl. 7). Derefter sendes der ikke mere. Begge
+tidspunkter kan ændres pr. påmindelse, og gentagelsen kan slås fra. Højst én
+besked pr. påmindelse pr. dag.
+"""
+
+import asyncio
+import logging
+from datetime import date, datetime, time, timedelta
+from pathlib import Path
+
+from sqlalchemy import or_, select
+from sqlalchemy.orm import Session, selectinload, sessionmaker
+
+from . import push
+from .config import local_now
+from .models import HouseholdMember, MealReminder, Plan, PlanMeal, PushSubscription, Setting
+
+log = logging.getLogger("madplan")
+
+DEFAULT_FIRST = "19:00"  # aftenen før
+DEFAULT_AGAIN = "07:00"  # på selve dagen
+SUBJECT_KEY = "push_subject"
+
+
+def first_time(r: MealReminder) -> str:
+    return r.first_time or DEFAULT_FIRST
+
+
+def again_time(r: MealReminder) -> str:
+    return r.again_time or DEFAULT_AGAIN
+
+
+def _clock(hhmm: str) -> time:
+    h, m = hhmm.split(":")
+    return time(int(h), int(m))
+
+
+def slot_due(r: MealReminder, now: datetime) -> bool:
+    """Skal påmindelsens besked for i dag være sendt på dette tidspunkt?"""
+    today, d, t = now.date(), r.meal.date, now.time()
+    if d == today + timedelta(days=1):
+        return t >= _clock(first_time(r))
+    if d == today:
+        return r.again_on and t >= _clock(again_time(r))
+    return False
+
+
+def mark_seen(reminder: MealReminder, now: datetime) -> None:
+    """Skrives eller ændres påmindelsen, efter dagens besked skulle være sendt,
+    er den lige set: den næste besked kommer først på næste tidspunkt."""
+    if slot_due(reminder, now):
+        reminder.sent_on = now.date()
+
+
+def strip_husk(text: str) -> str:
+    """"husk kød op" -> "kød op", så beskeden ikke hedder "Husk: husk kød op"."""
+    t = text.strip()
+    for prefix in ("husk at ", "husk: ", "husk "):
+        if t.lower().startswith(prefix):
+            return t[len(prefix):].strip() or t
+    return t
+
+
+def message(reminder: MealReminder, today: date) -> dict:
+    from .api.plans import meal_title  # undgår en løkke ved import
+
+    meal = reminder.meal
+    when = "i morgen" if meal.date > today else "i dag"
+    return {
+        "title": f"Husk: {strip_husk(reminder.text)}",
+        "body": f"{meal_title(meal)} {when}",
+        "tag": f"husk-{reminder.id}",
+        "url": f"/?dag={meal.date.isoformat()}",
+        "reminder_id": reminder.id,
+    }
+
+
+def subject(session: Session) -> str:
+    """Kontakt til push-tjenesten: appens egen adresse (gemt, da en telefon meldte sig)."""
+    s = session.get(Setting, (0, SUBJECT_KEY))
+    return s.value if s else "https://madplan.invalid"
+
+
+def targets(session: Session, household_id: int) -> list[PushSubscription]:
+    """Telefonerne hos familiens medlemmer. Andre familiers telefoner får intet."""
+    return list(session.scalars(
+        select(PushSubscription).join(HouseholdMember, HouseholdMember.user_id == PushSubscription.user_id)
+        .where(HouseholdMember.household_id == household_id)
+        .order_by(PushSubscription.id)
+    ))
+
+
+def send_to(session: Session, subs: list[PushSubscription], msg: dict, key, post) -> bool:
+    """Sender til alle telefoner. Telefoner, der har meldt fra, slettes. Svarer True,
+    når mindst én har fået beskeden."""
+    sub = subject(session)
+    delivered = False
+    for s in subs:
+        status = push.send(push.Target(s.endpoint, s.p256dh, s.auth), msg, key, sub, post=post)
+        if status in push.GONE:
+            session.delete(s)
+        elif 200 <= status < 300:
+            delivered = True
+    return delivered
+
+
+def send_due(sm: sessionmaker, data_dir: Path, now: datetime | None = None, post=None) -> int:
+    """Sender de påmindelser, der skal ud nu. Svarer med antallet, der blev sendt.
+
+    Tre trin, så databasen aldrig er låst under netværkskald (en besked kan tage op
+    til 15 s, og andres skrivninger ville fejle med "database is locked"):
+    1. læs, hvad der skal sendes, og luk sessionen
+    2. send (ingen forbindelse til databasen)
+    3. skriv resultatet i en ny, kort session
+    """
+    now = now or local_now()
+    today = now.date()
+    dates = [today, today + timedelta(days=1)]
+    post = post or push.httpx.post
+
+    # 1. Læs
+    with sm() as session:
+        if not session.scalar(select(PushSubscription.id).limit(1)):
+            # Ingen telefoner endnu: påmindelserne venter, så de kan nå frem samme
+            # dag, hvis nogen slår beskeder til.
+            return 0
+        due = session.scalars(
+            select(MealReminder)
+            .join(PlanMeal)
+            .join(Plan)
+            .where(
+                MealReminder.done.is_(False),
+                PlanMeal.date.in_(dates),
+                or_(MealReminder.sent_on.is_(None), MealReminder.sent_on != today),
+            )
+            .options(selectinload(MealReminder.meal).selectinload(PlanMeal.recipe),
+                     selectinload(MealReminder.meal).selectinload(PlanMeal.leftover_from))
+            .order_by(MealReminder.id)
+        ).all()
+        due = [r for r in due if slot_due(r, now)]
+        if not due:
+            return 0
+        by_household: dict[int, list[push.Target]] = {}
+        sub_ids: dict[str, int] = {}
+        jobs: list[tuple[int, list[push.Target], dict]] = []
+        for r in due:
+            hid = r.meal.plan.household_id
+            if hid not in by_household:
+                subs = targets(session, hid)
+                by_household[hid] = [push.Target(s.endpoint, s.p256dh, s.auth) for s in subs]
+                sub_ids.update({s.endpoint: s.id for s in subs})
+            if not by_household[hid]:
+                continue  # familien har ingen telefoner endnu; påmindelsen venter
+            jobs.append((r.id, by_household[hid], message(r, today)))
+        sender = subject(session)
+    if not jobs:
+        return 0
+    key = push.load_key(data_dir)
+
+    # 2. Send
+    delivered: list[int] = []
+    gone: set[int] = set()
+    for reminder_id, subs, msg in jobs:
+        ok = False
+        for t in subs:
+            status = push.send(t, msg, key, sender, post=post)
+            if status in push.GONE:
+                gone.add(sub_ids[t.endpoint])
+            elif 200 <= status < 300:
+                ok = True
+        # Kom den ikke frem (fx intet net), prøves der igen om lidt.
+        if ok:
+            delivered.append(reminder_id)
+
+    # 3. Skriv
+    with sm() as session:
+        for rid in delivered:
+            r = session.get(MealReminder, rid)
+            if r is not None:
+                r.sent_on = today
+        for sid in gone:
+            sub = session.get(PushSubscription, sid)
+            if sub is not None:
+                session.delete(sub)
+        session.commit()
+    return len(delivered)
+
+
+async def run_forever(sm: sessionmaker, data_dir: Path, every: float = 60) -> None:
+    """Kigger efter påmindelser hvert minut, så længe appen kører."""
+    while True:
+        await asyncio.sleep(every)
+        try:
+            n = await asyncio.to_thread(send_due, sm, data_dir)
+            if n:
+                log.info("sendte %d påmindelse(r)", n)
+        except Exception:
+            log.exception("påmindelser kunne ikke sendes")

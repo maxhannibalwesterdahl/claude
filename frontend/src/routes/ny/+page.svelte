@@ -1,13 +1,10 @@
 <script lang="ts">
-	import BackButton from '$lib/BackButton.svelte';
 	import { goto } from '$app/navigation';
 	import RecipeEditor from '$lib/RecipeEditor.svelte';
+	import ScreenHeader from '$lib/ui/ScreenHeader.svelte';
 </script>
 
 <main>
-	<header class="top">
-		<BackButton fallback="/opskrifter" />
-		<h1>Ny opskrift</h1>
-	</header>
+	<ScreenHeader title="Ny opskrift" eyebrow="Opskrifter" back="/opskrifter" />
 	<RecipeEditor recipe={null} onsave={(r) => goto(`/opskrift/${r.id}`)} />
 </main>

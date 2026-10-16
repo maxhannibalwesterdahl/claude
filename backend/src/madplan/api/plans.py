@@ -1,17 +1,21 @@
 """Madplanen: dage, retter, rester, ønskeliste og "har hjemme" pr. linje."""
 
 from datetime import date, timedelta
-from typing import Literal
+from typing import Annotated, Literal
+from urllib.parse import urlparse
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy import case, func, select
+from sqlalchemy.orm import Session, object_session, selectinload
 
+from ..adjustments import Adjustments, load_adjustments, parse_extras
 from ..config import local_today
-from ..models import Plan, PlanLineState, PlanMeal, Recipe, RecipeIngredient, WishlistItem
+from ..matching import Overlay, ingredient_map
+from ..models import Household, HouseholdRecipe, Plan, PlanLineState, PlanMeal, Recipe, RecipeIngredient, WishlistItem
 from ..planning import MULTIPLIERS, scale
-from .deps import CurrentUser, DbSession
+from ..reminders import again_time, first_time
+from .deps import CurrentHousehold, DbSession, pantry_ids
 from .recipes import image_url, ingredient_ref
 from .schemas import IngredientRef
 
@@ -51,6 +55,16 @@ class MealLine(BaseModel):
     state: LineStateValue | None
 
 
+class ReminderOut(BaseModel):
+    id: int
+    text: str
+    done: bool
+    # Tidspunkterne, der gælder ("HH:MM"): standarden, hvis de ikke er ændret.
+    first_time: str
+    again_time: str
+    again_on: bool
+
+
 class MealOut(BaseModel):
     id: int
     date: date
@@ -64,6 +78,8 @@ class MealOut(BaseModel):
     # Retten bruger rest fra en ret, der ikke er sat til ×2.
     suggest_double: bool
     lines: list[MealLine]
+    # "Husk kød op af fryseren": besked kl. 19 dagen før.
+    reminders: list[ReminderOut]
 
 
 class DayOut(BaseModel):
@@ -91,7 +107,7 @@ class PlanOut(PlanBrief):
 
 
 class PlanIn(BaseModel):
-    start_date: date
+    start_date: date = Field(ge=date(2020, 1, 1), le=date(2100, 12, 31))
     days: int = Field(7, ge=1, le=14)
 
 
@@ -126,6 +142,14 @@ class WishIn(BaseModel):
     text: str = Field("", max_length=200)
 
 
+class SuggestionOut(BaseModel):
+    recipe: RecipeBrief
+    # Tom for egne opskrifter.
+    source_host: str | None
+    # Seneste dag, opskriften har stået på en plan. Tom = aldrig.
+    last_planned: date | None
+
+
 # --- Opbygning af svar -----------------------------------------------------------
 
 def _end(plan: Plan) -> date:
@@ -146,17 +170,33 @@ def meal_title(meal: PlanMeal) -> str:
     return meal.text
 
 
-def _meal_out(meal: PlanMeal) -> MealOut:
-    states = {s.line_id: s.state for s in meal.line_states}
+def _meal_out(meal: PlanMeal, pantry: set[int], adjust: dict[int, Adjustments], overlay: Overlay,
+              ings: dict, extras: dict) -> MealOut:
+    states = {s.line_id: s.state for s in meal.line_states if s.line_id is not None}
+    extra_states = {s.adjustment_id: s.state for s in meal.line_states if s.adjustment_id is not None}
     lines = []
     if meal.kind == "opskrift" and meal.recipe:
+        adj = adjust[meal.recipe.id]
         for l in meal.recipe.ingredients:
+            if l.id in adj.skip:
+                continue  # familien bruger ikke den linje
+            own = adj.quantity.get(l.id)
             lines.append(MealLine(
                 line_id=l.id, group=l.group, raw=l.raw,
-                quantity=scale(l.quantity, l.unit, meal.multiplier),
-                quantity_max=scale(l.quantity_max, l.unit, meal.multiplier),
-                unit=l.unit, item=l.item, note=l.note, ingredient=ingredient_ref(l.ingredient),
+                quantity=scale(l.quantity if own is None else own, l.unit, meal.multiplier),
+                quantity_max=scale(l.quantity_max, l.unit, meal.multiplier) if own is None else None,
+                unit=l.unit, item=l.item, note=l.note, ingredient=ingredient_ref(ings.get(overlay.resolve(l)[0]), pantry),
                 is_main=l.is_main, state=states.get(l.id),
+            ))
+        # Familiens ekstra linjer får negativt line_id (= minus tilpasningens id).
+        for a in adj.extras:
+            p, ing = extras[a.id]
+            lines.append(MealLine(
+                line_id=-a.id, group="Jeres ekstra", raw=a.value,
+                quantity=scale(p.quantity, p.unit, meal.multiplier),
+                quantity_max=scale(p.quantity_max, p.unit, meal.multiplier),
+                unit=p.unit, item=p.item, note=p.note, ingredient=ingredient_ref(ing, pantry),
+                is_main=False, state=extra_states.get(a.id),
             ))
     src = meal.leftover_from
     return MealOut(
@@ -166,6 +206,11 @@ def _meal_out(meal: PlanMeal) -> MealOut:
         if src else None,
         suggest_double=bool(src and src.kind == "opskrift" and src.multiplier < 2),
         lines=lines,
+        reminders=[
+            ReminderOut(id=r.id, text=r.text, done=r.done, first_time=first_time(r),
+                        again_time=again_time(r), again_on=r.again_on)
+            for r in meal.reminders
+        ],
     )
 
 
@@ -174,25 +219,33 @@ def _wish_title(w: WishlistItem) -> str:
 
 
 def plan_out(plan: Plan) -> PlanOut:
+    pantry = pantry_ids(object_session(plan), plan.household_id)
+    adjust = load_adjustments(object_session(plan), plan.household_id, {m.recipe_id for m in plan.meals if m.recipe_id})
+    overlay = Overlay.load(object_session(plan), plan.household_id)
+    ings = ingredient_map(object_session(plan))
+    extras = parse_extras(object_session(plan), plan.household_id, adjust)
     by_slot = {(m.date, m.for_child): m for m in plan.meals}
     days = []
     for i in range(plan.days):
         d = plan.start_date + timedelta(days=i)
         main, child = by_slot.get((d, False)), by_slot.get((d, True))
-        days.append(DayOut(date=d, meal=_meal_out(main) if main else None, child=_meal_out(child) if child else None))
+        days.append(DayOut(date=d, meal=_meal_out(main, pantry, adjust, overlay, ings, extras) if main else None,
+                        child=_meal_out(child, pantry, adjust, overlay, ings, extras) if child else None))
     return PlanOut(
         id=plan.id, start_date=plan.start_date, end_date=_end(plan), days=days,
         wishlist=[WishOut(id=w.id, recipe=_brief(w.recipe), text=w.text, title=_wish_title(w)) for w in plan.wishlist],
     )
 
 
-def load_plan(session: Session, plan_id: int) -> Plan:
+def load_plan(session: Session, plan_id: int, hh: Household) -> Plan:
+    """Familiens plan; en anden families plan giver 404."""
     session.expire_all()
     plan = session.scalar(
-        select(Plan).where(Plan.id == plan_id).options(
+        select(Plan).where(Plan.id == plan_id, Plan.household_id == hh.id).options(
             selectinload(Plan.meals).selectinload(PlanMeal.recipe).selectinload(Recipe.ingredients)
             .selectinload(RecipeIngredient.ingredient),
             selectinload(Plan.meals).selectinload(PlanMeal.line_states),
+            selectinload(Plan.meals).selectinload(PlanMeal.reminders),
             selectinload(Plan.meals).selectinload(PlanMeal.leftover_from).selectinload(PlanMeal.recipe),
             selectinload(Plan.wishlist).selectinload(WishlistItem.recipe),
         )
@@ -202,8 +255,9 @@ def load_plan(session: Session, plan_id: int) -> Plan:
     return plan
 
 
-def _meal(session: Session, meal_id: int) -> PlanMeal:
-    meal = session.get(PlanMeal, meal_id)
+def _meal(session: Session, meal_id: int, hh: Household) -> PlanMeal:
+    meal = session.scalar(
+        select(PlanMeal).join(Plan).where(PlanMeal.id == meal_id, Plan.household_id == hh.id))
     if meal is None:
         raise HTTPException(status_code=404, detail="Retten findes ikke")
     return meal
@@ -221,10 +275,13 @@ def _check_multiplier(m: float) -> None:
         raise HTTPException(status_code=422, detail="Gange skal være ½, 1 eller 2")
 
 
-def _check_recipe(session: Session, recipe_id: int | None) -> Recipe:
+def _check_recipe(session: Session, recipe_id: int | None, hh: Household) -> Recipe:
+    """En fælles opskrift. Bruger familien den, kommer den i familiens samling."""
     recipe = session.get(Recipe, recipe_id) if recipe_id else None
     if recipe is None:
         raise HTTPException(status_code=422, detail="Vælg en opskrift")
+    if session.get(HouseholdRecipe, (hh.id, recipe.id)) is None:
+        session.add(HouseholdRecipe(household_id=hh.id, recipe_id=recipe.id))
     return recipe
 
 
@@ -255,67 +312,67 @@ def _clear_slot(session: Session, plan: Plan, d: date, for_child: bool) -> None:
 
 # --- Planer -----------------------------------------------------------------------
 
-def pick_current(session: Session, today: date | None = None) -> Plan | None:
+def pick_current(session: Session, hh_id: int, today: date | None = None) -> Plan | None:
     """Planen, der dækker i dag. Ellers den næste, ellers den seneste.
     Bruges af både Planlæg og Indkøb, så de åbner på samme uge."""
     today = today or local_today()
-    plans = session.scalars(select(Plan).order_by(Plan.start_date)).all()
+    plans = session.scalars(select(Plan).where(Plan.household_id == hh_id).order_by(Plan.start_date)).all()
     covering = [p for p in plans if p.start_date <= today <= _end(p)]
     upcoming = [p for p in plans if p.start_date > today]
     return covering[-1] if covering else upcoming[0] if upcoming else plans[-1] if plans else None
 
 
 @router.get("/plans")
-def list_plans(session: DbSession, _: CurrentUser) -> list[PlanBrief]:
-    plans = session.scalars(select(Plan).order_by(Plan.start_date.desc()))
+def list_plans(session: DbSession, hh: CurrentHousehold) -> list[PlanBrief]:
+    plans = session.scalars(select(Plan).where(Plan.household_id == hh.id).order_by(Plan.start_date.desc()))
     return [PlanBrief(id=p.id, start_date=p.start_date, end_date=_end(p)) for p in plans]
 
 
 @router.get("/plans/current")
-def current_plan(session: DbSession, _: CurrentUser, today: date | None = None) -> PlanOut:
-    chosen = pick_current(session, today)
+def current_plan(session: DbSession, hh: CurrentHousehold, today: date | None = None) -> PlanOut:
+    chosen = pick_current(session, hh.id, today)
     if chosen is None:
         raise HTTPException(status_code=404, detail="Ingen madplan endnu")
-    return plan_out(load_plan(session, chosen.id))
+    return plan_out(load_plan(session, chosen.id, hh))
 
 
 @router.post("/plans", status_code=201)
-def create_plan(body: PlanIn, session: DbSession, _: CurrentUser) -> PlanOut:
+def create_plan(body: PlanIn, session: DbSession, hh: CurrentHousehold) -> PlanOut:
     end = body.start_date + timedelta(days=body.days - 1)
-    for p in session.scalars(select(Plan)):
+    for p in session.scalars(select(Plan).where(Plan.household_id == hh.id)):
         if p.start_date <= end and body.start_date <= _end(p):
             raise HTTPException(
                 status_code=409,
                 detail={"message": f"Overlapper planen fra {p.start_date:%d/%m}", "id": p.id},
             )
-    plan = Plan(start_date=body.start_date, days=body.days)
+    plan = Plan(household_id=hh.id, start_date=body.start_date, days=body.days)
     session.add(plan)
     session.commit()
-    return plan_out(load_plan(session, plan.id))
+    return plan_out(load_plan(session, plan.id, hh))
 
 
 @router.get("/plans/{plan_id}")
-def get_plan(plan_id: int, session: DbSession, _: CurrentUser) -> PlanOut:
-    return plan_out(load_plan(session, plan_id))
+def get_plan(plan_id: int, session: DbSession, hh: CurrentHousehold) -> PlanOut:
+    return plan_out(load_plan(session, plan_id, hh))
 
 
 @router.delete("/plans/{plan_id}", status_code=204)
-def delete_plan(plan_id: int, session: DbSession, _: CurrentUser) -> None:
-    session.delete(load_plan(session, plan_id))
+def delete_plan(plan_id: int, session: DbSession, hh: CurrentHousehold) -> None:
+    session.delete(load_plan(session, plan_id, hh))
     session.commit()
 
 
 # --- Retter -----------------------------------------------------------------------
 
 @router.put("/plans/{plan_id}/slots")
-def set_slot(plan_id: int, body: SlotIn, session: DbSession, _: CurrentUser) -> PlanOut:
+def set_slot(plan_id: int, body: SlotIn, session: DbSession, hh: CurrentHousehold) -> PlanOut:
     """Sæt retten på en dag (erstatter en eventuel ret, der står der)."""
-    plan = load_plan(session, plan_id)
+    plan = load_plan(session, plan_id, hh)
     _check_date(plan, body.date)
     _check_multiplier(body.multiplier)
     meal = PlanMeal(date=body.date, for_child=body.for_child, kind=body.kind, multiplier=body.multiplier)
     if body.kind == "opskrift":
-        meal.recipe = _check_recipe(session, body.recipe_id)
+        meal.recipe = _check_recipe(session, body.recipe_id, hh)
     elif body.kind == "fritekst":
         meal.text = body.text.strip()
         if not meal.text:
@@ -326,12 +383,12 @@ def set_slot(plan_id: int, body: SlotIn, session: DbSession, _: CurrentUser) -> 
     _clear_slot(session, plan, body.date, body.for_child)
     plan.meals.append(meal)
     session.commit()
-    return plan_out(load_plan(session, plan.id))
+    return plan_out(load_plan(session, plan.id, hh))
 
 
 @router.patch("/meals/{meal_id}")
-def update_meal(meal_id: int, body: MealPatch, session: DbSession, _: CurrentUser) -> PlanOut:
-    meal = _meal(session, meal_id)
+def update_meal(meal_id: int, body: MealPatch, session: DbSession, hh: CurrentHousehold) -> PlanOut:
+    meal = _meal(session, meal_id, hh)
     if body.multiplier is not None:
         _check_multiplier(body.multiplier)
         meal.multiplier = body.multiplier
@@ -349,18 +406,18 @@ def update_meal(meal_id: int, body: MealPatch, session: DbSession, _: CurrentUse
         else:
             meal.leftover_from = _check_leftover_source(session, meal.plan, body.leftover_from_id, meal.date)
     session.commit()
-    return plan_out(load_plan(session, meal.plan_id))
+    return plan_out(load_plan(session, meal.plan_id, hh))
 
 
 @router.post("/meals/{meal_id}/move")
-def move_meal(meal_id: int, body: MoveIn, session: DbSession, _: CurrentUser) -> PlanOut:
+def move_meal(meal_id: int, body: MoveIn, session: DbSession, hh: CurrentHousehold) -> PlanOut:
     """Flyt en ret til en anden dag. Står der allerede en ret, byttes de."""
-    meal = _meal(session, meal_id)
+    meal = _meal(session, meal_id, hh)
     plan = meal.plan
     _check_date(plan, body.date)
     other = next((m for m in plan.meals if m.date == body.date and m.for_child == body.for_child), None)
     if other is meal:
-        return plan_out(load_plan(session, plan.id))
+        return plan_out(load_plan(session, plan.id, hh))
     old_date, old_child = meal.date, meal.for_child
     # Midlertidig plads, så unik-begrænsningen ikke rammer under byttet.
     meal.date = date(1900, 1, 1)
@@ -377,75 +434,87 @@ def move_meal(meal_id: int, body: MoveIn, session: DbSession, _: CurrentUser) ->
                 m.line_states = [s for s in m.line_states if s.state != "rest"]
             m.leftover_from = None
     session.commit()
-    return plan_out(load_plan(session, plan.id))
+    return plan_out(load_plan(session, plan.id, hh))
 
 
 @router.delete("/meals/{meal_id}")
-def delete_meal(meal_id: int, session: DbSession, _: CurrentUser) -> PlanOut:
-    meal = _meal(session, meal_id)
+def delete_meal(meal_id: int, session: DbSession, hh: CurrentHousehold) -> PlanOut:
+    meal = _meal(session, meal_id, hh)
     plan = meal.plan
     _detach(plan, meal)
     plan.meals.remove(meal)
     session.commit()
-    return plan_out(load_plan(session, plan.id))
+    return plan_out(load_plan(session, plan.id, hh))
 
 
 @router.put("/meals/{meal_id}/lines/{line_id}")
-def set_line_state(meal_id: int, line_id: int, body: LineStateIn, session: DbSession, _: CurrentUser) -> PlanOut:
+def set_line_state(meal_id: int, line_id: int, body: LineStateIn, session: DbSession, hh: CurrentHousehold) -> PlanOut:
     """Markér en ingredienslinje som "har hjemme" eller "dækket af rest"."""
-    meal = _meal(session, meal_id)
-    if meal.kind != "opskrift" or not meal.recipe or line_id not in {l.id for l in meal.recipe.ingredients}:
+    meal = _meal(session, meal_id, hh)
+    if meal.kind != "opskrift" or not meal.recipe:
+        raise HTTPException(status_code=404, detail="Linjen hører ikke til retten")
+    if line_id < 0:
+        # Familiens ekstra linje (line_id = minus tilpasningens id)
+        extra = load_adjustments(session, hh.id, {meal.recipe.id})[meal.recipe.id].extras
+        if -line_id not in {a.id for a in extra}:
+            raise HTTPException(status_code=404, detail="Linjen hører ikke til retten")
+    elif line_id not in {l.id for l in meal.recipe.ingredients}:
         raise HTTPException(status_code=404, detail="Linjen hører ikke til retten")
     if body.state == "rest" and not meal.leftover_from:
         raise HTTPException(status_code=422, detail="Vælg først, hvilken ret resten kommer fra")
-    existing = next((s for s in meal.line_states if s.line_id == line_id), None)
+    if line_id < 0:
+        existing = next((s for s in meal.line_states if s.adjustment_id == -line_id), None)
+    else:
+        existing = next((s for s in meal.line_states if s.line_id == line_id), None)
     if body.state is None:
         if existing:
             meal.line_states.remove(existing)
     elif existing:
         existing.state = body.state
     else:
-        meal.line_states.append(PlanLineState(line_id=line_id, state=body.state))
+        meal.line_states.append(PlanLineState(
+            line_id=line_id if line_id > 0 else None, adjustment_id=-line_id if line_id < 0 else None, state=body.state))
     session.commit()
-    return plan_out(load_plan(session, meal.plan_id))
+    return plan_out(load_plan(session, meal.plan_id, hh))
 
 
 # --- Ønskeliste --------------------------------------------------------------------
 
 @router.post("/plans/{plan_id}/wishlist")
-def add_wish(plan_id: int, body: WishIn, session: DbSession, _: CurrentUser) -> PlanOut:
-    plan = load_plan(session, plan_id)
+def add_wish(plan_id: int, body: WishIn, session: DbSession, hh: CurrentHousehold) -> PlanOut:
+    plan = load_plan(session, plan_id, hh)
     if body.recipe_id is not None:
-        plan.wishlist.append(WishlistItem(recipe=_check_recipe(session, body.recipe_id)))
+        plan.wishlist.append(WishlistItem(recipe=_check_recipe(session, body.recipe_id, hh)))
     elif body.text.strip():
         plan.wishlist.append(WishlistItem(text=body.text.strip()))
     else:
         raise HTTPException(status_code=422, detail="Vælg en opskrift eller skriv en ret")
     session.commit()
-    return plan_out(load_plan(session, plan.id))
+    return plan_out(load_plan(session, plan.id, hh))
 
 
-def _wish(session: Session, wish_id: int) -> WishlistItem:
-    wish = session.get(WishlistItem, wish_id)
+def _wish(session: Session, wish_id: int, hh: Household) -> WishlistItem:
+    wish = session.scalar(
+        select(WishlistItem).join(Plan).where(WishlistItem.id == wish_id, Plan.household_id == hh.id))
     if wish is None:
         raise HTTPException(status_code=404, detail="Ønsket findes ikke")
     return wish
 
 
 @router.delete("/wishlist/{wish_id}")
-def delete_wish(wish_id: int, session: DbSession, _: CurrentUser) -> PlanOut:
-    wish = _wish(session, wish_id)
+def delete_wish(wish_id: int, session: DbSession, hh: CurrentHousehold) -> PlanOut:
+    wish = _wish(session, wish_id, hh)
     plan_id = wish.plan_id
     session.delete(wish)
     session.commit()
-    return plan_out(load_plan(session, plan_id))
+    return plan_out(load_plan(session, plan_id, hh))
 
 
 @router.post("/plans/{plan_id}/wishlist/distribute")
-def distribute_wishes(plan_id: int, session: DbSession, _: CurrentUser, today: date | None = None) -> PlanOut:
+def distribute_wishes(plan_id: int, session: DbSession, hh: CurrentHousehold, today: date | None = None) -> PlanOut:
     """Læg ønskerne på de ledige dage i rækkefølge. Optagne dage og dage, der
     er gået, røres ikke. Ønsker, der ikke er plads til, bliver på listen."""
-    plan = load_plan(session, plan_id)
+    plan = load_plan(session, plan_id, hh)
     today = today or local_today()
     taken = {m.date for m in plan.meals if not m.for_child}
     free = [plan.start_date + timedelta(days=i) for i in range(plan.days)]
@@ -458,13 +527,13 @@ def distribute_wishes(plan_id: int, session: DbSession, _: CurrentUser, today: d
         ))
         plan.wishlist.remove(wish)
     session.commit()
-    return plan_out(load_plan(session, plan.id))
+    return plan_out(load_plan(session, plan.id, hh))
 
 
 @router.post("/wishlist/{wish_id}/place")
-def place_wish(wish_id: int, body: MoveIn, session: DbSession, user: CurrentUser) -> PlanOut:
+def place_wish(wish_id: int, body: MoveIn, session: DbSession, hh: CurrentHousehold) -> PlanOut:
     """Læg et ønske på en dag. Ønsket fjernes fra listen."""
-    wish = _wish(session, wish_id)
+    wish = _wish(session, wish_id, hh)
     slot = SlotIn(
         date=body.date, for_child=body.for_child,
         kind="opskrift" if wish.recipe_id else "fritekst",
@@ -473,4 +542,53 @@ def place_wish(wish_id: int, body: MoveIn, session: DbSession, user: CurrentUser
     plan_id = wish.plan_id
     session.delete(wish)
     session.flush()
-    return set_slot(plan_id, slot, session, user)
+    return set_slot(plan_id, slot, session, hh)
+
+
+# --- Forslag ----------------------------------------------------------------------
+
+@router.get("/suggestions")
+def suggestions(
+    session: DbSession,
+    hh: CurrentHousehold,
+    plan_id: int | None = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 12,
+) -> list[SuggestionOut]:
+    """Opskrifter, det er længe siden, I har haft: ældste dato først, og dem, der
+    aldrig har stået på en plan, til sidst. Med `plan_id` udelades de opskrifter,
+    der allerede står på den plan som ret eller ønske."""
+    if plan_id is not None and session.scalar(select(Plan.id).where(Plan.id == plan_id, Plan.household_id == hh.id)) is None:
+        raise HTTPException(status_code=404, detail="Planen findes ikke")
+    # Både husstandens og barnets ret tæller: opskriften har været på bordet.
+    # Rester tæller ikke (de har ingen opskrift), og den viste plan holdes ude.
+    planned = (
+        select(PlanMeal.recipe_id, func.max(PlanMeal.date).label("last"))
+        .join(Plan)
+        .where(PlanMeal.kind == "opskrift", PlanMeal.recipe_id.is_not(None), Plan.household_id == hh.id)
+        .group_by(PlanMeal.recipe_id)
+    )
+    stmt = select(Recipe).where(
+        Recipe.id.in_(select(HouseholdRecipe.recipe_id).where(HouseholdRecipe.household_id == hh.id)))
+    if plan_id is not None:
+        planned = planned.where(PlanMeal.plan_id != plan_id)
+        on_plan = select(PlanMeal.recipe_id).where(PlanMeal.plan_id == plan_id, PlanMeal.recipe_id.is_not(None))
+        wished = select(WishlistItem.recipe_id).where(
+            WishlistItem.plan_id == plan_id, WishlistItem.recipe_id.is_not(None))
+        stmt = stmt.where(Recipe.id.not_in(on_plan), Recipe.id.not_in(wished))
+    planned = planned.subquery()
+    last = planned.c.last
+    rows = session.execute(
+        stmt.add_columns(last)
+        .outerjoin(planned, planned.c.recipe_id == Recipe.id)
+        # Aldrig planlagte sidst, ældste oprettet først. Id til sidst, så rækkefølgen er fast.
+        .order_by(last.is_(None), last, case((last.is_(None), Recipe.created_at)), func.lower(Recipe.title), Recipe.id)
+        .limit(limit)
+    )
+    return [
+        SuggestionOut(
+            recipe=_brief(r),
+            source_host=urlparse(r.source_url).hostname.removeprefix("www.") if r.source_url else None,
+            last_planned=when,
+        )
+        for r, when in rows
+    ]

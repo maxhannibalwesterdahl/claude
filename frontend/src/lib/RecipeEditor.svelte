@@ -1,12 +1,14 @@
 <script lang="ts">
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { untrack } from 'svelte';
-	import { api, ApiError } from './api';
+	import { api } from './api';
 	import { confirmDialog } from './confirm.svelte';
 	import { formatNumber, formatQuantity, parseNumber } from './format';
 	import IngredientPicker from './IngredientPicker.svelte';
 	import { shrinkImage, uploadRecipeImage } from './image';
-	import Thumb from './Thumb.svelte';
+	import { say } from './ui/copy';
+	import Icon from './ui/Icon.svelte';
+	import Plate from './ui/Plate.svelte';
 	import type { IngredientRef, Line, Recipe } from './types';
 
 	interface Props {
@@ -62,7 +64,7 @@
 			bulk = '';
 			return true;
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : 'Kunne ikke læse linjerne';
+			error = say(e);
 			return false;
 		}
 	}
@@ -73,7 +75,7 @@
 			const [p] = await parse([line.raw]);
 			Object.assign(line, p);
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : 'Kunne ikke læse linjen';
+			error = say(e);
 		}
 	}
 
@@ -202,7 +204,7 @@
 			leaving = true;
 			onsave(saved);
 		} catch (err) {
-			error = err instanceof ApiError ? err.message : 'Kunne ikke gemme';
+			error = say(err);
 		} finally {
 			busy = false;
 		}
@@ -219,7 +221,7 @@
 		try {
 			r = await api<Recipe>(`/recipes/${recipe.id}/suggest-main`, { method: 'POST' });
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : 'Kunne ikke foreslå hovedingredienser';
+			error = say(e);
 			return;
 		}
 		const main = new Set(r.ingredients.filter((l) => l.is_main).map((l) => l.id));
@@ -228,90 +230,101 @@
 </script>
 
 <form onsubmit={save}>
-	<div class="image">
-		<Thumb src={imageUrl} size="lg">
-			<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 15l5-5 4 4 3-3 6 6" /><circle cx="16" cy="9" r="1.5" /></svg>
-		</Thumb>
-		<div class="image-actions">
-			<label class="button">
-				<input type="file" accept="image/*" onchange={pickImage} hidden />
-				{imageBusy ? 'Behandler…' : imageUrl ? 'Skift billede' : 'Vælg billede'}
-			</label>
-			{#if imageUrl}<button type="button" class="danger" onclick={clearImage}>Fjern</button>{/if}
+	<div class="pad stack">
+		<div class="image">
+			<Plate src={imageUrl} seed={recipe?.id ?? 'ny'} size={96} />
+			<div class="image-actions">
+				<label class="btn sm file">
+					<input type="file" accept="image/*" onchange={pickImage} class="sr" />
+					{imageBusy ? 'Behandler…' : imageUrl ? 'Skift billede' : 'Vælg billede'}
+				</label>
+				{#if imageUrl}<button type="button" class="btn sm danger" onclick={clearImage}>Fjern</button>{/if}
+			</div>
 		</div>
+
+		<label class="field">
+			<span>Titel</span>
+			<input bind:value={title} required maxlength="200" />
+		</label>
+
+		<div class="two">
+			<label class="field">
+				<span>Portioner</span>
+				<input bind:value={servings} inputmode="numeric" pattern="[0-9]*" placeholder="4" />
+			</label>
+			<label class="field">
+				<span>Link</span>
+				<input bind:value={sourceUrl} type="url" placeholder="https://…" />
+			</label>
+		</div>
+
+		<label class="field">
+			<span>Note om barnet</span>
+			<input bind:value={childNote} placeholder="Fx: tag barnets portion fra før chili" />
+		</label>
 	</div>
 
-	<label class="field">
-		<span>Titel</span>
-		<input bind:value={title} required maxlength="200" />
-	</label>
-
-	<div class="two">
-		<label class="field">
-			<span>Portioner</span>
-			<input bind:value={servings} inputmode="numeric" pattern="[0-9]*" placeholder="4" />
-		</label>
-		<label class="field">
-			<span>Link</span>
-			<input bind:value={sourceUrl} type="url" placeholder="https://…" />
-		</label>
-	</div>
-
-	<label class="field">
-		<span>Note om barnet</span>
-		<input bind:value={childNote} placeholder="Fx: tag barnets portion fra før chili" />
-	</label>
-
-	<h2 class="section-title">Ingredienser</h2>
-	<p class="muted small">
-		Tryk ☆ ud for en ingrediens for at gøre den til hovedingrediens (★). Appen kigger efter tilbud på dem, og der må gerne være flere. Tryk på varen for at rette, hvad der skal købes.
-		{#if recipe}<button type="button" class="plain small inline" onclick={suggestMain}>Foreslå ★ igen</button>{/if}
+	<h2 class="sl">Ingredienser<span>stjerne = hovedingrediens</span></h2>
+	<p class="pad muted small">
+		Tryk på stjernen ud for en ingrediens for at gøre den til hovedingrediens. Der må gerne være flere. Tryk på varen
+		for at rette, hvad der skal købes.
 	</p>
+	{#if recipe}
+		<p class="pad"><button type="button" class="btn sm quiet again" onclick={suggestMain}><Icon name="star" size={16} />Foreslå stjerner igen</button></p>
+	{/if}
 
 	{#each groups as g}
 		{#if hasGroups}
-			<input
-				class="group"
-				value={g.name}
-				placeholder="Uden afsnit"
-				aria-label="Afsnit"
-				onchange={(e) => renameGroup(g.name, e.currentTarget.value)}
-			/>
+			<div class="pad">
+				<input
+					class="group"
+					value={g.name}
+					placeholder="Uden afsnit"
+					aria-label="Afsnit"
+					onchange={(e) => renameGroup(g.name, e.currentTarget.value)}
+				/>
+			</div>
 		{/if}
 		{#each g.lines as line (line.uid)}
-			<div class="line" class:review={line.match_status === 'usikker' || line.match_status === 'ingen'}>
-				<div class="row nowrap">
+			<div class="line">
+				<div class="top">
 					<button
 						type="button"
-						class="plain star"
+						class="star"
 						class:on={line.is_main}
 						aria-pressed={line.is_main}
-						aria-label="Hovedingrediens"
-						onclick={() => (line.is_main = !line.is_main)}>{line.is_main ? '★' : '☆'}</button
+						aria-label="Hovedingrediens: {line.item || line.raw}"
+						onclick={() => (line.is_main = !line.is_main)}><Icon name="star" size={20} /></button
 					>
 					<input class="grow" bind:value={line.raw} onchange={() => reparse(line)} aria-label="Ingredienslinje" />
-					<button type="button" class="plain" aria-label="Flyt op" onclick={() => move(line, -1)}>↑</button>
-					<button type="button" class="plain" aria-label="Fjern" onclick={() => remove(line)}>✕</button>
+					<button type="button" class="rnd" aria-label="Flyt {line.item || line.raw} op" onclick={() => move(line, -1)}><Icon name="up" /></button>
+					<button type="button" class="rnd" aria-label="Fjern {line.item || line.raw}" onclick={() => remove(line)}><Icon name="x" /></button>
 				</div>
-				<div class="parsed small">
-					<button type="button" class="plain qty" onclick={() => (line.showFields = !line.showFields)}>
+				<div class="parsed">
+					<button
+						type="button"
+						class="qty"
+						aria-expanded={line.showFields}
+						aria-label="Mængde: {formatQuantity(line.quantity, line.quantity_max, line.unit) || 'ingen'}. Ret felterne"
+						onclick={() => (line.showFields = !line.showFields)}
+					>
 						{formatQuantity(line.quantity, line.quantity_max, line.unit) || '–'}
 					</button>
-					<span>→</span>
-					<button type="button" class="plain pick" onclick={() => (picking = picking === line.uid ? null : line.uid)}>
+					<Icon name="move" size={14} />
+					<button type="button" class="pick" aria-expanded={picking === line.uid} onclick={() => (picking = picking === line.uid ? null : line.uid)}>
 						{#if line.ingredient}
 							{line.ingredient.name}
 						{:else if line.match_status === 'bekræftet'}
 							<span class="muted">ingen vare</span>
 						{:else}
-							<span class="badge">vælg vare</span>
+							vælg vare
 						{/if}
 					</button>
 					{#if line.match_status === 'usikker'}
-						<span class="badge">usikker</span>
-						<button type="button" class="plain ok" onclick={() => pick(line, line.ingredient)}>✓ rigtig</button>
+						<span class="tag">usikker</span>
+						<button type="button" class="btn sm" onclick={() => pick(line, line.ingredient)}><Icon name="check" size={16} stroke={3} />Rigtig</button>
 					{:else if line.ingredient?.pantry}
-						<span class="muted">basisvare</span>
+						<span class="tag">basisvare</span>
 					{/if}
 				</div>
 				{#if line.showFields}
@@ -332,114 +345,138 @@
 				{/if}
 				{#if picking === line.uid}
 					<div use:scrollIntoView></div>
-					<IngredientPicker
-						initial={line.item}
-						onpick={(ing) => pick(line, ing)}
-						oncancel={() => (picking = null)}
-					/>
+					<!-- Vælgeren har ikke selv en lukkeknap: den står her, så den også kan lukkes med fingeren. -->
+					<div class="card picker">
+						<div class="picker-head">
+							<span class="ey grow">Vare til "{line.item || line.raw}"</span>
+							<button type="button" class="btn sm quiet" onclick={() => (picking = null)}>Luk</button>
+						</div>
+						<IngredientPicker
+							initial={line.item}
+							onpick={(ing) => pick(line, ing)}
+							oncancel={() => (picking = null)}
+						/>
+					</div>
 				{/if}
 			</div>
 		{/each}
 	{/each}
 
-	<label class="field add">
-		<span>Tilføj ingredienser</span>
-		<textarea bind:value={bulk} rows={lines.length ? 3 : 8}
-			placeholder={'Én pr. linje, fx\n500 g hakket oksekød\n2 løg\n\nSkriv "Sovs:" på en linje for at starte et afsnit.'}></textarea>
-	</label>
-	{#if bulk.trim()}<button type="button" onclick={addBulk}>Læs linjerne</button>{/if}
+	<div class="pad stack add">
+		<label class="field">
+			<span>Tilføj ingredienser</span>
+			<textarea bind:value={bulk} rows={lines.length ? 3 : 8}
+				placeholder={'Én pr. linje, fx\n500 g hakket oksekød\n2 løg\n\nSkriv "Sovs:" på en linje for at starte et afsnit.'}></textarea>
+		</label>
+		{#if bulk.trim()}<button type="button" class="btn" onclick={addBulk}>Læs linjerne</button>{/if}
+	</div>
 
-	<h2 class="section-title">Fremgangsmåde</h2>
-	<label class="field">
-		<span class="muted">Ét trin pr. linje</span>
-		<textarea bind:value={steps} rows="8"></textarea>
-	</label>
+	<h2 class="sl">Fremgangsmåde<span>ét trin pr. linje</span></h2>
+	<div class="pad">
+		<textarea bind:value={steps} rows="8" aria-label="Fremgangsmåde, ét trin pr. linje"></textarea>
+	</div>
 
-	{#if error}<p class="error" role="alert">{error}</p>{/if}
+	{#if error}<p class="msg" role="alert">{error}</p>{/if}
 
-	<div class="save">
-		<button class="primary" disabled={busy || !title.trim()}>{busy ? 'Gemmer…' : 'Gem'}</button>
+	<div class="save pad">
+		<button class="btn primary block" disabled={busy || !title.trim()}>{busy ? 'Gemmer…' : 'Gem'}</button>
 	</div>
 </form>
 
 <style>
-	form {
+	.stack {
 		display: grid;
 		gap: 12px;
 	}
 	.image {
 		display: flex;
-		gap: 12px;
+		gap: 14px;
 		align-items: center;
+		margin-top: 4px;
 	}
 	.image-actions {
 		display: flex;
 		flex-wrap: wrap;
 		gap: 8px;
 	}
-	.image-actions .button {
+	.file {
 		cursor: pointer;
+	}
+	/* Filfeltet er skjult, men kan nås med tastaturet: knappen viser fokus. */
+	.file:has(input:focus-visible) {
+		outline: 2px solid var(--ink);
+		outline-offset: 2px;
 	}
 	.two {
 		display: grid;
 		grid-template-columns: 6.5rem minmax(0, 1fr);
 		gap: 10px;
 	}
-	h2 {
-		margin-bottom: 0;
-	}
-	/* Knap i en tekstlinje: undtaget fra knappernes mindste trykflade. */
-	.inline {
-		min-width: 0;
-		min-height: 0;
+	.again {
+		margin-left: -13px;
 	}
 	.group {
 		font-weight: 700;
-		border-style: dashed;
-		margin-top: 8px;
+		margin-top: 12px;
 	}
 	.line {
+		margin-inline: var(--gutter);
+		padding-block: 8px;
 		border-bottom: 1px solid var(--line);
-		padding-bottom: 8px;
 	}
-	.line.review {
-		border-left: 3px solid var(--warn);
-		padding-left: 6px;
+	.top {
+		display: flex;
+		align-items: center;
+		gap: 6px;
 	}
-	.nowrap {
-		flex-wrap: nowrap;
-	}
+	/* Stjernen: 44px trykflade. Udfyldt = hovedingrediens. */
 	.star {
-		font-size: 1.4rem;
-		color: var(--muted);
+		flex: none;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: var(--tap);
+		height: var(--tap);
+		margin-left: -12px;
+		border-radius: 50%;
+		color: var(--ring);
 	}
 	.star.on {
-		color: var(--star);
+		color: var(--tomat);
+	}
+	.star.on :global(svg) {
+		fill: currentColor;
 	}
 	.parsed {
 		display: flex;
 		align-items: center;
-		gap: 6px;
+		gap: 8px;
 		flex-wrap: wrap;
-		padding-left: 52px;
-		margin-top: 2px;
-	}
-	.parsed .qty {
+		padding-left: 38px;
+		font-size: 14.5px;
 		color: var(--muted);
+	}
+	/* Små knapper i en tekstlinje: trykfladen er stadig 44px høj. */
+	.qty,
+	.pick {
+		display: inline-flex;
+		align-items: center;
+		min-height: var(--tap);
+		min-width: 28px;
+	}
+	.qty {
 		text-decoration: underline dotted;
+		text-underline-offset: 3px;
 	}
-	.parsed .pick {
+	.pick {
 		font-weight: 600;
-		color: var(--accent);
-	}
-	.parsed .ok {
-		color: var(--accent);
+		color: var(--tomat);
 	}
 	.fields {
 		display: grid;
 		grid-template-columns: repeat(3, minmax(0, 1fr));
 		gap: 8px;
-		padding: 8px 0 0 52px;
+		padding: 4px 0 6px 38px;
 	}
 	@media (max-width: 380px) {
 		/* Smalle telefoner: brug hele bredden til felterne. */
@@ -451,22 +488,26 @@
 	.fields .wide {
 		grid-column: 1 / -1;
 	}
+	.picker {
+		margin-block: 6px 8px;
+		padding-top: 6px;
+	}
+	.picker-head {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding-inline: var(--gutter) 4px;
+	}
 	.add {
-		margin-top: 8px;
+		margin-top: 16px;
 	}
 	/* Fast bjælke over menuen, så Gem altid kan nås uden at dække felterne. */
 	.save {
 		position: sticky;
 		bottom: calc(var(--nav-h) + env(safe-area-inset-bottom));
-		display: flex;
-		justify-content: flex-end;
-		background: var(--bg);
+		background: var(--paper);
 		border-top: 1px solid var(--line);
-		padding: 8px 0;
-		margin-top: 8px;
-	}
-	.save button {
-		min-width: 140px;
-		justify-content: center;
+		padding-block: 8px;
+		margin-top: 16px;
 	}
 </style>

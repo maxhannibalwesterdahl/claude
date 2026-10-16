@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { api, ApiError } from '$lib/api';
+	import { api } from '$lib/api';
 	import RecipeEditor from '$lib/RecipeEditor.svelte';
+	import { say } from '$lib/ui/copy';
+	import ScreenHeader from '$lib/ui/ScreenHeader.svelte';
 	import type { Recipe } from '$lib/types';
 
 	let recipe = $state<Recipe | null>(null);
@@ -11,19 +13,19 @@
 	$effect(() => {
 		api<Recipe>(`/recipes/${page.params.id}`)
 			.then((r) => (recipe = r))
-			.catch((e) => (error = e instanceof ApiError ? e.message : 'Kunne ikke hente opskriften'));
+			.catch((e) => (error = say(e)));
 	});
 </script>
 
 <main>
-	<header class="top">
-		<a class="button" href="/opskrift/{page.params.id}" aria-label="Tilbage">‹</a>
-		<h1>Rediger</h1>
-	</header>
-	{#if error}<p class="error" role="alert">{error}</p>{/if}
+	<!-- Tilbage er et almindeligt link til opskriften (ikke "gå tilbage"), så der
+	     spørges først, hvis der er ændringer, der ikke er gemt. -->
+	<ScreenHeader title="Rediger" eyebrow={recipe?.title ?? 'Opskrift'} back="/opskrift/{page.params.id}" backPlain />
+	{#if error}<p class="msg" role="alert">{error}</p>{/if}
 	{#if recipe}
 		{#key recipe.id}
 			<RecipeEditor {recipe} onsave={(r) => goto(`/opskrift/${r.id}`)} />
 		{/key}
 	{/if}
 </main>
+

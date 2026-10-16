@@ -12,17 +12,35 @@ Opsætningen af containeren og Tailscale er beskrevet i
 | Data | Docker-volumen `deploy_madplan-data`, monteret som `/data` i app-containeren |
 | Database | `/data/madplan.db` (SQLite) |
 | Billeder | `/data/images/` |
+| Nøgle til beskeder | `/data/vapid.pem` (laves selv første gang). Forsvinder den, laves en ny, og telefonerne tilmelder sig igen, næste gang appen åbnes |
 | SSH | `ssh root@192.168.1.114` fra Macen (nøgle lagt ind) |
 
 Alle kommandoer herunder køres i containeren fra `/opt/madplan/deploy`.
 
 ## Brugere
 
-Der er ingen selvregistrering. Brugere oprettes fra kommandolinjen. Kodeordet
-skal være mindst 12 tegn og spørges om uden at blive vist:
+Der er ingen selvregistrering. Familier og brugere oprettes fra kommandolinjen.
+Hver bruger hører til præcis én familie. Kodeordet skal være mindst 12 tegn og
+spørges om uden at blive vist:
 
 ```sh
-docker compose exec app madplan-admin create-user max
+docker compose exec app madplan-admin create-household "Familien Hansen"
+docker compose exec app madplan-admin list-households
+docker compose exec app madplan-admin create-user max --household "Familien Hansen"   # --medlem: ikke familie-admin
+docker compose exec app madplan-admin set-system-admin max    # --fjern: tag det igen
+```
+
+### Admin-siden
+
+Systemadmin styrer familier, brugere og opskrifter på `/admin` (samme adresse som
+appen, ingen link i appen). Log ind med en bruger, der er sat som systemadmin; det er
+et eget login, der gælder i 12 timer. Alle andre får 404 på siden og dens API.
+Loginforsøg begrænses til 5 pr. 5 minutter pr. IP og pr. brugernavn, og alt, admin
+gør, står i loggen (`madplan.admin`). Slå tofaktor til under fanen Sikkerhed (en
+authenticator-app; hemmeligheden gemmes krypteret). Mistes telefonen:
+`madplan-admin reset-2fa <brugernavn>` på serveren.
+
+```sh
 docker compose exec app madplan-admin set-password max   # logger også ud på alle enheder
 docker compose exec app madplan-admin list-users
 ```
@@ -66,10 +84,26 @@ Sat op og afprøvet 30-09-2026.
 
 Log for den daglige kopi: `/var/log/madplan-backup.log` i LXC'en.
 
-**Mangler: en kopi uden for maskinen.** Alt ovenfor ligger på værtens ene
-NVMe-disk. Dør disken, er alt væk. Vælg et sted (Macen med Time Machine,
-en USB-disk eller cloud), så sættes en natlig kopi op. OMV-containeren har i dag
-ingen datadisk og er derfor ikke et alternativ.
+### Kopi uden for maskinen
+
+Sat op og afprøvet 16-10-2026. Hver nat kl. 04:00 (cron `/etc/cron.d/madplan-offsite`) sender
+`/usr/local/sbin/madplan-offsite-backup` (samme som `deploy/offsite-backup.sh`) den nyeste daglige kopi
+og billederne, **krypteret med age**, til det private GitHub-repo `maxhannibalwesterdahl/madplan-backup`.
+Repoet har ét commit og de seneste 7 databasekopier, så det ikke vokser. Serveren har en deploy-nøgle
+(`/root/.ssh/madplan_backup`, kun skriveadgang til det repo) og kun den OFFENTLIGE age-nøgle i
+`/etc/madplan-offsite.env`. **Den hemmelige age-nøgle (`AGE-SECRET-KEY-…`) ligger hos Max (password-manager) og
+ikke på serveren; uden den kan kopierne ikke læses.** Log: `/var/log/madplan-offsite.log`.
+
+Gendan fra kopien uden for huset (på en maskine med `age` og nøglen):
+
+```sh
+git clone git@github.com:maxhannibalwesterdahl/madplan-backup.git && cd madplan-backup
+age -d -i nøglefil madplan-ÅÅÅÅ-MM-DD.db.age > madplan.db        # databasen
+age -d -i nøglefil billeder.tar.age | tar -xf -                  # billeder (mappen images/)
+```
+
+Derefter lægges `madplan.db` og `images/` i volumen som beskrevet nedenfor. Andre mål (`OFFSITE_RSYNC`,
+`OFFSITE_RCLONE`) og indstillinger står i toppen af scriptet.
 
 ### Gendan databasen fra en daglig kopi
 
@@ -133,7 +167,7 @@ npm run dev      # http://localhost:5173, sender /api videre til port 8000
 npm run check && npm run build
 ```
 
-Lokal bruger: `DATA_DIR=data APP_SECRET=... .venv/bin/madplan-admin create-user test`.
+Lokal bruger: `DATA_DIR=data APP_SECRET=... .venv/bin/madplan-admin create-household Test` og derefter `... create-user test`.
 
 Ny migration efter ændring i `models.py`:
 

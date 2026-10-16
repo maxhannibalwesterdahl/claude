@@ -15,12 +15,16 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from ..catalog import Catalog, learn_alias
+from ..adjustments import load_adjustments, parse_extras
+from ..catalog import Catalog
+from ..matching import Overlay, ingredient_map, learn_preference
 from ..config import local_today
 from ..ingredients.matcher import DEPARTMENTS, key as item_key
 from ..models import (
+    Household,
     Ingredient,
     Plan,
     PlanLineState,
@@ -33,7 +37,7 @@ from ..models import (
 )
 from ..planning import scale
 from ..shopping import combine
-from .deps import CurrentUser, DbSession
+from .deps import CurrentHousehold, DbSession, pantry_ids
 from .plans import PlanBrief, meal_title, pick_current
 
 router = APIRouter(prefix="/api")
@@ -150,20 +154,25 @@ def _end(plan: Plan) -> date:
     return plan.start_date + timedelta(days=plan.days - 1)
 
 
-def choose_plan(session: Session, plan_id: int | None, today: date | None = None) -> Plan | None:
+def own_plan(session: Session, plan_id: int, hh: Household) -> Plan | None:
+    """Familiens plan, ellers None (en anden families plan er som en der ikke findes)."""
+    return session.scalar(select(Plan).where(Plan.id == plan_id, Plan.household_id == hh.id))
+
+
+def choose_plan(session: Session, hh: Household, plan_id: int | None, today: date | None = None) -> Plan | None:
     """Den valgte plan, ellers den igangværende uge (som Planlæg)."""
     if plan_id is not None:
-        plan = session.get(Plan, plan_id)
+        plan = own_plan(session, plan_id, hh)
         if plan is None:
             raise HTTPException(status_code=404, detail="Planen findes ikke")
         return plan
-    return pick_current(session, today)
+    return pick_current(session, hh.id, today)
 
 
 # --- Opbygning -------------------------------------------------------------------
 
-def department_order(session: Session) -> list[str]:
-    row = session.get(Setting, "departments")
+def department_order(session: Session, hh: Household) -> list[str]:
+    row = session.get(Setting, (hh.id, "departments"))
     saved = json.loads(row.value) if row else []
     order = [c for c in saved if c in DEPARTMENTS]
     return order + [c for c in DEPARTMENTS if c not in order]
@@ -179,7 +188,7 @@ class _Part:
     state: str | None
 
 
-def _plan_parts(session: Session, plan: Plan) -> tuple[dict[str, list[_Part]], dict[str, Ingredient | None], dict[str, str]]:
+def _plan_parts(session: Session, hh: Household, plan: Plan) -> tuple[dict[str, list[_Part]], dict[str, Ingredient | None], dict[str, str]]:
     """Alle ingredienslinjer i planen, grupperet efter række-nøgle."""
     meals = session.scalars(
         select(PlanMeal).where(PlanMeal.plan_id == plan.id, PlanMeal.kind == "opskrift").options(
@@ -190,24 +199,42 @@ def _plan_parts(session: Session, plan: Plan) -> tuple[dict[str, list[_Part]], d
     parts: dict[str, list[_Part]] = defaultdict(list)
     ingredients: dict[str, Ingredient | None] = {}
     names: dict[str, str] = {}
+    adjust = load_adjustments(session, hh.id, {m.recipe_id for m in meals if m.recipe_id})
+    parsed_extras = parse_extras(session, hh.id, adjust)
+    overlay = Overlay.load(session, hh.id)
+    ings = ingredient_map(session)
     for meal in meals:
         if not meal.recipe:
             continue
-        states = {s.line_id: s.state for s in meal.line_states}
+        adj = adjust[meal.recipe.id]
+        states = {s.line_id: s.state for s in meal.line_states if s.line_id is not None}
+        extra_states = {s.adjustment_id: s.state for s in meal.line_states if s.adjustment_id is not None}
         title = meal_title(meal)
         if meal.multiplier != 1:
             # Linjen vises som i opskriften, så gangen skal fremgå.
             title += " (×½)" if meal.multiplier == 0.5 else f" (×{meal.multiplier:g})"
         for line in meal.recipe.ingredients:
             state = states.get(line.id)
-            if state == "rest":
+            if state == "rest" or line.id in adj.skip:
                 continue
-            ing = line.ingredient
+            ing = ings.get(overlay.resolve(line)[0])
             k = f"i:{ing.id}" if ing else f"t:{item_key(line.item)}"
             ingredients[k] = ing
             names.setdefault(k, ing.name if ing else line.item)
-            q = line.quantity_max if line.quantity_max is not None else line.quantity
+            own = adj.quantity.get(line.id)
+            q = own if own is not None else (line.quantity_max if line.quantity_max is not None else line.quantity)
             parts[k].append(_Part(scale(q, line.unit, meal.multiplier), line.unit, meal.date, title, line.raw, state))
+        # Familiens ekstra linjer ("1 dåse majs") lægges til som almindelige linjer.
+        for extra in adj.extras:
+            state = extra_states.get(extra.id)
+            if state == "rest":
+                continue
+            p, ing = parsed_extras[extra.id]
+            k = f"i:{ing.id}" if ing else f"t:{item_key(p.item)}"
+            ingredients[k] = ing
+            names.setdefault(k, ing.name if ing else p.item)
+            q = p.quantity_max if p.quantity_max is not None else p.quantity
+            parts[k].append(_Part(scale(q, p.unit, meal.multiplier), p.unit, meal.date, title, extra.value, state))
     return parts, ingredients, names
 
 
@@ -220,15 +247,16 @@ def _amounts(parts: list[_Part], ing: Ingredient | None) -> list[AmountOut]:
     return [AmountOut(quantity=a.quantity, unit=a.unit) for a in combined]
 
 
-def plan_extras(session: Session, plan: Plan | None, today: date | None = None) -> list[ShoppingExtra]:
+def plan_extras(session: Session, hh: Household, plan: Plan | None, today: date | None = None) -> list[ShoppingExtra]:
     """Egne varer på planens liste: dem, der er skrevet på den uge.
 
     En vare, der ikke blev købt, før ugen var slut (eller hvis plan er slettet),
     følger med til den igangværende uge, så den bliver på listen, til den er købt."""
     today = today or local_today()
-    current = pick_current(session, today)
+    current = pick_current(session, hh.id, today)
     extras = session.scalars(
         select(ShoppingExtra)
+        .where(ShoppingExtra.household_id == hh.id)
         .options(selectinload(ShoppingExtra.ingredient), selectinload(ShoppingExtra.plan))
         .order_by(ShoppingExtra.id)
     ).all()
@@ -241,22 +269,23 @@ def plan_extras(session: Session, plan: Plan | None, today: date | None = None) 
     return [e for e in extras if belongs_to(e) is plan]
 
 
-def build(session: Session, plan: Plan | None, now_ms: int | None = None, today: date | None = None) -> ShoppingOut:
+def build(session: Session, hh: Household, plan: Plan | None, now_ms: int | None = None, today: date | None = None) -> ShoppingOut:
     now_ms = now_ms or int(time.time() * 1000)
-    order = department_order(session)
+    order = department_order(session, hh)
+    household_pantry = pantry_ids(session, hh.id)
     items: list[ItemOut] = []
     pantry: list[PantryOut] = []
     home: list[HomeOut] = []
 
-    extras = plan_extras(session, plan, today)
+    extras = plan_extras(session, hh, plan, today)
     requested = {e.ingredient_id for e in extras if e.source == "løbet tør" and not e.checked}
 
     if plan is not None:
         checks = {c.key: c.checked for c in session.scalars(select(ShoppingCheck).where(ShoppingCheck.plan_id == plan.id))}
-        parts, ingredients, names = _plan_parts(session, plan)
+        parts, ingredients, names = _plan_parts(session, hh, plan)
         for k, ps in parts.items():
             ing = ingredients[k]
-            if ing is not None and ing.pantry:
+            if ing is not None and ing.id in household_pantry:
                 pantry.append(PantryOut(
                     ingredient_id=ing.id, name=ing.name, amounts=_amounts(ps, ing),
                     days=sorted({p.date for p in ps}), requested=ing.id in requested,
@@ -297,18 +326,18 @@ def build(session: Session, plan: Plan | None, now_ms: int | None = None, today:
 # --- Ruter -------------------------------------------------------------------------
 
 @router.get("/shopping")
-def get_shopping(session: DbSession, _: CurrentUser, plan_id: int | None = None, today: date | None = None) -> ShoppingOut:
-    return build(session, choose_plan(session, plan_id, today), today=today)
+def get_shopping(session: DbSession, hh: CurrentHousehold, plan_id: int | None = None, today: date | None = None) -> ShoppingOut:
+    return build(session, hh, choose_plan(session, hh, plan_id, today), today=today)
 
 
 @router.post("/shopping/sync")
-def sync(body: SyncIn, session: DbSession, _: CurrentUser, today: date | None = None) -> ShoppingOut:
+def sync(body: SyncIn, session: DbSession, hh: CurrentHousehold, today: date | None = None) -> ShoppingOut:
     """Modtag afkrydsninger (evt. lavet offline). Seneste ændring pr. række vinder.
 
     Ændringerne gemmes på den plan, telefonen viste, da de blev lavet. Svaret er
     den valgte uge, ellers den igangværende, så telefonen følger med, når en plan
     slettes, eller når en ny uge begynder."""
-    target = session.get(Plan, body.plan_id) if body.plan_id is not None else choose_plan(session, None, today)
+    target = own_plan(session, body.plan_id, hh) if body.plan_id is not None else choose_plan(session, hh, None, today)
     plans: dict[int, Plan | None] = {}
     now_ms = int(time.time() * 1000)
     changes = []
@@ -321,7 +350,10 @@ def sync(body: SyncIn, session: DbSession, _: CurrentUser, today: date | None = 
         changes.append(ch)
     for ch in changes:
         if ch.key.startswith("e:"):
-            extra = session.get(ShoppingExtra, int(ch.key[2:])) if ch.key[2:].isdigit() else None
+            extra = None
+            if ch.key[2:].isdigit():
+                extra = session.scalar(select(ShoppingExtra).where(
+                    ShoppingExtra.id == int(ch.key[2:]), ShoppingExtra.household_id == hh.id))
             if extra and ch.ts > extra.updated_ms:
                 extra.checked, extra.updated_ms = ch.checked, ch.ts
         elif ch.key[:2] in ("i:", "t:"):
@@ -329,22 +361,29 @@ def sync(body: SyncIn, session: DbSession, _: CurrentUser, today: date | None = 
                 plan = target
             else:
                 if ch.plan_id not in plans:
-                    plans[ch.plan_id] = session.get(Plan, ch.plan_id)
+                    plans[ch.plan_id] = own_plan(session, ch.plan_id, hh)
                 plan = plans[ch.plan_id]
             if plan is None:
                 continue
             row = session.scalar(select(ShoppingCheck).where(ShoppingCheck.plan_id == plan.id, ShoppingCheck.key == ch.key))
             if row is None:
-                session.add(ShoppingCheck(plan_id=plan.id, key=ch.key, checked=ch.checked, updated_ms=ch.ts))
+                try:
+                    with session.begin_nested():
+                        session.add(ShoppingCheck(plan_id=plan.id, key=ch.key, checked=ch.checked, updated_ms=ch.ts))
+                except IntegrityError:
+                    # En anden telefon nåede først: den seneste ændring vinder stadig.
+                    row = session.scalar(select(ShoppingCheck).where(ShoppingCheck.plan_id == plan.id, ShoppingCheck.key == ch.key))
+                    if row is not None and ch.ts > row.updated_ms:
+                        row.checked, row.updated_ms = ch.checked, ch.ts
             elif ch.ts > row.updated_ms:
                 row.checked, row.updated_ms = ch.checked, ch.ts
     session.commit()
-    view = session.get(Plan, body.view_plan_id) if body.view_plan_id is not None else None
-    return build(session, view or choose_plan(session, None, today), today=today)
+    view = own_plan(session, body.view_plan_id, hh) if body.view_plan_id is not None else None
+    return build(session, hh, view or choose_plan(session, hh, None, today), today=today)
 
 
 @router.post("/shopping/extras", status_code=201)
-def add_extra(body: ExtraIn, session: DbSession, _: CurrentUser, plan_id: int | None = None, today: date | None = None) -> ShoppingOut:
+def add_extra(body: ExtraIn, session: DbSession, hh: CurrentHousehold, plan_id: int | None = None, today: date | None = None) -> ShoppingOut:
     """Egen vare ("2 pk bleer") eller "løbet tør" for en basisvare.
 
     Varen kommer på listen for den uge, der vises (`plan_id`), ikke på de andre uger.
@@ -354,80 +393,97 @@ def add_extra(body: ExtraIn, session: DbSession, _: CurrentUser, plan_id: int | 
     og sender så `ingredient_id`. Valget huskes som alias ("pampers" -> bleer).
     """
     text = " ".join(body.text.split())
-    plan = choose_plan(session, plan_id, today)
+    plan = choose_plan(session, hh, plan_id, today)
     if body.ingredient_id is not None:
         ing = session.get(Ingredient, body.ingredient_id)
         if ing is None:
             raise HTTPException(status_code=404, detail="Varen findes ikke")
         if body.source == "løbet tør":
-            already = any(e.ingredient_id == ing.id and not e.checked for e in plan_extras(session, plan, today))
+            already = any(e.ingredient_id == ing.id and not e.checked for e in plan_extras(session, hh, plan, today))
             if not already:
-                session.add(ShoppingExtra(text=ing.name, ingredient=ing, source="løbet tør", plan=plan))
-        else:
-            session.add(ShoppingExtra(text=text or ing.name, ingredient=ing, source="egen", plan=plan))
+                session.add(ShoppingExtra(household_id=hh.id, text=ing.name, ingredient=ing, source="løbet tør", plan=plan))
+        elif not _already_on_list(session, hh, plan, text or ing.name, today):
+            session.add(ShoppingExtra(household_id=hh.id, text=text or ing.name, ingredient=ing, source="egen", plan=plan))
             if text:
-                _learn_from_extra(session, text, ing)
+                _learn_from_extra(session, hh, text, ing)
     else:
         if not text:
             raise HTTPException(status_code=422, detail="Skriv en vare")
         # Kendt vare? Så kommer den under den rigtige afdeling.
-        found = Catalog(session).parse(text)
+        found = Catalog(session, hh.id).parse(text)
         ing = session.get(Ingredient, found.ingredient_id) if found.match_status == "sikker" else None
-        session.add(ShoppingExtra(text=text, ingredient=ing, source="egen", plan=plan))
+        if not _already_on_list(session, hh, plan, text, today):
+            session.add(ShoppingExtra(household_id=hh.id, text=text, ingredient=ing, source="egen", plan=plan))
     session.commit()
-    return build(session, plan, today=today)
+    return build(session, hh, plan, today=today)
 
 
-def _learn_from_extra(session: Session, text: str, ing: Ingredient) -> None:
-    """Husk brugerens valg: varenavnet fra teksten ("2 pk pampers" -> "pampers")
-    bliver et alias for varen, ligesom når en opskriftslinje bekræftes."""
-    item = Catalog(session).parse(text).item
+def _already_on_list(session: Session, hh: Household, plan: Plan | None, text: str, today: date | None) -> bool:
+    """Dobbeltklik på "Tilføj": den samme egne vare, der ikke er købt, kommer kun på én gang."""
+    want = text.casefold()
+    return any(e.source == "egen" and not e.checked and e.text.casefold() == want
+               for e in plan_extras(session, hh, plan, today))
+
+
+def _extra(session: Session, extra_id: int, hh: Household) -> ShoppingExtra:
+    extra = session.scalar(select(ShoppingExtra).where(ShoppingExtra.id == extra_id, ShoppingExtra.household_id == hh.id))
+    if extra is None:
+        raise HTTPException(status_code=404, detail="Varen findes ikke")
+    return extra
+
+
+def _learn_from_extra(session: Session, hh: Household, text: str, ing: Ingredient) -> None:
+    """Husk familiens valg: varenavnet fra teksten ("2 pk pampers" -> "pampers") bliver
+    familiens eget navn for varen, ligesom når en opskriftslinje bekræftes."""
+    item = Catalog(session, hh.id).parse(text).item
     if item:
-        learn_alias(session, item, ing)
+        learn_preference(session, hh.id, item, ing)
 
 
 @router.patch("/shopping/extras/{extra_id}")
-def update_extra(extra_id: int, body: ExtraPatch, session: DbSession, _: CurrentUser,
+def update_extra(extra_id: int, body: ExtraPatch, session: DbSession, hh: CurrentHousehold,
                  plan_id: int | None = None, today: date | None = None) -> ShoppingOut:
     """Skift den vare, en egen vare er koblet til (fx fra "Andet" til bleer)."""
-    extra = session.get(ShoppingExtra, extra_id)
-    if extra is None:
-        raise HTTPException(status_code=404, detail="Varen findes ikke")
+    extra = _extra(session, extra_id, hh)
     ing = session.get(Ingredient, body.ingredient_id) if body.ingredient_id is not None else None
     if body.ingredient_id is not None and ing is None:
         raise HTTPException(status_code=404, detail="Varen findes ikke")
     extra.ingredient = ing
     if ing is not None and extra.source == "egen":
-        _learn_from_extra(session, extra.text, ing)
+        _learn_from_extra(session, hh, extra.text, ing)
     session.commit()
-    return build(session, choose_plan(session, plan_id, today), today=today)
+    return build(session, hh, choose_plan(session, hh, plan_id, today), today=today)
 
 
 @router.delete("/shopping/extras/{extra_id}")
-def delete_extra(extra_id: int, session: DbSession, _: CurrentUser, plan_id: int | None = None, today: date | None = None) -> ShoppingOut:
-    extra = session.get(ShoppingExtra, extra_id)
-    if extra is None:
-        raise HTTPException(status_code=404, detail="Varen findes ikke")
+def delete_extra(extra_id: int, session: DbSession, hh: CurrentHousehold, plan_id: int | None = None, today: date | None = None) -> ShoppingOut:
+    extra = _extra(session, extra_id, hh)
     session.delete(extra)
     session.commit()
-    return build(session, choose_plan(session, plan_id, today), today=today)
+    return build(session, hh, choose_plan(session, hh, plan_id, today), today=today)
 
 
 @router.post("/shopping/home")
-def set_home(body: HomeIn, session: DbSession, _: CurrentUser) -> ShoppingOut:
+def set_home(body: HomeIn, session: DbSession, hh: CurrentHousehold) -> ShoppingOut:
     """"Har hjemme" for en vare: markerer alle dens linjer i planen (eller fjerner
     markeringen igen). Linjer dækket af rest røres ikke."""
-    plan = choose_plan(session, body.plan_id)
+    plan = choose_plan(session, hh, body.plan_id)
     meals = session.scalars(
         select(PlanMeal).where(PlanMeal.plan_id == plan.id, PlanMeal.kind == "opskrift").options(
             selectinload(PlanMeal.recipe).selectinload(Recipe.ingredients), selectinload(PlanMeal.line_states))
     ).all()
+    overlay = Overlay.load(session, hh.id)
+    adjust = load_adjustments(session, hh.id, {m.recipe_id for m in meals if m.recipe_id})
+    parsed_extras = parse_extras(session, hh.id, adjust)
     for meal in meals:
         if not meal.recipe:
             continue
-        states = {s.line_id: s for s in meal.line_states}
+        adj = adjust[meal.recipe.id]
+        states = {s.line_id: s for s in meal.line_states if s.line_id is not None}
+        extra_states = {s.adjustment_id: s for s in meal.line_states if s.adjustment_id is not None}
         for line in meal.recipe.ingredients:
-            k = f"i:{line.ingredient_id}" if line.ingredient_id else f"t:{item_key(line.item)}"
+            ing_id = overlay.resolve(line)[0]
+            k = f"i:{ing_id}" if ing_id else f"t:{item_key(line.item)}"
             if k != body.key:
                 continue
             st = states.get(line.id)
@@ -435,21 +491,31 @@ def set_home(body: HomeIn, session: DbSession, _: CurrentUser) -> ShoppingOut:
                 meal.line_states.append(PlanLineState(line_id=line.id, state="hjemme"))
             elif not body.home and st is not None and st.state == "hjemme":
                 meal.line_states.remove(st)
+        for extra in adj.extras:
+            p, ing = parsed_extras[extra.id]
+            k = f"i:{ing.id}" if ing else f"t:{item_key(p.item)}"
+            if k != body.key:
+                continue
+            st = extra_states.get(extra.id)
+            if body.home and st is None:
+                meal.line_states.append(PlanLineState(adjustment_id=extra.id, state="hjemme"))
+            elif not body.home and st is not None and st.state == "hjemme":
+                meal.line_states.remove(st)
     session.commit()
-    return build(session, plan)
+    return build(session, hh, plan)
 
 
 @router.get("/settings/departments")
-def get_department_order(session: DbSession, _: CurrentUser) -> list[DepartmentOut]:
-    return [DepartmentOut(code=c, name=DEPARTMENTS[c]) for c in department_order(session)]
+def get_department_order(session: DbSession, hh: CurrentHousehold) -> list[DepartmentOut]:
+    return [DepartmentOut(code=c, name=DEPARTMENTS[c]) for c in department_order(session, hh)]
 
 
 @router.put("/settings/departments")
-def set_department_order(body: DepartmentOrderIn, session: DbSession, _: CurrentUser) -> list[DepartmentOut]:
+def set_department_order(body: DepartmentOrderIn, session: DbSession, hh: CurrentHousehold) -> list[DepartmentOut]:
     if sorted(body.order) != sorted(DEPARTMENTS):
         raise HTTPException(status_code=422, detail="Rækkefølgen skal indeholde alle afdelinger")
-    row = session.get(Setting, "departments") or Setting(key="departments")
+    row = session.get(Setting, (hh.id, "departments")) or Setting(household_id=hh.id, key="departments")
     row.value = json.dumps(body.order)
     session.add(row)
     session.commit()
-    return get_department_order(session, _)
+    return get_department_order(session, hh)

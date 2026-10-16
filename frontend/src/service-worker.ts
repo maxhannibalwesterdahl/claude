@@ -44,3 +44,59 @@ sw.addEventListener('fetch', (event) => {
 		event.respondWith(caches.match(req).then((hit) => hit ?? fetch(req)));
 	}
 });
+
+// Påmindelser ("Husk: kød op af fryseren") fra serveren. Se backend/madplan/reminders.py.
+interface Besked {
+	title?: string;
+	body?: string;
+	tag?: string;
+	url?: string;
+	reminder_id?: number;
+}
+
+sw.addEventListener('push', (event) => {
+	let msg: Besked = {};
+	try {
+		msg = event.data?.json() ?? {};
+	} catch {
+		msg = { body: event.data?.text() };
+	}
+	// "Klaret" krydser påmindelsen af direkte fra beskeden (vises ikke på iPhone).
+	const options: NotificationOptions & { actions?: { action: string; title: string }[] } = {
+		body: msg.body,
+		tag: msg.tag,
+		data: msg,
+		icon: '/icon-192.png',
+		badge: '/icon-192.png',
+		actions: msg.reminder_id ? [{ action: 'klaret', title: 'Klaret' }] : []
+	};
+	event.waitUntil(sw.registration.showNotification(msg.title ?? 'Madplan', options));
+});
+
+sw.addEventListener('notificationclick', (event) => {
+	const msg: Besked = event.notification.data ?? {};
+	event.notification.close();
+	if (event.action === 'klaret' && msg.reminder_id) {
+		event.waitUntil(
+			fetch(`/api/reminders/${msg.reminder_id}`, {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ done: true }),
+				credentials: 'same-origin'
+			})
+		);
+		return;
+	}
+	// Åbner dagen med retten, så påmindelsen kan krydses af der.
+	const url = msg.url ?? '/';
+	event.waitUntil(
+		(async () => {
+			const [win] = await sw.clients.matchAll({ type: 'window', includeUncontrolled: true });
+			if (win) {
+				await win.focus();
+				if (await win.navigate(url).catch(() => null)) return;
+			}
+			await sw.clients.openWindow(url);
+		})()
+	);
+});

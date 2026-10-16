@@ -1,6 +1,14 @@
-# Flere familier – design (ikke bygget)
+# Flere familier – design
 
-Status: gennemtænkt 30-09-2026, opdateret med jeres svar 01-10-2026. Ikke bygget. Krav fra jer:
+Status: gennemtænkt 30-09-2026, opdateret med jeres svar 01-10-2026. **Trin 1-2 i
+afsnit 10 er bygget (16-10-2026):** datamodel, migration 0007, `CurrentHousehold`,
+alle ruter afgrænset til familien og test-matrixen (`backend/tests/test_qa_adgang.py`).
+Resten (admin-side, invitationer, vores samling, tilpasninger, historik) er ikke bygget.
+Kun ejerfamilien (`recipe.created_by_household`) kan rette en fælles opskrift; andre får
+404. Familiens note om barnet og basisvarer ligger i `household_recipe_note` og
+`household_pantry`; `recipe.child_note` og `ingredient.pantry` er forældede kolonner
+(pantry er startlisten til nye familier). Fælles varekatalog kan i dag endnu rettes af
+alle (skal flyttes til systemadmin, trin 7). Krav fra jer:
 
 - Flere familier (husstande) bruger samme app.
 - **Opskrifterne deles** på tværs af familier.

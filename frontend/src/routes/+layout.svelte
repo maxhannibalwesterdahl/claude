@@ -4,10 +4,12 @@
 	import { afterNavigate } from '$app/navigation';
 	import { page } from '$app/state';
 	import ConfirmDialog from '$lib/ConfirmDialog.svelte';
+	import { api } from '$lib/api';
 	import { navState } from '$lib/nav.svelte';
 	import { syncPush } from '$lib/push.svelte';
 	import { onResume } from '$lib/resume.svelte';
 	import { shopping } from '$lib/shopping.svelte';
+	import type { Me } from '$lib/types';
 	import Icon from '$lib/ui/Icon.svelte';
 	import type { IconName } from '$lib/ui/icons';
 
@@ -53,7 +55,14 @@
 	// når planen er ændret på en anden telefon. Ikke på login: der er ingen session.
 	$effect(() => {
 		if (onLogin) return;
-		untrack(() => void shopping.sync());
+		// Først ved, hvem der er logget ind (listen på telefonen er pr. bruger). Uden net
+		// bruges den bruger, der sidst loggede ind her.
+		untrack(() =>
+			api<Me>('/me')
+				.then((me) => shopping.use(me.id))
+				.catch(() => {})
+				.finally(() => void shopping.sync())
+		);
 		return onResume(() => void shopping.sync());
 	});
 

@@ -19,11 +19,15 @@ Alle kommandoer herunder køres i containeren fra `/opt/madplan/deploy`.
 
 ## Brugere
 
-Der er ingen selvregistrering. Brugere oprettes fra kommandolinjen. Kodeordet
-skal være mindst 12 tegn og spørges om uden at blive vist:
+Der er ingen selvregistrering. Familier og brugere oprettes fra kommandolinjen.
+Hver bruger hører til præcis én familie. Kodeordet skal være mindst 12 tegn og
+spørges om uden at blive vist:
 
 ```sh
-docker compose exec app madplan-admin create-user max
+docker compose exec app madplan-admin create-household "Familien Hansen"
+docker compose exec app madplan-admin list-households
+docker compose exec app madplan-admin create-user max --household "Familien Hansen"   # --medlem: ikke familie-admin
+docker compose exec app madplan-admin set-system-admin max    # --fjern: tag det igen
 docker compose exec app madplan-admin set-password max   # logger også ud på alle enheder
 docker compose exec app madplan-admin list-users
 ```
@@ -134,7 +138,7 @@ npm run dev      # http://localhost:5173, sender /api videre til port 8000
 npm run check && npm run build
 ```
 
-Lokal bruger: `DATA_DIR=data APP_SECRET=... .venv/bin/madplan-admin create-user test`.
+Lokal bruger: `DATA_DIR=data APP_SECRET=... .venv/bin/madplan-admin create-household Test` og derefter `... create-user test`.
 
 Ny migration efter ændring i `models.py`:
 

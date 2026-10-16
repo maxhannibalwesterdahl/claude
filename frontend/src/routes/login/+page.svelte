@@ -2,6 +2,8 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { api } from '$lib/api';
+	import { shopping } from '$lib/shopping.svelte';
+	import type { Me } from '$lib/types';
 	import { say } from '$lib/ui/copy';
 
 	let username = $state('');
@@ -14,7 +16,8 @@
 		busy = true;
 		error = '';
 		try {
-			await api('/login', { method: 'POST', body: { username, password } });
+			const me = await api<Me>('/login', { method: 'POST', body: { username, password } });
+			shopping.use(me.id);
 			const target = page.url.searchParams.get('til') ?? '/';
 			// Kun stier i appen, ikke andre sider.
 			await goto(target.startsWith('/') && !target.startsWith('//') ? target : '/');

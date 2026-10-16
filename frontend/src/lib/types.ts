@@ -36,6 +36,8 @@ export interface Recipe {
 	servings: number | null;
 	instructions: string[];
 	child_note: string;
+	// Familien ejer opskriften og kan rette den. Ellers er den fælles og kun til at bruge.
+	owned: boolean;
 	source_url: string | null;
 	image_url: string | null;
 	ingredients: Line[];
@@ -51,6 +53,14 @@ export interface RecipeSummary {
 	main_ingredients: string[];
 	ingredients: string[];
 	to_review: number;
+	owned: boolean;
+}
+
+export interface Me {
+	id: number;
+	username: string;
+	is_system_admin: boolean;
+	household: { id: number; name: string; role: 'admin' | 'medlem' } | null;
 }
 
 export interface ReviewLine {

@@ -98,7 +98,7 @@
 			{/if}
 			<div class="btns">
 				<button type="button" class="btn primary" onclick={() => (placing = true)}><Icon name="cal" />Læg på en dag</button>
-				<a class="btn" href="/opskrift/{recipe.id}/rediger">Rediger</a>
+				{#if recipe.owned}<a class="btn" href="/opskrift/{recipe.id}/rediger">Rediger</a>{/if}
 			</div>
 		</div>
 
@@ -116,7 +116,7 @@
 		<div class="columns">
 			<section>
 				<h2 class="sl">Ingredienser<span>stjerne = hovedingrediens</span></h2>
-				{#if toReview}
+				{#if toReview && recipe.owned}
 					<p class="pad review">
 						<span class="tag">{toReview} at tjekke</span>
 						<a class="link" href="/opskrift/{recipe.id}/rediger">Ret varerne</a>
@@ -168,7 +168,7 @@
 			</section>
 		</div>
 
-		<p class="actions"><button type="button" class="btn quiet" onclick={remove}>Slet opskrift</button></p>
+		{#if recipe.owned}<p class="actions"><button type="button" class="btn quiet" onclick={remove}>Slet opskrift</button></p>{/if}
 	{/if}
 </main>
 

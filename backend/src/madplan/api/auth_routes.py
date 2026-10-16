@@ -2,11 +2,20 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from sqlalchemy import select
 
 from ..auth import COOKIE, HASH_GATE, SESSION_DAYS, make_session, verify_password
-from ..models import User
+from ..models import Household, HouseholdMember, User
 from .deps import AppSettings, CurrentUser, DbSession, client_ip
-from .schemas import LoginIn, UserOut
+from .schemas import HouseholdOut, LoginIn, UserOut
 
 router = APIRouter(prefix="/api")
+
+
+def user_out(session, user: User) -> UserOut:
+    row = session.execute(
+        select(Household, HouseholdMember.role).join(HouseholdMember, HouseholdMember.household_id == Household.id)
+        .where(HouseholdMember.user_id == user.id)
+    ).first()
+    household = HouseholdOut(id=row[0].id, name=row[0].name, role=row[1]) if row else None
+    return UserOut(id=user.id, username=user.username, is_system_admin=user.is_system_admin, household=household)
 
 
 @router.post("/login")
@@ -35,7 +44,7 @@ def login(body: LoginIn, request: Request, response: Response, session: DbSessio
         secure=request.url.scheme == "https" or "x-forwarded-for" in request.headers,
         samesite="lax",
     )
-    return UserOut(id=user.id, username=user.username)
+    return user_out(session, user)
 
 
 @router.post("/logout", status_code=204)
@@ -44,5 +53,5 @@ def logout(response: Response) -> None:
 
 
 @router.get("/me")
-def me(user: CurrentUser) -> UserOut:
-    return UserOut(id=user.id, username=user.username)
+def me(user: CurrentUser, session: DbSession) -> UserOut:
+    return user_out(session, user)

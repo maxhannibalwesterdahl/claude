@@ -6,7 +6,7 @@
 
 from datetime import date, datetime, timezone
 
-from sqlalchemy import BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, true
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, false, true
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -26,7 +26,80 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(200))
     # Øges ved nyt kodeord, så gamle session-cookies holder op med at virke.
     session_version: Mapped[int] = mapped_column(Integer, default=1)
+    # Må oprette familier og se alle (docs/flere-familier.md §5a).
+    is_system_admin: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+# --- Familier (docs/flere-familier.md) ----------------------------------------------
+
+
+class Household(Base):
+    """En familie. Planer, indkøb og indstillinger hører til én familie."""
+
+    __tablename__ = "household"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class HouseholdMember(Base):
+    """Én bruger hører til præcis én familie (user_id er unik)."""
+
+    __tablename__ = "household_member"
+
+    household_id: Mapped[int] = mapped_column(ForeignKey("household.id", ondelete="CASCADE"), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"), primary_key=True, unique=True)
+    # "admin" eller "medlem"
+    role: Mapped[str] = mapped_column(String(10), default="medlem")
+
+
+class HouseholdPantry(Base):
+    """Familiens basisvarer (salt, olie, mel …). Erstatter ingredient.pantry."""
+
+    __tablename__ = "household_pantry"
+
+    household_id: Mapped[int] = mapped_column(ForeignKey("household.id", ondelete="CASCADE"), primary_key=True)
+    ingredient_id: Mapped[int] = mapped_column(ForeignKey("ingredient.id", ondelete="CASCADE"), primary_key=True)
+
+
+class HouseholdRecipeNote(Base):
+    """Familiens note om barnet på en opskrift. Erstatter recipe.child_note."""
+
+    __tablename__ = "household_recipe_note"
+
+    household_id: Mapped[int] = mapped_column(ForeignKey("household.id", ondelete="CASCADE"), primary_key=True)
+    recipe_id: Mapped[int] = mapped_column(ForeignKey("recipe.id", ondelete="CASCADE"), primary_key=True)
+    child_note: Mapped[str] = mapped_column(Text, default="")
+
+
+class HouseholdIngredientPref(Base):
+    """Familiens eget valg af vare for et varenavn (lag oven på de fælles aliaser).
+    Endnu ikke i brug (trin 7 i docs/flere-familier.md)."""
+
+    __tablename__ = "household_ingredient_pref"
+    __table_args__ = (UniqueConstraint("household_id", "key"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    household_id: Mapped[int] = mapped_column(ForeignKey("household.id", ondelete="CASCADE"), index=True)
+    # Normaliseret varenavn (matcher.key())
+    key: Mapped[str] = mapped_column(String(100))
+    ingredient_id: Mapped[int | None] = mapped_column(ForeignKey("ingredient.id", ondelete="CASCADE"))
+
+
+class HouseholdLineMatch(Base):
+    """Familiens egen varekobling for én ingredienslinje i en fælles opskrift.
+    Endnu ikke i brug (trin 7 i docs/flere-familier.md)."""
+
+    __tablename__ = "household_line_match"
+    __table_args__ = (UniqueConstraint("household_id", "line_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    household_id: Mapped[int] = mapped_column(ForeignKey("household.id", ondelete="CASCADE"), index=True)
+    line_id: Mapped[int] = mapped_column(ForeignKey("recipe_ingredient.id", ondelete="CASCADE"))
+    ingredient_id: Mapped[int | None] = mapped_column(ForeignKey("ingredient.id", ondelete="SET NULL"))
+    match_status: Mapped[str] = mapped_column(String(10), default="bekræftet")
 
 
 class Ingredient(Base):
@@ -37,6 +110,7 @@ class Ingredient(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(100), unique=True)
     department: Mapped[str] = mapped_column(String(10))
+    # Startlistens basisvare. Familiens egne basisvarer står i household_pantry.
     pantry: Mapped[bool] = mapped_column(Boolean, default=False)
     grams_per_piece: Mapped[float | None] = mapped_column(Float)
     grams_per_dl: Mapped[float | None] = mapped_column(Float)
@@ -71,7 +145,12 @@ class Recipe(Base):
     # Trin adskilt af linjeskift.
     instructions: Mapped[str] = mapped_column(Text, default="")
     image_file: Mapped[str | None] = mapped_column(String(100))
+    # Forældet: noten ligger nu pr. familie i household_recipe_note.
     child_note: Mapped[str] = mapped_column(Text, default="")
+    # Ejerfamilien: kun den kan rette den fælles opskrift (docs/flere-familier.md §4).
+    created_by_household: Mapped[int | None] = mapped_column(
+        ForeignKey("household.id", ondelete="SET NULL"), index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
@@ -116,6 +195,7 @@ class Plan(Base):
     __tablename__ = "plan"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    household_id: Mapped[int] = mapped_column(ForeignKey("household.id", ondelete="CASCADE"), index=True)
     start_date: Mapped[date] = mapped_column(Date, index=True)
     days: Mapped[int] = mapped_column(Integer, default=7)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -233,6 +313,7 @@ class ShoppingExtra(Base):
     __tablename__ = "shopping_extra"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    household_id: Mapped[int] = mapped_column(ForeignKey("household.id", ondelete="CASCADE"), index=True)
     # Ugen, varen blev skrevet på. Tom = ingen plan (eller planen er slettet).
     plan_id: Mapped[int | None] = mapped_column(ForeignKey("plan.id", ondelete="SET NULL"), index=True)
     text: Mapped[str] = mapped_column(String(200))
@@ -248,10 +329,12 @@ class ShoppingExtra(Base):
 
 
 class Setting(Base):
-    """Små indstillinger som JSON, fx afdelingernes rækkefølge."""
+    """Små indstillinger som JSON, fx afdelingernes rækkefølge. household_id 0 er
+    indstillinger for hele appen (fx push_subject); ellers familiens egne."""
 
     __tablename__ = "setting"
 
+    household_id: Mapped[int] = mapped_column(Integer, primary_key=True, default=0)
     key: Mapped[str] = mapped_column(String(50), primary_key=True)
     value: Mapped[str] = mapped_column(Text)
 

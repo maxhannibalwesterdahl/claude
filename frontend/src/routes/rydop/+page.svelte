@@ -8,6 +8,7 @@
 	import IngredientPicker from '$lib/IngredientPicker.svelte';
 	import { clock } from '$lib/resume.svelte';
 	import { refreshReviewCount } from '$lib/review.svelte';
+	import { shopping } from '$lib/shopping.svelte';
 	import ReviewCard, { type ReviewItem } from '$lib/rydop/ReviewCard.svelte';
 	import { say } from '$lib/ui/copy';
 	import ScreenHeader from '$lib/ui/ScreenHeader.svelte';
@@ -85,6 +86,7 @@
 
 	async function logout() {
 		await api('/logout', { method: 'POST' }).catch(() => {});
+		shopping.clear();
 		await goto('/login');
 	}
 </script>

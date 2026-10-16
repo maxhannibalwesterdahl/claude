@@ -9,8 +9,17 @@ from sqlalchemy.orm import Session, selectinload
 
 from .. import importer, search_nemlig, search_valdemarsro
 from ..catalog import Catalog, learn_alias, suggest_main
-from ..models import Ingredient, Recipe, RecipeIngredient
-from .deps import AppSettings, CurrentUser, DbSession
+from ..models import (
+    Household,
+    HouseholdRecipeNote,
+    Ingredient,
+    Plan,
+    PlanMeal,
+    Recipe,
+    RecipeIngredient,
+    WishlistItem,
+)
+from .deps import AppSettings, CurrentHousehold, DbSession, pantry_ids
 from .schemas import (
     ImportIn,
     IngredientRef,
@@ -27,29 +36,34 @@ router = APIRouter(prefix="/api")
 NEEDS_REVIEW = ("usikker", "ingen")
 
 
-def ingredient_ref(ing: Ingredient | None) -> IngredientRef | None:
+def ingredient_ref(ing: Ingredient | None, pantry: set[int] | frozenset[int] = frozenset()) -> IngredientRef | None:
+    """`pantry`: familiens basisvarer (pantry_ids)."""
     if ing is None:
         return None
-    return IngredientRef(id=ing.id, name=ing.name, department=ing.department, pantry=ing.pantry)
+    return IngredientRef(id=ing.id, name=ing.name, department=ing.department, pantry=ing.id in pantry)
 
 
 def image_url(recipe: Recipe) -> str | None:
     return f"/api/images/{recipe.image_file}" if recipe.image_file else None
 
 
-def recipe_out(recipe: Recipe, warnings: list[str] | None = None) -> RecipeOut:
+def recipe_out(recipe: Recipe, hh: Household, session: Session, warnings: list[str] | None = None) -> RecipeOut:
+    """Opskriften set fra en familie: familiens egen note og basisvarer."""
+    pantry = pantry_ids(session, hh.id)
+    note = session.get(HouseholdRecipeNote, (hh.id, recipe.id))
     return RecipeOut(
         id=recipe.id,
         title=recipe.title,
         servings=recipe.servings,
         instructions=[s for s in recipe.instructions.split("\n") if s.strip()],
-        child_note=recipe.child_note,
+        child_note=note.child_note if note else "",
+        owned=recipe.created_by_household == hh.id,
         source_url=recipe.source_url,
         image_url=image_url(recipe),
         ingredients=[
             LineOut(
                 id=l.id, raw=l.raw, group=l.group, quantity=l.quantity, quantity_max=l.quantity_max,
-                unit=l.unit, item=l.item, note=l.note, ingredient=ingredient_ref(l.ingredient),
+                unit=l.unit, item=l.item, note=l.note, ingredient=ingredient_ref(l.ingredient, pantry),
                 match_status=l.match_status, is_main=l.is_main,
             )
             for l in recipe.ingredients
@@ -67,6 +81,23 @@ def load_recipe(session: Session, recipe_id: int) -> Recipe:
     if recipe is None:
         raise HTTPException(status_code=404, detail="Opskriften findes ikke")
     return recipe
+
+
+def load_own_recipe(session: Session, recipe_id: int, hh: Household) -> Recipe:
+    """Opskriften, hvis familien ejer den. Kun ejerfamilien kan rette en fælles
+    opskrift (flere-familier.md §4); alle andre får 404."""
+    recipe = load_recipe(session, recipe_id)
+    if recipe.created_by_household != hh.id:
+        raise HTTPException(status_code=404, detail="Opskriften findes ikke")
+    return recipe
+
+
+def _set_note(session: Session, hh: Household, recipe: Recipe, text: str) -> None:
+    note = session.get(HouseholdRecipeNote, (hh.id, recipe.id))
+    if note is None:
+        session.add(HouseholdRecipeNote(household_id=hh.id, recipe_id=recipe.id, child_note=text))
+    else:
+        note.child_note = text
 
 
 def _clean_steps(steps: list[str]) -> str:
@@ -121,7 +152,6 @@ def _fill_recipe(recipe: Recipe, body: RecipeIn) -> None:
     recipe.title = body.title.strip()
     recipe.servings = body.servings
     recipe.instructions = _clean_steps(body.instructions)
-    recipe.child_note = body.child_note.strip()
     recipe.source_url = (body.source_url or "").strip() or None
 
 
@@ -137,7 +167,7 @@ def _check_duplicate(session: Session, url: str | None, own_id: int | None = Non
 
 
 @router.get("/recipes")
-def list_recipes(session: DbSession, _: CurrentUser, q: str = "") -> list[RecipeSummary]:
+def list_recipes(session: DbSession, hh: CurrentHousehold, q: str = "") -> list[RecipeSummary]:
     stmt = select(Recipe).options(selectinload(Recipe.ingredients).selectinload(RecipeIngredient.ingredient))
     if q.strip():
         stmt = stmt.where(Recipe.title.icontains(q.strip()))
@@ -151,27 +181,31 @@ def list_recipes(session: DbSession, _: CurrentUser, q: str = "") -> list[Recipe
             source_host=urlparse(r.source_url).hostname.removeprefix("www.") if r.source_url else None,
             main_ingredients=[l.ingredient.name for l in r.ingredients if l.is_main and l.ingredient],
             ingredients=sorted({l.ingredient.name if l.ingredient else l.item for l in r.ingredients}),
-            to_review=sum(1 for l in r.ingredients if l.match_status in NEEDS_REVIEW),
+            # Kun ejerfamilien kan rette linjerne, så kun den ser dem som "til tjek".
+            to_review=sum(1 for l in r.ingredients if l.match_status in NEEDS_REVIEW) if r.created_by_household == hh.id else 0,
+            owned=r.created_by_household == hh.id,
         ))
     return out
 
 
 @router.post("/recipes", status_code=201)
-def create_recipe(body: RecipeIn, session: DbSession, _: CurrentUser) -> RecipeOut:
+def create_recipe(body: RecipeIn, session: DbSession, hh: CurrentHousehold) -> RecipeOut:
     _check_duplicate(session, body.source_url)
-    recipe = Recipe()
+    recipe = Recipe(created_by_household=hh.id)
     _fill_recipe(recipe, body)
     session.add(recipe)
+    session.flush()
+    _set_note(session, hh, recipe, body.child_note.strip())
     catalog = Catalog(session)
     apply_lines(session, recipe, body.ingredients, catalog)
     if not any(l.is_main for l in recipe.ingredients):
         suggest_main(recipe.ingredients, catalog.by_id)
     session.commit()
-    return recipe_out(load_recipe(session, recipe.id))
+    return recipe_out(load_recipe(session, recipe.id), hh, session)
 
 
 @router.post("/recipes/import", status_code=201)
-def import_recipe(body: ImportIn, session: DbSession, settings: AppSettings, _: CurrentUser) -> RecipeOut:
+def import_recipe(body: ImportIn, session: DbSession, settings: AppSettings, hh: CurrentHousehold) -> RecipeOut:
     url = body.url.strip()
     _check_duplicate(session, url)
     try:
@@ -184,8 +218,8 @@ def import_recipe(body: ImportIn, session: DbSession, settings: AppSettings, _: 
         title=scraped.title[:200],
         servings=scraped.servings if scraped.servings and scraped.servings <= 100 else None,
         instructions=_clean_steps(scraped.instructions),
-        child_note="",
         source_url=url,
+        created_by_household=hh.id,
     )
     warnings = list(scraped.warnings)
     if scraped.image_url:
@@ -198,23 +232,24 @@ def import_recipe(body: ImportIn, session: DbSession, settings: AppSettings, _: 
     apply_lines(session, recipe, lines, catalog)
     suggest_main(recipe.ingredients, catalog.by_id)
     session.commit()
-    return recipe_out(load_recipe(session, recipe.id), warnings)
+    return recipe_out(load_recipe(session, recipe.id), hh, session, warnings)
 
 
 @router.get("/recipes/{recipe_id}")
-def get_recipe(recipe_id: int, session: DbSession, _: CurrentUser) -> RecipeOut:
-    return recipe_out(load_recipe(session, recipe_id))
+def get_recipe(recipe_id: int, session: DbSession, hh: CurrentHousehold) -> RecipeOut:
+    return recipe_out(load_recipe(session, recipe_id), hh, session)
 
 
 @router.put("/recipes/{recipe_id}")
-def update_recipe(recipe_id: int, body: RecipeIn, session: DbSession, _: CurrentUser) -> RecipeOut:
-    recipe = load_recipe(session, recipe_id)
+def update_recipe(recipe_id: int, body: RecipeIn, session: DbSession, hh: CurrentHousehold) -> RecipeOut:
+    recipe = load_own_recipe(session, recipe_id, hh)
     _check_duplicate(session, body.source_url, recipe.id)
     _fill_recipe(recipe, body)
+    _set_note(session, hh, recipe, body.child_note.strip())
     apply_lines(session, recipe, body.ingredients, Catalog(session))
     session.commit()
     session.expire_all()
-    return recipe_out(load_recipe(session, recipe.id))
+    return recipe_out(load_recipe(session, recipe.id), hh, session)
 
 
 # Billeder, man selv tager eller vælger. Telefonen gør dem mindre før upload,
@@ -233,9 +268,9 @@ def _image_ext(head: bytes) -> str | None:
 
 
 @router.post("/recipes/{recipe_id}/image")
-async def upload_image(recipe_id: int, file: UploadFile, session: DbSession, settings: AppSettings, _: CurrentUser) -> RecipeOut:
+async def upload_image(recipe_id: int, file: UploadFile, session: DbSession, settings: AppSettings, hh: CurrentHousehold) -> RecipeOut:
     """Sæt eller skift opskriftens billede (JPEG, PNG eller WebP)."""
-    recipe = load_recipe(session, recipe_id)
+    recipe = load_own_recipe(session, recipe_id, hh)
     data = await file.read(MAX_UPLOAD + 1)
     if len(data) > MAX_UPLOAD:
         raise HTTPException(status_code=413, detail="Billedet er for stort (højst 8 MB)")
@@ -250,31 +285,41 @@ async def upload_image(recipe_id: int, file: UploadFile, session: DbSession, set
     session.commit()
     if old:
         (settings.image_dir / old).unlink(missing_ok=True)
-    return recipe_out(load_recipe(session, recipe.id))
+    return recipe_out(load_recipe(session, recipe.id), hh, session)
 
 
 @router.delete("/recipes/{recipe_id}/image")
-def delete_image(recipe_id: int, session: DbSession, settings: AppSettings, _: CurrentUser) -> RecipeOut:
-    recipe = load_recipe(session, recipe_id)
+def delete_image(recipe_id: int, session: DbSession, settings: AppSettings, hh: CurrentHousehold) -> RecipeOut:
+    recipe = load_own_recipe(session, recipe_id, hh)
     old = recipe.image_file
     recipe.image_file = None
     session.commit()
     if old:
         (settings.image_dir / old).unlink(missing_ok=True)
-    return recipe_out(load_recipe(session, recipe.id))
+    return recipe_out(load_recipe(session, recipe.id), hh, session)
 
 
 @router.post("/recipes/{recipe_id}/suggest-main")
-def suggest_main_route(recipe_id: int, session: DbSession, _: CurrentUser) -> RecipeOut:
-    recipe = load_recipe(session, recipe_id)
+def suggest_main_route(recipe_id: int, session: DbSession, hh: CurrentHousehold) -> RecipeOut:
+    recipe = load_own_recipe(session, recipe_id, hh)
     suggest_main(recipe.ingredients, Catalog(session).by_id)
     session.commit()
-    return recipe_out(load_recipe(session, recipe.id))
+    return recipe_out(load_recipe(session, recipe.id), hh, session)
 
 
 @router.delete("/recipes/{recipe_id}", status_code=204)
-def delete_recipe(recipe_id: int, session: DbSession, settings: AppSettings, _: CurrentUser) -> None:
-    recipe = load_recipe(session, recipe_id)
+def delete_recipe(recipe_id: int, session: DbSession, settings: AppSettings, hh: CurrentHousehold) -> None:
+    recipe = load_own_recipe(session, recipe_id, hh)
+    # En opskrift, en anden familie bruger i sin plan, kan ikke slettes.
+    in_use = session.scalar(
+        select(func.count()).select_from(PlanMeal).join(Plan).where(
+            PlanMeal.recipe_id == recipe.id, Plan.household_id != hh.id)
+    ) or session.scalar(
+        select(func.count()).select_from(WishlistItem).join(Plan).where(
+            WishlistItem.recipe_id == recipe.id, Plan.household_id != hh.id)
+    )
+    if in_use:
+        raise HTTPException(status_code=409, detail="Opskriften bruges af en anden familie og kan ikke slettes")
     image = recipe.image_file
     session.delete(recipe)
     session.commit()
@@ -309,41 +354,50 @@ def _external_hits(session: Session, q: str, search) -> list[ExternalHit]:
 
 
 @router.get("/search/valdemarsro")
-def search_valdemarsro_route(session: DbSession, _: CurrentUser, q: str = "") -> list[ExternalHit]:
+def search_valdemarsro_route(session: DbSession, _: CurrentHousehold, q: str = "") -> list[ExternalHit]:
     return _external_hits(session, q, search_valdemarsro.search)
 
 
 @router.get("/search/nemlig")
-def search_nemlig_route(session: DbSession, _: CurrentUser, q: str = "") -> list[ExternalHit]:
+def search_nemlig_route(session: DbSession, _: CurrentHousehold, q: str = "") -> list[ExternalHit]:
     """Kun nemlig.coms opskrifter, ikke deres varer."""
     return _external_hits(session, q, search_nemlig.search)
 
 
 # --- Tjek af ingredienser på tværs af opskrifter -----------------------------
 
+def _own_line(session: Session, line_id: int, hh: Household) -> RecipeIngredient | None:
+    """Linjen, hvis den står i en opskrift, familien ejer; ellers None (-> 404)."""
+    return session.scalar(
+        select(RecipeIngredient).join(Recipe)
+        .where(RecipeIngredient.id == line_id, Recipe.created_by_household == hh.id)
+    )
+
+
 @router.get("/review")
-def review(session: DbSession, _: CurrentUser) -> list[ReviewLine]:
-    """Linjer, hvor varen er usikker eller mangler."""
+def review(session: DbSession, hh: CurrentHousehold) -> list[ReviewLine]:
+    """Linjer, hvor varen er usikker eller mangler (kun i familiens egne opskrifter)."""
+    pantry = pantry_ids(session, hh.id)
     rows = session.execute(
         select(RecipeIngredient, Recipe.title)
         .join(Recipe)
-        .where(RecipeIngredient.match_status.in_(NEEDS_REVIEW))
+        .where(RecipeIngredient.match_status.in_(NEEDS_REVIEW), Recipe.created_by_household == hh.id)
         .options(selectinload(RecipeIngredient.ingredient))
         .order_by(RecipeIngredient.item, Recipe.title)
     )
     return [
         ReviewLine(
             id=l.id, recipe_id=l.recipe_id, recipe_title=title, raw=l.raw, item=l.item, unit=l.unit,
-            ingredient=ingredient_ref(l.ingredient), match_status=l.match_status,
+            ingredient=ingredient_ref(l.ingredient, pantry), match_status=l.match_status,
         )
         for l, title in rows
     ]
 
 
 @router.post("/lines/{line_id}/confirm")
-def confirm_line(line_id: int, body: LineConfirmIn, session: DbSession, _: CurrentUser) -> dict:
+def confirm_line(line_id: int, body: LineConfirmIn, session: DbSession, hh: CurrentHousehold) -> dict:
     """Bekræft varen for en linje. Samme varenavn i andre opskrifter rettes også."""
-    line = session.get(RecipeIngredient, line_id)
+    line = _own_line(session, line_id, hh)
     ing = session.get(Ingredient, body.ingredient_id)
     if line is None or ing is None:
         raise HTTPException(status_code=404, detail="Linje eller vare findes ikke")
@@ -360,9 +414,9 @@ class MainIn(BaseModel):
 
 
 @router.put("/lines/{line_id}/main")
-def set_main(line_id: int, body: MainIn, session: DbSession, _: CurrentUser) -> dict:
+def set_main(line_id: int, body: MainIn, session: DbSession, hh: CurrentHousehold) -> dict:
     """Sæt eller fjern stjernen (hovedingrediens) på en linje. Der må være flere."""
-    line = session.get(RecipeIngredient, line_id)
+    line = _own_line(session, line_id, hh)
     if line is None:
         raise HTTPException(status_code=404, detail="Linjen findes ikke")
     line.is_main = body.is_main
@@ -371,9 +425,9 @@ def set_main(line_id: int, body: MainIn, session: DbSession, _: CurrentUser) -> 
 
 
 @router.post("/lines/{line_id}/ignore")
-def ignore_line(line_id: int, session: DbSession, _: CurrentUser) -> dict:
+def ignore_line(line_id: int, session: DbSession, hh: CurrentHousehold) -> dict:
     """Linjen skal ikke kobles til en vare (fx "vand" eller en pyntebemærkning)."""
-    line = session.get(RecipeIngredient, line_id)
+    line = _own_line(session, line_id, hh)
     if line is None:
         raise HTTPException(status_code=404, detail="Linjen findes ikke")
     line.ingredient_id = None

@@ -12,9 +12,17 @@ class LoginIn(BaseModel):
     password: str = Field(max_length=200)
 
 
+class HouseholdOut(BaseModel):
+    id: int
+    name: str
+    role: Literal["admin", "medlem"]
+
+
 class UserOut(BaseModel):
     id: int
     username: str
+    is_system_admin: bool = False
+    household: HouseholdOut | None = None
 
 
 class IngredientRef(BaseModel):
@@ -77,6 +85,8 @@ class RecipeOut(BaseModel):
     servings: int | None
     instructions: list[str]
     child_note: str
+    # Familien ejer opskriften og kan rette den. Ellers er den kun til at bruge.
+    owned: bool
     source_url: str | None
     image_url: str | None
     ingredients: list[LineOut]
@@ -93,6 +103,7 @@ class RecipeSummary(BaseModel):
     # Alle varer i opskriften, så søgningen også finder "kylling" i ingredienserne
     ingredients: list[str] = []
     to_review: int
+    owned: bool
 
 
 class ImportIn(BaseModel):

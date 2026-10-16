@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session, selectinload, sessionmaker
 
 from . import push
 from .config import local_now
-from .models import MealReminder, PlanMeal, PushSubscription, Setting
+from .models import HouseholdMember, MealReminder, Plan, PlanMeal, PushSubscription, Setting
 
 log = logging.getLogger("madplan")
 
@@ -80,12 +80,17 @@ def message(reminder: MealReminder, today: date) -> dict:
 
 def subject(session: Session) -> str:
     """Kontakt til push-tjenesten: appens egen adresse (gemt, da en telefon meldte sig)."""
-    s = session.get(Setting, SUBJECT_KEY)
+    s = session.get(Setting, (0, SUBJECT_KEY))
     return s.value if s else "https://madplan.invalid"
 
 
-def targets(session: Session) -> list[PushSubscription]:
-    return list(session.scalars(select(PushSubscription)))
+def targets(session: Session, household_id: int) -> list[PushSubscription]:
+    """Telefonerne hos familiens medlemmer. Andre familiers telefoner får intet."""
+    return list(session.scalars(
+        select(PushSubscription).join(HouseholdMember, HouseholdMember.user_id == PushSubscription.user_id)
+        .where(HouseholdMember.household_id == household_id)
+        .order_by(PushSubscription.id)
+    ))
 
 
 def send_to(session: Session, subs: list[PushSubscription], msg: dict, key, post) -> bool:
@@ -109,13 +114,14 @@ def send_due(sm: sessionmaker, data_dir: Path, now: datetime | None = None, post
     dates = [today, today + timedelta(days=1)]
     post = post or push.httpx.post
     with sm() as session:
-        if not targets(session):
+        if not session.scalar(select(PushSubscription.id).limit(1)):
             # Ingen telefoner endnu: påmindelserne venter, så de kan nå frem samme
             # dag, hvis nogen slår beskeder til.
             return 0
         due = session.scalars(
             select(MealReminder)
             .join(PlanMeal)
+            .join(Plan)
             .where(
                 MealReminder.done.is_(False),
                 PlanMeal.date.in_(dates),
@@ -130,10 +136,14 @@ def send_due(sm: sessionmaker, data_dir: Path, now: datetime | None = None, post
             return 0
         key = push.load_key(data_dir)
         sent = 0
+        by_household: dict[int, list[PushSubscription]] = {}
         for r in due:
-            subs = targets(session)
+            hid = r.meal.plan.household_id
+            if hid not in by_household:
+                by_household[hid] = targets(session, hid)
+            subs = by_household[hid]
             if not subs:
-                break
+                continue  # familien har ingen telefoner endnu; påmindelsen venter
             # Kom den ikke frem (fx intet net), prøves der igen om lidt.
             if send_to(session, subs, message(r, today), key, post):
                 r.sent_on = today

@@ -9,9 +9,31 @@ from fastapi.testclient import TestClient
 from madplan.api import create_app
 from madplan.auth import hash_password
 from madplan.config import Settings
-from madplan.models import User
+from madplan.households import add_member, create_household
+from madplan.models import Household, User
 
 PASSWORD = "et-langt-kodeord"
+
+
+def add_user(app, username: str, household: str | int, role: str = "admin") -> int:
+    """Bruger i en familie (oprettes, hvis navnet er ukendt). Returnerer familiens id."""
+    with app.state.db.sessionmaker() as s:
+        if isinstance(household, int):
+            h = s.get(Household, household)
+        else:
+            h = s.query(Household).filter_by(name=household).one_or_none() or create_household(s, household)
+        user = User(username=username, password_hash=hash_password(PASSWORD))
+        s.add(user)
+        s.flush()
+        add_member(s, h, user, role)
+        s.commit()
+        return h.id
+
+
+def login(app, username: str) -> TestClient:
+    c = TestClient(app)
+    assert c.post("/api/login", json={"username": username, "password": PASSWORD}).status_code == 200
+    return c
 
 
 @pytest.fixture
@@ -22,9 +44,7 @@ def app(tmp_path):
 @pytest.fixture
 def anon(app):
     with TestClient(app) as c:
-        with app.state.db.sessionmaker() as s:
-            s.add(User(username="max", password_hash=hash_password(PASSWORD)))
-            s.commit()
+        add_user(app, "max", "Familie A")
         yield c
 
 

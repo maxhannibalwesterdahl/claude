@@ -18,7 +18,8 @@ def _routes(app):
     """Alle /api-ruter (fra OpenAPI-skemaet) undtagen login og helbred."""
     skip = {"/api/login", "/api/logout", "/api/health", "/api/{rest}"}
     for path, ops in app.openapi()["paths"].items():
-        if path.startswith("/api") and path not in skip:
+        # /api/admin har sin egen matrix (test_admin.py): 404 uden admin-session.
+        if path.startswith("/api") and not path.startswith("/api/admin") and path not in skip:
             for method in ops:
                 yield method.upper(), path
 

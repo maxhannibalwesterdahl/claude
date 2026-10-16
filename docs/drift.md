@@ -28,6 +28,17 @@ docker compose exec app madplan-admin create-household "Familien Hansen"
 docker compose exec app madplan-admin list-households
 docker compose exec app madplan-admin create-user max --household "Familien Hansen"   # --medlem: ikke familie-admin
 docker compose exec app madplan-admin set-system-admin max    # --fjern: tag det igen
+```
+
+### Admin-siden
+
+Systemadmin styrer familier, brugere og opskrifter på `/admin` (samme adresse som
+appen, ingen link i appen). Log ind med en bruger, der er sat som systemadmin; det er
+et eget login, der gælder i 12 timer. Alle andre får 404 på siden og dens API.
+Loginforsøg begrænses til 5 pr. 5 minutter pr. IP og pr. brugernavn, og alt, admin
+gør, står i loggen (`madplan.admin`). Tofaktor er ikke bygget endnu.
+
+```sh
 docker compose exec app madplan-admin set-password max   # logger også ud på alle enheder
 docker compose exec app madplan-admin list-users
 ```

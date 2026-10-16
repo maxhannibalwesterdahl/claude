@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Madplan – admin</title>
+<link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+<header>
+  <h1>Madplan admin</h1>
+  <nav id="nav" hidden>
+    <button data-tab="households" class="tab">Familier</button>
+    <button data-tab="recipes" class="tab">Opskrifter</button>
+    <button id="logout" class="quiet">Log ud</button>
+  </nav>
+</header>
+<p id="msg" role="status"></p>
+
+<main id="login" hidden>
+  <form id="login-form">
+    <label>Brugernavn <input name="username" autocomplete="username" autocapitalize="none" required></label>
+    <label>Kodeord <input name="password" type="password" autocomplete="current-password" required></label>
+    <button type="submit">Log ind</button>
+  </form>
+</main>
+
+<main id="households" hidden>
+  <form id="new-household" class="row">
+    <input name="name" placeholder="Ny familie, fx Familien Hansen" maxlength="100" required>
+    <button type="submit">Opret familie</button>
+  </form>
+  <div id="household-list"></div>
+</main>
+
+<main id="recipes" hidden>
+  <input id="recipe-filter" type="search" placeholder="Søg i opskrifter">
+  <table>
+    <thead><tr><th>Titel</th><th>Ejer</th><th>Linjer</th><th>I planer</th><th></th></tr></thead>
+    <tbody id="recipe-rows"></tbody>
+  </table>
+</main>
+<script src="/admin/admin.js"></script>
+</body>
+</html>

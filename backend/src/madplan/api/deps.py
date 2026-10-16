@@ -29,7 +29,7 @@ def current_user(request: Request, session: DbSession, settings: AppSettings) ->
     found = read_session(settings.secret, request.cookies.get(COOKIE))
     if found:
         user = session.get(User, found[0])
-        if user and user.session_version == found[1]:
+        if user and not user.disabled and user.session_version == found[1]:
             return user
     raise HTTPException(status_code=401, detail="Ikke logget ind")
 

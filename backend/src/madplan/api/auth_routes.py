@@ -30,7 +30,7 @@ def login(body: LoginIn, request: Request, response: Response, session: DbSessio
         raise HTTPException(status_code=429, detail="Mange logger ind lige nu. Prøv igen om lidt.")
     try:
         user = session.scalar(select(User).where(User.username == body.username.strip().lower()))
-        ok = verify_password(user.password_hash if user else None, body.password) and user is not None
+        ok = verify_password(user.password_hash if user else None, body.password) and user is not None and not user.disabled
     finally:
         HASH_GATE.release()
     if not ok:

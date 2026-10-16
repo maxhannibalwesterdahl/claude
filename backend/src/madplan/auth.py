@@ -44,8 +44,8 @@ def _sign(secret: str, payload: str) -> str:
     return hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
 
 
-def make_session(secret: str, user_id: int, version: int, now: float | None = None) -> str:
-    expires = int((now or time.time()) + SESSION_DAYS * 86400)
+def make_session(secret: str, user_id: int, version: int, now: float | None = None, days: float = SESSION_DAYS) -> str:
+    expires = int((now or time.time()) + days * 86400)
     payload = f"{user_id}.{version}.{expires}"
     return f"{payload}.{_sign(secret, payload)}"
 

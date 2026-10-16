@@ -28,6 +28,8 @@ class User(Base):
     session_version: Mapped[int] = mapped_column(Integer, default=1)
     # Må oprette familier og se alle (docs/flere-familier.md §5a).
     is_system_admin: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    # Spærret af systemadmin: kan ikke logge ind, og cookies holder op med at virke.
+    disabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

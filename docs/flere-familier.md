@@ -3,7 +3,7 @@
 Status: gennemtænkt 30-09-2026, opdateret med jeres svar 01-10-2026. **Trin 1-2 i
 afsnit 10 er bygget (16-10-2026):** datamodel, migration 0007, `CurrentHousehold`,
 alle ruter afgrænset til familien og test-matrixen (`backend/tests/test_qa_adgang.py`).
-Resten (admin-side, invitationer, vores samling, tilpasninger, historik) er ikke bygget.
+Admin-siden på `/admin` er også bygget (familier, brugere, kodeord, spærring, opskrifter; uden tofaktor og invitationslinks). Resten ( invitationer, vores samling, tilpasninger, historik) er ikke bygget.
 Kun ejerfamilien (`recipe.created_by_household`) kan rette en fælles opskrift; andre får
 404. Familiens note om barnet og basisvarer ligger i `household_recipe_note` og
 `household_pantry`; `recipe.child_note` og `ingredient.pantry` er forældede kolonner

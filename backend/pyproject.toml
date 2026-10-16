@@ -34,4 +34,4 @@ where = ["src"]
 testpaths = ["tests"]
 
 [tool.setuptools.package-data]
-madplan = ["ingredients/data/*.txt", "migrations/*.py", "migrations/script.py.mako", "migrations/versions/*.py"]
+madplan = ["admin_site/*", "ingredients/data/*.txt", "migrations/*.py", "migrations/script.py.mako", "migrations/versions/*.py"]

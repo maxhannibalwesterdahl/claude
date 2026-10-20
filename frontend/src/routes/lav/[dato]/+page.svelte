@@ -45,7 +45,7 @@
 			}
 			const meals = current?.days.find((x) => x.date === d);
 			const known = untrack(() => recipes);
-			const missing = [meals?.meal, meals?.child]
+			const missing = [meals?.meal]
 				.map((m) => m?.recipe?.id)
 				.filter((id): id is number => !!id && (fresh || !known[id]));
 			const fetched = await Promise.all(missing.map((id) => api<Recipe>(`/recipes/${id}`)));
@@ -183,10 +183,11 @@
 
 {#snippet childNotes()}
 	{#if recipe?.child_note}<p class="note"><b>Barnet:</b> {recipe.child_note}</p>{/if}
-	{#if day?.child}
+	{#if day?.extras.length}
 		<p class="note">
-			<b>Barnet får:</b>
-			{#if day.child.recipe}<a class="link" href="/opskrift/{day.child.recipe.id}">{day.child.title}</a>{:else}{day.child.title}{/if}
+			<b>Også på bordet:</b>
+			{#each day.extras as x, i (x.id)}{#if i},{/if}
+				{#if x.recipe}<a class="link" href="/opskrift/{x.recipe.id}">{x.title}</a>{:else}{x.title}{/if}{/each}
 		</p>
 	{/if}
 {/snippet}

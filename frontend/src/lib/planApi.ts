@@ -1,21 +1,20 @@
 import { api } from './api';
-import type { FillPick, FillProposal, Plan, SlotChoice } from './types';
+import type { FillPick, FillProposal, Plan, Slot, SlotChoice } from './types';
 
 /** Alle ændringer i planen svarer med hele planen, så siden altid viser serverens udgave. */
 export const planApi = {
-	setSlot(plan: Plan, date: string, forChild: boolean, choice: SlotChoice, multiplier = 1): Promise<Plan> {
+	setSlot(plan: Plan, date: string, slot: Slot, choice: SlotChoice, multiplier = 1): Promise<Plan> {
+		const where = { date, extra: slot.extra, replace_id: slot.extra ? (slot.replaceId ?? null) : null };
 		if (choice.kind === 'ønske') {
-			return api<Plan>(`/wishlist/${choice.wish_id}/place`, { method: 'POST', body: { date, for_child: forChild } });
+			return api<Plan>(`/wishlist/${choice.wish_id}/place`, { method: 'POST', body: where });
 		}
-		return api<Plan>(`/plans/${plan.id}/slots`, {
-			method: 'PUT',
-			body: { date, for_child: forChild, multiplier, ...choice }
-		});
+		return api<Plan>(`/plans/${plan.id}/slots`, { method: 'PUT', body: { ...where, multiplier, ...choice } });
 	},
 	patchMeal: (mealId: number, body: { multiplier?: number; text?: string; leftover_from_id?: number | null }) =>
 		api<Plan>(`/meals/${mealId}`, { method: 'PATCH', body }),
-	move: (mealId: number, date: string, forChild: boolean) =>
-		api<Plan>(`/meals/${mealId}/move`, { method: 'POST', body: { date, for_child: forChild } }),
+	/** Som hovedret byttes retten med dagens hovedret. Som ekstra ret lægges den til dagens andre. */
+	move: (mealId: number, date: string, extra = false) =>
+		api<Plan>(`/meals/${mealId}/move`, { method: 'POST', body: { date, extra } }),
 	remove: (mealId: number) => api<Plan>(`/meals/${mealId}`, { method: 'DELETE' }),
 	setLine: (mealId: number, lineId: number, state: 'hjemme' | 'rest' | null) =>
 		api<Plan>(`/meals/${mealId}/lines/${lineId}`, { method: 'PUT', body: { state } }),

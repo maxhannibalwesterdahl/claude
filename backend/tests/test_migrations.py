@@ -60,3 +60,39 @@ def test_batch_migration_keeps_child_rows(tmp_path):
     assert len(list((tmp_path / "backups").glob("premigrate-*.db"))) == 1
     # Allerede nyeste version: ingen ny migration og ingen ny kopi.
     assert migrate(engine, script_location=str(scripts), backup_dir=tmp_path / "backups") is False
+
+
+def test_child_meals_become_extra_meals(tmp_path):
+    """0017: barnets ret bliver en ekstra ret med påmindelser og markeringer i behold,
+    og en dag kan derefter have flere ekstra retter, men stadig kun én hovedret."""
+    from alembic import command
+    from sqlalchemy.exc import IntegrityError
+
+    from madplan.db import alembic_config
+
+    url = f"sqlite:///{tmp_path / 'madplan.db'}"
+    engine = make_engine(url)
+    command.upgrade(alembic_config(url), "b2e6d1f3a4c5")
+    with engine.begin() as c:
+        c.execute(text("INSERT INTO household (id, name, created_at) VALUES (1, 'F', '2026-01-01')"))
+        c.execute(text("INSERT INTO plan (id, household_id, start_date, days, created_at) VALUES (1, 1, '2026-10-26', 7, '2026-10-20')"))
+        c.execute(text("INSERT INTO plan_meal (id, plan_id, date, for_child, kind, text, multiplier) VALUES "
+                       "(1, 1, '2026-10-26', 0, 'fritekst', 'Pizza', 1), (2, 1, '2026-10-26', 1, 'fritekst', 'Grød', 1)"))
+        c.execute(text("INSERT INTO meal_reminder (id, meal_id, text, done, again_on, created_at) "
+                       "VALUES (1, 2, 'Havregryn', 0, 1, '2026-10-20')"))
+
+    assert migrate(engine) is True
+    q = lambda sql: engine.connect().execute(text(sql)).all()  # noqa: E731
+    assert q("SELECT id, extra, text FROM plan_meal ORDER BY id") == [(1, 0, "Pizza"), (2, 1, "Grød")]
+    assert q("SELECT meal_id FROM meal_reminder") == [(2,)]
+    with engine.begin() as c:
+        c.execute(text("INSERT INTO plan_meal (plan_id, date, extra, kind, text, multiplier) "
+                       "VALUES (1, '2026-10-26', 1, 'fritekst', 'Salat', 1)"))
+    try:
+        with engine.begin() as c:
+            c.execute(text("INSERT INTO plan_meal (plan_id, date, extra, kind, text, multiplier) "
+                           "VALUES (1, '2026-10-26', 0, 'fritekst', 'Tacos', 1)"))
+        raise AssertionError("to hovedretter på samme dag")
+    except IntegrityError:
+        pass
+    assert q("PRAGMA foreign_key_check") == []

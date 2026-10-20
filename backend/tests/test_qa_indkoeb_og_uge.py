@@ -20,7 +20,7 @@ def recipe(client, title, lines):
 
 def put(client, pid, d, rec, mult=1.0, child=False):
     r = client.put(f"/api/plans/{pid}/slots", json={"date": d, "kind": "opskrift", "recipe_id": rec["id"],
-                                                    "multiplier": mult, "for_child": child})
+                                                    "multiplier": mult, "extra": child})
     assert r.status_code == 200, r.text
     return r.json()
 

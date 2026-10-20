@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { confirmState } from './confirm.svelte';
+	import { confirmState, type ConfirmAnswer } from './confirm.svelte';
 
 	let dialog: HTMLDialogElement | undefined = $state();
 	const request = $derived(confirmState.request);
@@ -10,11 +10,11 @@
 		if (request && !dialog?.open) dialog?.showModal();
 	});
 
-	function answer(ok: boolean) {
+	function answer(a: ConfirmAnswer) {
 		const r = confirmState.request;
 		confirmState.request = null;
 		dialog?.close();
-		r?.resolve(ok);
+		r?.resolve(a);
 	}
 </script>
 
@@ -24,15 +24,16 @@
 	aria-labelledby="confirm-message"
 	oncancel={(e) => {
 		e.preventDefault();
-		answer(false);
+		answer(null);
 	}}
 >
 	{#if request}
 		<p id="confirm-message">{request.message}</p>
 		<!-- Samme tomat, uanset om svaret sletter noget: der er kun én handlingsfarve. -->
-		<div class="btns">
-			<button class="btn" onclick={() => answer(false)}>Annullér</button>
-			<button class="btn primary" onclick={() => answer(true)}>{request.confirmLabel}</button>
+		<div class="btns" class:three={!!request.altLabel}>
+			<button class="btn" onclick={() => answer(null)}>Annullér</button>
+			{#if request.altLabel}<button class="btn" onclick={() => answer('alt')}>{request.altLabel}</button>{/if}
+			<button class="btn primary" onclick={() => answer('ok')}>{request.confirmLabel}</button>
 		</div>
 	{/if}
 </dialog>
@@ -47,6 +48,13 @@
 	}
 	dialog::backdrop {
 		background: var(--scrim);
+	}
+	/* Tre valg: under hinanden, det vigtigste øverst. */
+	.three {
+		flex-direction: column-reverse;
+	}
+	.three > * {
+		flex: none;
 	}
 	p {
 		margin-bottom: 18px;

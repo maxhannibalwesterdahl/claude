@@ -4,7 +4,7 @@
 	import { formatQuantity } from '$lib/format';
 	import { groupLines } from '$lib/lines';
 	import { planApi } from '$lib/planApi';
-	import type { Day, LineState, Meal, MealLine, Plan } from '$lib/types';
+	import { MAIN, type Day, type LineState, type Meal, type MealLine, type Plan } from '$lib/types';
 	import { say } from '$lib/ui/copy';
 	import Icon from '$lib/ui/Icon.svelte';
 	import IngredientRow from '$lib/ui/IngredientRow.svelte';
@@ -16,20 +16,20 @@
 		week: Week;
 		plan: Plan;
 		day: Day;
-		/** Retten, panelet handler om. null: dagen har kun barnets ret. */
+		/** Retten, panelet handler om. null: dagen har kun ekstra retter. */
 		meal: Meal | null;
-		/** Panelet viser barnets ret. */
-		forChild: boolean;
+		/** Panelet viser en ekstra ret. */
+		extra: boolean;
 		/** En ændring er på vej: knapperne er slået fra. */
 		busy: boolean;
 		/** Kører en ændring og siger det roligt, hvis det ikke gik. Svarer true, når det lykkedes. */
 		run: (fn: () => Promise<Plan>) => Promise<boolean>;
-		/** Åbner vælgeren for barnets ret. */
-		onchild: () => void;
-		/** Skifter mellem husstandens og barnets ret. */
-		onswap: (child: boolean) => void;
+		/** Åbner vælgeren for en ny ekstra ret. */
+		onadd: () => void;
+		/** Viser en ekstra ret (id) eller hovedretten (null). */
+		onshow: (id: number | null) => void;
 	}
-	let { week, plan, day, meal, forChild, busy, run, onchild, onswap }: Props = $props();
+	let { week, plan, day, meal, extra, busy, run, onadd, onshow }: Props = $props();
 
 	const MULTS = [
 		{ value: 0.5, label: '×½' },
@@ -44,7 +44,7 @@
 	const have = $derived(meal?.lines.filter((l) => l.state).length ?? 0);
 	// Første senere dag uden ret: den kan få resterne, hvis der laves dobbelt.
 	const later = $derived(plan.days.find((d) => d.date > day.date && !d.meal) ?? null);
-	const canDouble = $derived(!!recipe && !forChild && meal!.multiplier === 1 && !!later);
+	const canDouble = $derived(!!recipe && !extra && meal!.multiplier === 1 && !!later);
 
 	// Mængden: det sidst trykkede gælder. Trykkes der flere gange hurtigt, sendes
 	// ét ad gangen, og kun det seneste valg sendes videre, så visningen ikke hopper.
@@ -90,7 +90,7 @@
 		const id = meal.id;
 		const target = later.date;
 		if (await run(() => planApi.patchMeal(id, { multiplier: 2 }))) {
-			await run(() => planApi.setSlot(plan, target, false, { kind: 'rester', leftover_from_id: id }));
+			await run(() => planApi.setSlot(plan, target, MAIN, { kind: 'rester', leftover_from_id: id }));
 		}
 	}
 
@@ -106,8 +106,8 @@
 </script>
 
 <div class="panel" aria-busy={busy}>
-	{#if forChild}
-		<button type="button" class="link up" onclick={() => onswap(false)}><Icon name="left" size={16} stroke={2.2} />Aftensmad</button>
+	{#if extra}
+		<button type="button" class="link up" onclick={() => onshow(null)}><Icon name="left" size={16} stroke={2.2} />{day.meal?.title ?? 'Aftensmad'}</button>
 	{/if}
 
 	{#if meal && !recipe}
@@ -123,30 +123,26 @@
 		</div>
 	{/if}
 
-	{#if !forChild}
-		<div class="kv">
-			{#if day.child}
-				<!-- Tryk på navnet viser barnets ret med de samme muligheder som husstandens. -->
-				<button type="button" class="k open" onclick={() => onswap(true)}>
-					Barnet<small>{day.child.title}</small>
+	{#if !extra}
+		<!-- Flere retter på dagen: grød til barnet, en salat ved siden af. Tryk på
+		     navnet viser retten med de samme muligheder som hovedretten. -->
+		{#each day.extras as x (x.id)}
+			<div class="kv">
+				<button type="button" class="k open" onclick={() => onshow(x.id)}>
+					{x.title}<small>{x.kind === 'opskrift' ? 'Ekstra ret' : 'Ekstra ret · ingen indkøb'}</small>
 				</button>
-				<span class="acts">
-					<button type="button" class="v" disabled={busy} onclick={onchild}>Skift</button>
-					<button
-						type="button"
-						class="btn quiet sm"
-						disabled={busy}
-						aria-label="Fjern barnets ret"
-						onclick={() => {
-							const id = day.child!.id;
-							run(() => planApi.remove(id));
-						}}>Fjern</button
-					>
-				</span>
-			{:else}
-				<p class="k">Barnet<small>Samme som de voksne</small></p>
-				<button type="button" class="v" disabled={busy} onclick={onchild}>Noget andet</button>
-			{/if}
+				<button
+					type="button"
+					class="btn quiet sm"
+					disabled={busy}
+					aria-label="Fjern {x.title}"
+					onclick={() => run(() => planApi.remove(x.id))}>Fjern</button
+				>
+			</div>
+		{/each}
+		<div class="kv">
+			<p class="k">{day.extras.length ? 'Endnu en ret' : 'Flere retter'}<small>Fx grød til barnet eller en salat</small></p>
+			<button type="button" class="v" disabled={busy} onclick={onadd}>Tilføj</button>
 		</div>
 	{/if}
 
@@ -226,7 +222,7 @@
 	{#if recipe}
 		<p class="links pad">
 			<a class="link" href="/opskrift/{recipe.id}">Se opskriften</a>
-			{#if !forChild}<a class="link" href="/lav/{day.date}">Lav mad</a>{/if}
+			{#if !extra}<a class="link" href="/lav/{day.date}">Lav mad</a>{/if}
 		</p>
 	{/if}
 </div>
@@ -252,12 +248,6 @@
 		flex: 1;
 		align-self: stretch;
 		text-align: left;
-	}
-	.acts {
-		flex: none;
-		display: flex;
-		align-items: center;
-		gap: 4px;
 	}
 	.v:disabled {
 		opacity: 0.5;

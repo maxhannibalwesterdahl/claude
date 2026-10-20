@@ -1,21 +1,21 @@
 <script lang="ts">
 	import { weekdayName } from '$lib/dates';
 	import { formatNumber, mult } from '$lib/format';
-	import type { Day, Wish } from '$lib/types';
+	import type { Day } from '$lib/types';
+	import { draggable, dropzone } from '$lib/ui/drag.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import Plate from '$lib/ui/Plate.svelte';
 
 	interface Props {
 		day: Day;
-		/** Ønsker, der tilbydes, når der ingen ret er i aften. */
-		wishes?: Wish[];
 		/** Åbner dagen (arket med retten, eller vælgeren, når dagen er tom). */
 		onopen: () => void;
 		/** Åbner vælgeren for aftensmaden. */
 		onchoose: () => void;
-		onplace?: (wish: Wish) => void;
+		/** Noget er trukket hen på i aften ("meal:<id>", "wish:<id>" eller "recipe:<id>"). */
+		ondrop: (payload: string) => void;
 	}
-	let { day, wishes = [], onopen, onchoose, onplace }: Props = $props();
+	let { day, onopen, onchoose, ondrop }: Props = $props();
 
 	const meal = $derived(day.meal);
 	const recipe = $derived(meal?.kind === 'opskrift' ? meal.recipe : null);
@@ -24,7 +24,7 @@
 		[
 			recipe?.servings ? `${formatNumber(recipe.servings * meal!.multiplier)} pers.` : '',
 			meal && !recipe ? 'Ingen indkøb' : '',
-			day.child ? `Barnet: ${day.child.title}` : '',
+			day.extras.length ? `Også: ${day.extras.map((x) => x.title).join(', ')}` : '',
 			husk.length ? `Husk: ${husk.join(', ')}` : ''
 		]
 			.filter(Boolean)
@@ -33,8 +33,8 @@
 </script>
 
 <!-- Dagens ret fylder mest: det er den, der skal laves. Tryk på kortet åbner dagen. -->
-<section class="card tonight" aria-label="I aften">
-	<button type="button" class="body" data-day={day.date} onclick={onopen}>
+<section class="card tonight" aria-label="I aften" use:dropzone={ondrop}>
+	<button type="button" class="body" data-day={day.date} onclick={onopen} use:draggable={meal ? `meal:${meal.id}` : ''}>
 		<span class="grow">
 			<span class="lab">I aften · {weekdayName(day.date)}</span>
 			{#if meal}
@@ -46,13 +46,6 @@
 		</span>
 		{#if recipe}<Plate src={recipe.image_url} seed={recipe.id} size={72} />{/if}
 	</button>
-	{#if !meal && !day.child && wishes.length}
-		<div class="chips">
-			{#each wishes as w (w.id)}
-				<button type="button" class="chip" onclick={() => onplace?.(w)}><span class="ellipsis">{w.title}</span></button>
-			{/each}
-		</div>
-	{/if}
 	<div class="btns">
 		{#if recipe}
 			<a class="btn primary" href="/lav/{day.date}"><Icon name="play" size={16} />Lav mad</a>
@@ -86,9 +79,6 @@
 		font-size: var(--fs-dish);
 		line-height: 28px;
 		font-weight: 700;
-	}
-	.chips {
-		margin-top: 10px;
 	}
 	.btns {
 		margin-top: 14px;

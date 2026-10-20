@@ -116,7 +116,7 @@ def export_household(session: Session, household: Household) -> dict:
             {
                 "start_date": p.start_date.isoformat(), "days": p.days,
                 "meals": [
-                    {"date": m.date.isoformat(), "for_child": m.for_child, "kind": m.kind, "text": m.text,
+                    {"date": m.date.isoformat(), "extra": m.extra, "kind": m.kind, "text": m.text,
                      "recipe_id": m.recipe_id, "multiplier": m.multiplier,
                      "reminders": [{"text": r.text, "done": r.done} for r in m.reminders]}
                     for m in meals if m.plan_id == p.id

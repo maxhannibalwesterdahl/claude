@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { api, ApiError } from '$lib/api';
-	import { confirmDialog } from '$lib/confirm.svelte';
+	import { chooseDialog } from '$lib/confirm.svelte';
 	import { parseDate, periodLong, weekdayName, weekTitle } from '$lib/dates';
 	import { planApi } from '$lib/planApi';
 	import { clock } from '$lib/resume.svelte';
@@ -9,7 +9,7 @@
 	import { say } from '$lib/ui/copy';
 	import Sheet from '$lib/ui/Sheet.svelte';
 	import WeekNav from '$lib/ui/WeekNav.svelte';
-	import type { Day, Plan, PlanBrief } from '$lib/types';
+	import { EXTRA, MAIN, type Day, type Plan, type PlanBrief } from '$lib/types';
 
 	interface Props {
 		recipe: { id: number; title: string };
@@ -77,8 +77,14 @@
 	async function place(day: Day, close: () => void) {
 		const p = plan;
 		if (!p || busy) return;
-		if (day.meal && !(await confirmDialog(`Erstat ${day.meal.title} ${weekdayName(day.date).toLowerCase()}?`, 'Erstat'))) return;
-		await run(close, day.date, () => planApi.setSlot(p, day.date, false, { kind: 'opskrift', recipe_id: recipe.id }));
+		// Står der en ret: erstat den, eller læg opskriften ved siden af som ekstra ret.
+		let slot = MAIN;
+		if (day.meal) {
+			const answer = await chooseDialog(`${weekdayName(day.date)} står der ${day.meal.title}.`, 'Erstat', 'Tilføj som ekstra ret');
+			if (!answer) return;
+			if (answer === 'alt') slot = EXTRA;
+		}
+		await run(close, day.date, () => planApi.setSlot(p, day.date, slot, { kind: 'opskrift', recipe_id: recipe.id }));
 	}
 
 	async function wish(close: () => void) {

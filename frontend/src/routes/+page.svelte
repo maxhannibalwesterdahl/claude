@@ -21,7 +21,7 @@
 	import ShoppingAside from '$lib/uge/ShoppingAside.svelte';
 	import TonightCard from '$lib/uge/TonightCard.svelte';
 	import WeekGrid from '$lib/uge/WeekGrid.svelte';
-	import WishCard from '$lib/uge/WishCard.svelte';
+	import WishSection from '$lib/uge/WishSection.svelte';
 	import WishlistSheet from '$lib/uge/WishlistSheet.svelte';
 	import { Week } from '$lib/uge/week.svelte';
 
@@ -48,7 +48,6 @@
 
 	const plan = $derived(week.plan);
 	const planId = $derived(week.plan?.id);
-	const hasToday = $derived(!!plan?.days.some((d) => d.date === clock.today));
 	// Der er en tom dag, der ikke er gået: så kan ugen fyldes.
 	const canFill = $derived(!!plan?.days.some((d) => !d.meal && !d.extras.length && d.date >= clock.today));
 
@@ -244,15 +243,6 @@
 			</ScreenHeader>
 			{@render messages()}
 
-			{#snippet wishes()}
-				{#if plan.wishlist.length}
-					<WishCard {plan} freeDays={week.freeDays} ondistribute={() => week.distribute()} onshow={() => (sheet = { kind: 'wishlist' })} />
-				{/if}
-			{/snippet}
-
-			<!-- Ønskerne står øverst, når ugen ikke er begyndt (eller er slut): så er det dem, der skal handles på. -->
-			{#if !hasToday}{@render wishes()}{/if}
-
 			{#each plan.days as d (d.date)}
 				{#if d.date === clock.today}
 					<TonightCard day={d} onopen={() => openDay(d.date)} onchoose={() => openChooser(d.date)} ondrop={(p) => drop(p, d)} />
@@ -261,16 +251,11 @@
 				{/if}
 			{/each}
 
-			{#if hasToday}{@render wishes()}{/if}
+			<!-- Ønskelisten står lige under dagene, så ønskerne kan trækkes op på en dag. -->
+			<WishSection {plan} freeDays={week.freeDays} ondistribute={() => week.distribute()} onshow={() => (sheet = { kind: 'wishlist' })} />
 
 			{#if canFill}
-				<p class="fill"><button type="button" class="btn sm" onclick={() => (sheet = { kind: 'fill' })}>Fyld ugen</button></p>
-			{/if}
-
-			{#if !plan.wishlist.length}
-				<p class="sl">
-					Ønskeliste<button type="button" class="link add" onclick={() => (sheet = { kind: 'wishlist' })}>Tilføj</button>
-				</p>
+				<p class="fill pad"><button type="button" class="btn sm" onclick={() => (sheet = { kind: 'fill' })}>Fyld ugen</button></p>
 			{/if}
 
 			<p class="foot"><button type="button" class="btn quiet sm" onclick={removeWeek}>Slet denne uge</button></p>
@@ -314,13 +299,6 @@
 	}
 	.fill {
 		margin-top: 16px;
-	}
-	/* Linket i overskriften skal kunne rammes med en finger. */
-	.add {
-		display: inline-flex;
-		align-items: center;
-		min-height: var(--tap);
-		font-size: 14.5px;
 	}
 
 	/* Bred skærm: ugen til venstre, indkøbslisten til højre i fuld højde. */

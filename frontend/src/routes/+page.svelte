@@ -10,6 +10,7 @@
 	import { fetchSuggestions, type Suggestion } from '$lib/suggestions';
 	import { MAIN, type Day, type Slot, type SlotChoice } from '$lib/types';
 	import { draggable } from '$lib/ui/drag.svelte';
+	import { wishName } from '$lib/ui/glide.svelte';
 	import Plate from '$lib/ui/Plate.svelte';
 	import ScreenHeader from '$lib/ui/ScreenHeader.svelte';
 	import WeekNav from '$lib/ui/WeekNav.svelte';
@@ -215,13 +216,13 @@
 						<div class="grid2">
 							{#each plan.wishlist as w (w.id)}
 								{#if w.recipe}
-									<a class="rc tile" href="/opskrift/{w.recipe.id}" use:draggable={`wish:${w.id}`}>
+									<a class="rc tile" href="/opskrift/{w.recipe.id}" style:view-transition-name={wishName(w.id)} use:draggable={`wish:${w.id}`}>
 										<Plate src={w.recipe.image_url} seed={w.recipe.id} size={40} lazy />
 										<p class="n">{w.title}</p>
 									</a>
 								{:else}
 									<!-- En idé uden opskrift kan kun trækkes. Uden mus og finger lægges den på en dag fra ønskelisten (chippen i toppen). -->
-									<div class="rc tile" use:draggable={`wish:${w.id}`}>
+									<div class="rc tile" style:view-transition-name={wishName(w.id)} use:draggable={`wish:${w.id}`}>
 										<p class="n">{w.title}</p>
 									</div>
 								{/if}

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import '../app.css';
 	import { untrack } from 'svelte';
-	import { afterNavigate } from '$app/navigation';
+	import { afterNavigate, onNavigate } from '$app/navigation';
 	import { page } from '$app/state';
 	import ConfirmDialog from '$lib/ConfirmDialog.svelte';
 	import { api } from '$lib/api';
@@ -10,6 +10,7 @@
 	import { onResume } from '$lib/resume.svelte';
 	import { shopping } from '$lib/shopping.svelte';
 	import type { Me } from '$lib/types';
+	import { canGlide } from '$lib/ui/glide.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import type { IconName } from '$lib/ui/icons';
 
@@ -26,6 +27,21 @@
 	afterNavigate(() => {
 		entered ??= step();
 		navState.inApp = step() > entered;
+	});
+
+	// Sideskift toner kort over (View Transitions API). Ikke når kun adressens
+	// ?plan= eller ?dag= skifter på samme side: dér glider ugens retter selv (se glide).
+	onNavigate((nav) => {
+		if (!canGlide() || !nav.to || nav.from?.url.pathname === nav.to.url.pathname) return;
+		return new Promise((resolve) => {
+			const t = document.startViewTransition(async () => {
+				resolve();
+				// Afbrydes navigationen (et nyt tryk), står siden bare, som den er.
+				await nav.complete.catch(() => {});
+			});
+			t.ready.catch(() => {});
+			t.finished.catch(() => {});
+		});
 	});
 
 	const tabs: { href: string; label: string; icon: IconName }[] = [
@@ -131,6 +147,8 @@
 		padding-bottom: env(safe-area-inset-bottom);
 		background: var(--paper);
 		border-top: 1px solid var(--line);
+		/* Fanelinjen står stille, mens siden skifter. */
+		view-transition-name: tabs;
 	}
 	a {
 		position: relative;

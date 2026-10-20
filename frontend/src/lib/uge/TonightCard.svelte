@@ -3,6 +3,7 @@
 	import { formatNumber, mult } from '$lib/format';
 	import type { Day } from '$lib/types';
 	import { draggable, dropzone } from '$lib/ui/drag.svelte';
+	import { mealName } from '$lib/ui/glide.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import Plate from '$lib/ui/Plate.svelte';
 
@@ -38,7 +39,7 @@
 		<span class="grow">
 			<span class="lab">I aften · {weekdayName(day.date)}</span>
 			{#if meal}
-				<span class="serif dish">{meal.title}{#if recipe && meal.multiplier !== 1}&nbsp;{mult(meal.multiplier)}{/if}</span>
+				<span class="serif dish" style:view-transition-name={mealName(meal.id)}>{meal.title}{#if recipe && meal.multiplier !== 1}&nbsp;{mult(meal.multiplier)}{/if}</span>
 			{:else}
 				<span class="serif dish muted">Ingen ret endnu.</span>
 			{/if}

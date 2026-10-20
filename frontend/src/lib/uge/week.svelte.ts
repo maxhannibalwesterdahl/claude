@@ -7,6 +7,7 @@ import { clock } from '$lib/resume.svelte';
 import { shopping } from '$lib/shopping.svelte';
 import { EXTRA, MAIN, type Day, type Meal, type Plan, type PlanBrief, type Slot } from '$lib/types';
 import { say } from '$lib/ui/copy';
+import { glide, wishName } from '$lib/ui/glide.svelte';
 import { weekApi } from './api';
 
 /** "Lasagne" -> "lasagne", til brug midt i en sætning ("Rester fra lasagne"). */
@@ -22,6 +23,31 @@ export function leftoverSources(plan: Plan, date: string, except?: number): Meal
 		.flatMap((d) => [d.meal, ...d.extras])
 		.filter((m): m is Meal => !!m && m.kind === 'opskrift' && m.id !== except)
 		.reverse();
+}
+
+/** Hvor hver ret og hvert ønske står. Ændres det, glider ugen; et flueben gør ikke. */
+function layout(plan: Plan): string {
+	const days = plan.days.map((d) => [d.meal?.id ?? '', ...d.extras.map((x) => x.id)].join(','));
+	return `${days.join('|')}#${plan.wishlist.map((w) => w.id).join(',')}`;
+}
+
+/**
+ * Ønsker, der er blevet til en ret (lagt på en dag eller fordelt): den nye ret
+ * får ønskets navn i overgangen, så den glider fra ønskelisten op på dagen.
+ * Ønsket og retten kendes på titlen.
+ */
+function landed(old: Plan, p: Plan): Record<number, string> {
+	const kept = new Set(p.wishlist.map((w) => w.id));
+	const gone = old.wishlist.filter((w) => !kept.has(w.id));
+	if (!gone.length) return {};
+	const before = new Set(old.days.flatMap((d) => [d.meal, ...d.extras]).map((m) => m?.id));
+	const fresh = p.days.flatMap((d) => [d.meal, ...d.extras]).filter((m): m is Meal => !!m && !before.has(m.id));
+	const lend: Record<number, string> = {};
+	for (const w of gone) {
+		const m = fresh.find((m) => m.title === w.title && !(m.id in lend));
+		if (m) lend[m.id] = wishName(w.id);
+	}
+	return lend;
 }
 
 /**
@@ -40,8 +66,14 @@ export class Week {
 
 	// Alle svar med en hel plan går gennem samme rækkefølge, så et gammelt svar
 	// aldrig overskriver et nyere (fx hurtige flueben eller en genindlæsning).
+	// Er retterne flyttet rundt i samme uge, glider de på plads (se glide).
 	#ordered = sequencer<Plan>((p) => {
-		this.plan = p;
+		const old = this.plan;
+		if (!old || old.id !== p.id || layout(old) === layout(p)) {
+			this.plan = p;
+			return;
+		}
+		return glide(() => (this.plan = p), landed(old, p));
 	});
 
 	/** Dage uden ret, der ikke er gået. Kun de kan få ønsker fordelt. */

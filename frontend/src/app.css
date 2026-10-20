@@ -108,6 +108,11 @@
 		transition-duration: 0.01ms !important;
 		scroll-behavior: auto !important;
 	}
+	::view-transition-group(*),
+	::view-transition-old(*),
+	::view-transition-new(*) {
+		animation: none !important;
+	}
 }
 
 /* ---------- Grundregler ---------- */
@@ -741,9 +746,24 @@ html.kb-open .dock {
 	box-shadow: inset 0 0 0 2px var(--tomat) !important;
 	outline: none !important;
 }
+/* Kopien, der følger fingeren, må ikke dele navn med retten i overgangene (se glide). */
+.drag-ghost,
+.drag-ghost * {
+	view-transition-name: none !important;
+}
 /* Retten er over skraldespanden. */
 .drag-ghost.to-trash {
 	opacity: 0.6;
 	scale: 0.3;
 	transition: scale 120ms ease, opacity 120ms ease;
+}
+
+/* ---------- Overgange (se lib/ui/glide.svelte.ts) ---------- */
+
+/* Korte overgange: retten glider på plads, resten toner over. */
+::view-transition-group(*),
+::view-transition-old(*),
+::view-transition-new(*) {
+	animation-duration: 240ms;
+	animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
 }

@@ -3,6 +3,7 @@
 	import { mult } from '$lib/format';
 	import type { Day } from '$lib/types';
 	import { draggable, dropzone } from '$lib/ui/drag.svelte';
+	import { mealName } from '$lib/ui/glide.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import Plate from '$lib/ui/Plate.svelte';
 
@@ -28,13 +29,14 @@
 </script>
 
 <!-- Én dag i ugen på telefonen. data-day bruges af siden til at give rækken
-     fokus igen, når et ark lukkes, og rækken imens har skiftet udseende. -->
+     fokus igen, når et ark lukkes, og rækken imens har skiftet udseende.
+     Hver ret har sit eget navn i overgangen (mealName), så den glider til sin nye dag. -->
 {#if past}
 	<!-- Dage, der er gået, fylder mindst, men kan stadig åbnes og rettes. Fluebenet
 	     betyder, at dagen er gået og havde en ret (appen ved ikke, om den blev lavet). -->
 	<button type="button" class="past" data-day={day.date} onclick={onopen}>
 		<span class="d">{wd}</span>
-		<span class="g ellipsis">
+		<span class="g ellipsis" style:view-transition-name={meal ? mealName(meal.id) : undefined}>
 			{#if meal}{meal.title}{scaled}{:else if day.extras.length}{day.extras.map((x) => x.title).join(', ')}{:else}Ingen ret{/if}
 		</span>
 		{#if meal}<Icon name="check" size={17} stroke={2.4} /><span class="sr">, dagen er gået</span>{/if}
@@ -46,14 +48,14 @@
 		<span class="d">{wd}<span>{parseDate(day.date).getDate()}.</span></span>
 		<span class="g">
 			{#if meal}
-				<span class="n">{meal.title}{scaled}</span>
+				<span class="n" style:view-transition-name={mealName(meal.id)}>{meal.title}{scaled}</span>
 			{:else}
 				<span class="c pick">{day.extras.length ? 'Vælg hovedret' : 'Vælg ret'}</span>
 			{/if}
 			{#if day.extras.length}
 				<span class="xs">
 					{#each day.extras as x (x.id)}
-						<span class="x" use:draggable={`meal:${x.id}`}>+ {x.title}</span>
+						<span class="x" style:view-transition-name={mealName(x.id)} use:draggable={`meal:${x.id}`}>+ {x.title}</span>
 					{/each}
 				</span>
 			{/if}

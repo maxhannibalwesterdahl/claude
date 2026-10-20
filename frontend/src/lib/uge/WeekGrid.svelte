@@ -3,6 +3,7 @@
 	import { mult } from '$lib/format';
 	import type { Day, Plan } from '$lib/types';
 	import { draggable, dropzone } from '$lib/ui/drag.svelte';
+	import { mealName } from '$lib/ui/glide.svelte';
 	import Plate from '$lib/ui/Plate.svelte';
 
 	interface Props {
@@ -18,7 +19,7 @@
 
 <!-- iPad og computer: hele ugen på én gang. Retter trækkes mellem dagene med
      musen eller ved at holde fingeren på dem; det samme kan gøres fra dagens ark
-     (Flyt) og fra ønskelisten. -->
+     (Flyt) og fra ønskelisten. Hver ret glider til sin nye dag (mealName). -->
 <div class="wk">
 	{#each plan.days as d (d.date)}
 		{@const meal = d.meal}
@@ -39,7 +40,7 @@
 				{#if isToday}I aften{:else}{weekday(d.date)} {parseDate(d.date).getDate()}.{/if}
 			</button>
 			{#if meal}
-				<div class="meal" use:draggable={`meal:${meal.id}`}>
+				<div class="meal" style:view-transition-name={mealName(meal.id)} use:draggable={`meal:${meal.id}`}>
 					{#if recipe}<Plate src={recipe.image_url} seed={recipe.id} size={44} lazy />{/if}
 					<span class="n">{meal.title}{#if recipe && meal.multiplier !== 1}&nbsp;{mult(meal.multiplier)}{/if}</span>
 				</div>
@@ -47,7 +48,7 @@
 				<p class="hint">Træk en ret hertil</p>
 			{/if}
 			{#each d.extras as x (x.id)}
-				<p class="x" use:draggable={`meal:${x.id}`}>+ {x.title}</p>
+				<p class="x" style:view-transition-name={mealName(x.id)} use:draggable={`meal:${x.id}`}>+ {x.title}</p>
 			{/each}
 			{#if meal && !recipe}
 				<p class="c">ingen indkøb</p>

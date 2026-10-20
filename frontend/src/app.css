@@ -726,7 +726,6 @@ html.kb-open .dock {
 	box-shadow: var(--shadow-sheet);
 	opacity: 0.95;
 	pointer-events: none;
-	transform-origin: top left;
 	will-change: transform;
 }
 .drag-source {
@@ -741,4 +740,10 @@ html.kb-open .dock {
 	background: var(--tomat-soft) !important;
 	box-shadow: inset 0 0 0 2px var(--tomat) !important;
 	outline: none !important;
+}
+/* Retten er over skraldespanden. */
+.drag-ghost.to-trash {
+	opacity: 0.6;
+	scale: 0.3;
+	transition: scale 120ms ease, opacity 120ms ease;
 }

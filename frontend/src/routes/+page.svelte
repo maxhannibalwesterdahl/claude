@@ -19,6 +19,7 @@
 	import FillSheet from '$lib/uge/FillSheet.svelte';
 	import NewWeekSheet from '$lib/uge/NewWeekSheet.svelte';
 	import ShoppingAside from '$lib/uge/ShoppingAside.svelte';
+	import TrashZone from '$lib/uge/TrashZone.svelte';
 	import TonightCard from '$lib/uge/TonightCard.svelte';
 	import WeekGrid from '$lib/uge/WeekGrid.svelte';
 	import WishSection from '$lib/uge/WishSection.svelte';
@@ -162,6 +163,15 @@
 		void week.drop(payload, d);
 	}
 
+	/** Sluppet i skraldespanden: retten fjernes fra ugen, ønsket fra ønskelisten. */
+	function trash(payload: string) {
+		const [kind, raw] = payload.split(':');
+		const id = Number(raw);
+		if (!id) return;
+		if (kind === 'meal') void week.run(() => planApi.remove(id));
+		else if (kind === 'wish') void week.run(() => planApi.removeWish(id));
+	}
+
 	// Forslagene under gitteret følger ugen: det, der er lagt på en dag, forsvinder herfra.
 	$effect(() => {
 		const id = planId;
@@ -271,6 +281,8 @@
 		{/if}
 	{/if}
 </main>
+
+{#if plan}<TrashZone ondrop={trash} />{/if}
 
 {#if sheet?.kind === 'new'}
 	<NewWeekSheet {week} oncreated={address} onclose={() => closed()} />

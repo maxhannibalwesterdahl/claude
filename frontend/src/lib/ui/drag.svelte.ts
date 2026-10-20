@@ -52,6 +52,8 @@ function setOver(s: Session, zone: Element | null) {
 	s.over?.classList.remove('drop-over');
 	zone?.classList.add('drop-over');
 	s.over = zone;
+	// Over skraldespanden bliver retten lille, så det ses, at den forsvinder.
+	s.ghost.classList.toggle('to-trash', !!zone && zone.hasAttribute('data-trash'));
 }
 
 function place(s: Session) {
@@ -64,7 +66,9 @@ function autoScroll() {
 	const s = active;
 	if (!s) return;
 	const h = window.innerHeight;
-	const step = s.y < EDGE ? -Math.ceil((EDGE - s.y) / 6) : s.y > h - EDGE ? Math.ceil((s.y - (h - EDGE)) / 6) : 0;
+	// Står fingeren på skraldespanden (nederst), skal siden ikke rulle.
+	const onTrash = !!s.over?.hasAttribute('data-trash');
+	const step = onTrash ? 0 : s.y < EDGE ? -Math.ceil((EDGE - s.y) / 6) : s.y > h - EDGE ? Math.ceil((s.y - (h - EDGE)) / 6) : 0;
 	if (step) {
 		window.scrollBy(0, step);
 		setOver(s, zoneAt(s.x, s.y));
@@ -80,7 +84,8 @@ function begin(source: HTMLElement, payload: string, x: number, y: number) {
 	ghost.removeAttribute('data-day');
 	ghost.setAttribute('aria-hidden', 'true');
 	ghost.classList.add('drag-ghost');
-	Object.assign(ghost.style, { width: `${r.width}px`, height: `${r.height}px` });
+	// Skrumper den (over skraldespanden), er det ind mod fingeren.
+	Object.assign(ghost.style, { width: `${r.width}px`, height: `${r.height}px`, transformOrigin: `${x - r.left}px ${y - r.top}px` });
 	document.body.append(ghost);
 	source.classList.add('drag-source');
 	document.body.classList.add('dragging');

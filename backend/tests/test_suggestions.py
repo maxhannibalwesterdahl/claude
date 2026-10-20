@@ -82,7 +82,7 @@ def test_latest_date_wins_across_plans_and_days(client, recipes, old, plan):
 
 
 def test_child_meal_counts_as_planned(client, recipes, old):
-    put(client, old, date=OLD, for_child=True, kind="opskrift", recipe_id=recipes["lasagne"]["id"])
+    put(client, old, date=OLD, extra=True, kind="opskrift", recipe_id=recipes["lasagne"]["id"])
     assert rows(client)[0] == ("Lasagne", OLD)
 
 
@@ -96,7 +96,7 @@ def test_plan_id_excludes_meals_child_meals_and_wishes(client, recipes, plan):
 
     put(client, plan, date="2026-10-05", kind="opskrift", recipe_id=recipes["kødsovs"]["id"])
     assert rows(client, plan_id=pid) == [("Lasagne", None), ("Suppe", None)]
-    put(client, plan, date="2026-10-05", for_child=True, kind="opskrift", recipe_id=recipes["lasagne"]["id"])
+    put(client, plan, date="2026-10-05", extra=True, kind="opskrift", recipe_id=recipes["lasagne"]["id"])
     assert rows(client, plan_id=pid) == [("Suppe", None)]
     client.post(f"/api/plans/{pid}/wishlist", json={"recipe_id": recipes["suppe"]["id"]})
     assert rows(client, plan_id=pid) == []
@@ -163,7 +163,7 @@ def test_leftovers_do_not_count_as_planned(client, recipes, old):
 def test_ties_are_broken_by_title(client, app, recipes, old):
     # Samme dato: husstandens og barnets ret samme dag.
     put(client, old, date=OLD, kind="opskrift", recipe_id=recipes["suppe"]["id"])
-    put(client, old, date=OLD, for_child=True, kind="opskrift", recipe_id=recipes["kødsovs"]["id"])
+    put(client, old, date=OLD, extra=True, kind="opskrift", recipe_id=recipes["kødsovs"]["id"])
     assert rows(client) == [("Kødsovs", OLD), ("Suppe", OLD), ("Lasagne", None)]
 
     # Aldrig planlagt og oprettet i samme øjeblik: titel uden hensyn til store bogstaver, så id.

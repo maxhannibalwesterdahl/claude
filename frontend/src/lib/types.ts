@@ -170,7 +170,8 @@ export interface Reminder {
 export interface Meal {
 	id: number;
 	date: string;
-	for_child: boolean;
+	/** Ekstra ret ved siden af dagens hovedret. */
+	extra: boolean;
 	kind: MealKind;
 	title: string;
 	recipe: RecipeBrief | null;
@@ -185,8 +186,14 @@ export interface Meal {
 export interface Day {
 	date: string;
 	meal: Meal | null;
-	child: Meal | null;
+	/** Ekstra retter på dagen (fx grød til barnet eller en salat), i den rækkefølge de er lagt på. */
+	extras: Meal[];
 }
+
+/** Pladsen på dagen, en ret lægges på: hovedretten, en ny ekstra ret eller en bestemt ekstra ret, der skiftes ud. */
+export type Slot = { extra: false } | { extra: true; replaceId?: number };
+export const MAIN: Slot = { extra: false };
+export const EXTRA: Slot = { extra: true };
 
 export interface Wish {
 	id: number;

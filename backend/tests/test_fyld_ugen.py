@@ -96,7 +96,7 @@ def test_favorites_ordered_longest_since_planned(client, recipes):
 def test_past_and_filled_days_are_skipped(client, recipes):
     plan = new_plan(client)
     put(client, plan, date="2026-10-07", kind="fritekst", text="Pizza")
-    put(client, plan, date="2026-10-09", for_child=True, kind="fritekst", text="Pasta")
+    put(client, plan, date="2026-10-09", extra=True, kind="fritekst", text="Pasta")
     days = fill(client, plan, today="2026-10-06")["days"]
     assert [d["date"] for d in days] == ["2026-10-06", "2026-10-08", "2026-10-10"]
 
@@ -191,7 +191,7 @@ def test_get_saves_nothing(client, recipes):
     plan = new_plan(client)
     fill(client, plan)
     current = client.get(f"/api/plans/{plan['id']}").json()
-    assert all(d["meal"] is None and d["child"] is None for d in current["days"])
+    assert all(d["meal"] is None and d["extras"] == [] for d in current["days"])
 
 
 def test_post_places_days_and_removes_wishes(client, recipes):

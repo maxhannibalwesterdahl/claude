@@ -47,7 +47,7 @@ def test_scale(q, unit, m, expected):
 def test_new_plan_has_seven_empty_days(plan):
     assert plan["start_date"] == START and plan["end_date"] == "2026-10-10"
     assert [d["date"] for d in plan["days"]][:2] == ["2026-10-04", "2026-10-05"]
-    assert all(d["meal"] is None and d["child"] is None for d in plan["days"])
+    assert all(d["meal"] is None and d["extras"] == [] for d in plan["days"])
 
 
 def test_overlapping_plan_is_rejected(client, plan):
@@ -80,12 +80,25 @@ def test_recipe_meal_with_multiplier(client, plan, recipes):
     assert client.patch(f"/api/meals/{meal['id']}", json={"multiplier": 3}).status_code == 422
 
 
-def test_free_text_and_child_meal(client, plan, recipes):
+def test_free_text_and_extra_meals(client, plan, recipes):
     put(client, plan, date=START, kind="fritekst", text="Pizza ude")
-    p = put(client, plan, date=START, for_child=True, kind="fritekst", text="Grød")
+    put(client, plan, date=START, extra=True, kind="fritekst", text="Grød")
+    p = put(client, plan, date=START, extra=True, kind="opskrift", recipe_id=recipes["suppe"]["id"])
     d = day(p, START)
     assert d["meal"]["title"] == "Pizza ude" and d["meal"]["lines"] == []
-    assert d["child"]["title"] == "Grød"
+    assert [m["title"] for m in d["extras"]] == ["Grød", "Suppe"]
+    assert all(m["extra"] for m in d["extras"]) and not d["meal"]["extra"]
+    # En ekstra ret skiftes ud på sin plads; hovedretten bliver.
+    grod = d["extras"][0]["id"]
+    p = put(client, plan, date=START, extra=True, replace_id=grod, kind="fritekst", text="Mos")
+    assert [m["title"] for m in day(p, START)["extras"]] == ["Suppe", "Mos"]
+    assert day(p, START)["meal"]["title"] == "Pizza ude"
+    # Den udskiftede ret findes ikke længere.
+    assert client.put(f"/api/plans/{plan['id']}/slots", json={
+        "date": START, "extra": True, "replace_id": grod, "kind": "fritekst", "text": "x"}).status_code == 422
+    # En ekstra ret uden hovedret er også en dag med mad.
+    p = put(client, plan, date="2026-10-05", extra=True, kind="fritekst", text="Salat")
+    assert day(p, "2026-10-05")["meal"] is None and day(p, "2026-10-05")["extras"][0]["title"] == "Salat"
     assert client.put(f"/api/plans/{plan['id']}/slots",
                       json={"date": START, "kind": "fritekst", "text": "  "}).status_code == 422
 
@@ -159,9 +172,20 @@ def test_move_swaps_meals(client, plan, recipes):
     p = client.post(f"/api/meals/{a['id']}/move", json={"date": "2026-10-05"}).json()
     assert day(p, "2026-10-04")["meal"]["title"] == "B"
     assert day(p, "2026-10-05")["meal"]["title"] == "A"
-    # Til en tom plads og til barnets plads.
-    p = client.post(f"/api/meals/{a['id']}/move", json={"date": "2026-10-08", "for_child": True}).json()
-    assert day(p, "2026-10-05")["meal"] is None and day(p, "2026-10-08")["child"]["title"] == "A"
+    # Som ekstra ret på en anden dag: ingen bytning.
+    p = client.post(f"/api/meals/{a['id']}/move", json={"date": "2026-10-08", "extra": True}).json()
+    assert day(p, "2026-10-05")["meal"] is None and day(p, "2026-10-08")["extras"][0]["title"] == "A"
+    p = put(client, plan, date="2026-10-08", kind="fritekst", text="C")
+    p = put(client, plan, date="2026-10-08", extra=True, kind="fritekst", text="D")
+    assert [m["title"] for m in day(p, "2026-10-08")["extras"]] == ["A", "D"]
+    # En ekstra ret, der bliver hovedret, bytter med hovedretten (der bliver ekstra ret).
+    p = client.post(f"/api/meals/{a['id']}/move", json={"date": "2026-10-08"}).json()
+    assert day(p, "2026-10-08")["meal"]["title"] == "A"
+    assert sorted(m["title"] for m in day(p, "2026-10-08")["extras"]) == ["C", "D"]
+    # Hovedret til en anden dags ekstra retter: dagen, den kom fra, bliver tom.
+    p = client.post(f"/api/meals/{a['id']}/move", json={"date": "2026-10-04", "extra": True}).json()
+    assert day(p, "2026-10-08")["meal"] is None
+    assert [m["title"] for m in day(p, "2026-10-04")["extras"]] == ["A"]
 
 
 def test_move_breaks_impossible_leftover(client, plan, recipes):
@@ -189,6 +213,25 @@ def test_wishlist(client, plan, recipes):
     assert [w["title"] for w in client.get(f"/api/plans/{plan['id']}").json()["wishlist"]] == ["Tacos"]
 
     p = client.delete(f"/api/wishlist/{tacos['id']}").json()
+    assert p["wishlist"] == []
+
+
+def test_wish_is_not_added_twice(client, plan, recipes):
+    """Et dobbelttryk må ikke give to af samme ønske."""
+    url = f"/api/plans/{plan['id']}/wishlist"
+    for _ in range(2):
+        client.post(url, json={"recipe_id": recipes["suppe"]["id"]})
+        p = client.post(url, json={"text": "Tacos"}).json()
+    p = client.post(url, json={"text": " tacos "}).json()
+    assert [w["title"] for w in p["wishlist"]] == ["Suppe", "Tacos"]
+
+
+def test_wish_placed_as_extra(client, plan, recipes):
+    put(client, plan, date="2026-10-06", kind="fritekst", text="Pizza")
+    p = client.post(f"/api/plans/{plan['id']}/wishlist", json={"text": "Salat"}).json()
+    p = client.post(f"/api/wishlist/{p['wishlist'][0]['id']}/place", json={"date": "2026-10-06", "extra": True}).json()
+    d = day(p, "2026-10-06")
+    assert d["meal"]["title"] == "Pizza" and [m["title"] for m in d["extras"]] == ["Salat"]
     assert p["wishlist"] == []
 
 

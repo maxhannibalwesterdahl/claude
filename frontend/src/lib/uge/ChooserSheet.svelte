@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { api } from '$lib/api';
 	import { lastPlannedLabel, longDate } from '$lib/dates';
 	import ExternalResults from '$lib/ExternalResults.svelte';
@@ -17,7 +18,8 @@
 		plan: Plan;
 		/** Dagen, der vælges til. Tom ved "wish": tilføj til ønskelisten. */
 		date?: string;
-		forChild?: boolean;
+		/** Der vælges en ekstra ret til dagen (ved siden af hovedretten). */
+		extra?: boolean;
 		/** "wish": vælg flere retter til ønskelisten. Arket bliver åbent. */
 		mode?: 'slot' | 'wish';
 		/** Åbn med søgefeltet klar. */
@@ -27,15 +29,40 @@
 		onchoose: (choice: SlotChoice) => void;
 		onclose: () => void;
 	}
-	let { plan, date = '', forChild = false, mode = 'slot', focusSearch = false, message = '', onchoose, onclose }: Props = $props();
+	let { plan, date = '', extra = false, mode = 'slot', focusSearch = false, message = '', onchoose, onclose }: Props = $props();
 
 	const wishMode = $derived(mode === 'wish');
-	// Opskrifter, der allerede er på ønskelisten (kan ikke vælges igen).
-	const wished = $derived(new Set(plan.wishlist.map((w) => w.recipe?.id).filter(Boolean)));
+	// Ønsker, der er trykket på, men som serveren ikke har svaret på endnu. De vises
+	// som "på listen" med det samme, så det ses, at trykket virkede (og ikke trykkes igen).
+	let pending = $state<string[]>([]);
+	// Den seneste ret, der er lagt på ønskelisten. Vises nederst i arket.
+	let added = $state('');
+	const recipeKey = (id: number) => `r:${id}`;
+	const textKey = (t: string) => `t:${t.trim().toLocaleLowerCase('da')}`;
+	// Ønsker på listen (og dem på vej): opskrifter og idéer uden opskrift. Kan ikke vælges igen.
+	const wished = $derived(
+		new Set([...plan.wishlist.map((w) => (w.recipe ? recipeKey(w.recipe.id) : textKey(w.text))), ...pending])
+	);
+	const isWished = (id: number) => wishMode && wished.has(recipeKey(id));
+	// Gik det ikke, er ønskerne alligevel ikke på listen.
+	$effect(() => {
+		if (message) pending = [];
+	});
 	// Opskrifter, der allerede ligger på dagene i ugen. Ikke med, når der vælges til en dag.
 	const onPlan = $derived(
-		new Set(wishMode ? [] : plan.days.flatMap((d) => [d.meal?.recipe?.id, d.child?.recipe?.id]).filter(Boolean))
+		new Set(wishMode ? [] : plan.days.flatMap((d) => [d.meal, ...d.extras].map((m) => m?.recipe?.id)).filter(Boolean))
 	);
+
+	/** Vælger. På ønskelisten markeres retten med det samme, og arket bliver åbent. */
+	function pick(choice: SlotChoice, title: string) {
+		if (wishMode) {
+			const key = choice.kind === 'opskrift' ? recipeKey(choice.recipe_id) : choice.kind === 'fritekst' ? textKey(choice.text) : '';
+			if (!key || wished.has(key)) return;
+			pending = [...pending, key];
+			added = title;
+		}
+		onchoose(choice);
+	}
 
 	let q = $state('');
 	let text = $state('');
@@ -49,7 +76,7 @@
 	let error = $state('');
 
 	const quick = $derived(
-		wishMode ? ['Tacos', 'Pizza', 'Suppe', 'Fisk'] : forChild ? ['Grød', 'Mos', 'Rugbrød', 'Pasta'] : ['Pizza ude', 'Rugbrød', 'Takeaway', 'Spiser ude']
+		wishMode ? ['Tacos', 'Pizza', 'Suppe', 'Fisk'] : extra ? ['Grød', 'Salat', 'Rugbrød', 'Pasta'] : ['Pizza ude', 'Rugbrød', 'Takeaway', 'Spiser ude']
 	);
 
 	// Retter på tidligere dage, der kan give rester.
@@ -72,21 +99,23 @@
 	});
 
 	// Forslagene hentes én gang, når arket åbnes. Uden svar vises gruppen bare ikke.
+	// (Ikke igen, når planen ændrer sig: så forsvinder det, der lige er trykket på,
+	// i stedet for at stå der som "på listen".)
 	$effect(() => {
-		fetchSuggestions({ planId: plan.id, limit: 4 })
+		fetchSuggestions({ planId: untrack(() => plan.id), limit: 4 })
 			.then((s) => (suggestions = s))
 			.catch(() => {});
 	});
 
 	function submitText(e: SubmitEvent) {
 		e.preventDefault();
-		if (text.trim()) onchoose({ kind: 'fritekst', text: text.trim() });
+		if (text.trim()) pick({ kind: 'fritekst', text: text.trim() }, text.trim());
 		text = '';
 		writing = false;
 	}
 
 	function pickExternal(id: number) {
-		if (!(wishMode && wished.has(id))) onchoose({ kind: 'opskrift', recipe_id: id });
+		pick({ kind: 'opskrift', recipe_id: id }, byId.get(id)?.title ?? 'Retten');
 		// Opskriften er nu en af jeres egne.
 		loadRecipes().catch(() => {});
 	}
@@ -112,7 +141,7 @@
 
 <Sheet
 	title={wishMode ? 'Ønskeliste' : longDate(date)}
-	eyebrow={wishMode ? 'Vælg de retter, I vil have i ugen' : forChild ? 'Barnets ret' : 'Aftensmad'}
+	eyebrow={wishMode ? 'Vælg de retter, I vil have i ugen' : extra ? 'Ekstra ret' : 'Aftensmad'}
 	size="tall"
 	initialFocus={focusSearch ? 'first' : 'none'}
 	aside={wishMode ? done : undefined}
@@ -152,8 +181,8 @@
 		{#if favorites.length}
 			<p class="sl">Favoritter</p>
 			{#each favorites as r (r.id)}
-				{@const taken = wishMode && wished.has(r.id)}
-				<button type="button" class="op" disabled={taken} onclick={() => onchoose({ kind: 'opskrift', recipe_id: r.id })}>
+				{@const taken = isWished(r.id)}
+				<button type="button" class="op" disabled={taken} onclick={() => pick({ kind: 'opskrift', recipe_id: r.id }, r.title)}>
 					<Plate src={r.image_url} seed={r.id} size={44} lazy />
 					<span class="grow">
 						<span class="n">{r.title}</span>
@@ -167,8 +196,8 @@
 		{#if suggestions?.length}
 			<p class="sl">Længe siden</p>
 			{#each suggestions as s (s.recipe.id)}
-				{@const taken = wishMode && wished.has(s.recipe.id)}
-				<button type="button" class="op" disabled={taken} onclick={() => onchoose({ kind: 'opskrift', recipe_id: s.recipe.id })}>
+				{@const taken = isWished(s.recipe.id)}
+				<button type="button" class="op" disabled={taken} onclick={() => pick({ kind: 'opskrift', recipe_id: s.recipe.id }, s.recipe.title)}>
 					<Plate src={s.recipe.image_url} seed={s.recipe.id} size={44} lazy />
 					<span class="grow">
 						<span class="n">{s.recipe.title}</span>
@@ -182,7 +211,7 @@
 		<p class="sl">{wishMode ? 'Idéer uden opskrift' : 'Uden indkøb'}</p>
 		{#if writing}
 			<form class="write pad" onsubmit={submitText}>
-				<input bind:value={text} placeholder={forChild ? 'Fx grød' : 'Fx pizza ude'} maxlength="200" aria-label="Ret" use:focusNow />
+				<input bind:value={text} placeholder={wishMode ? 'Fx lasagne' : extra ? 'Fx grød' : 'Fx pizza ude'} maxlength="200" aria-label="Ret" use:focusNow />
 				<button class="btn primary" disabled={!text.trim()}>Vælg</button>
 				<button type="button" class="btn quiet" onclick={() => (writing = false)}>Fortryd</button>
 			</form>
@@ -194,7 +223,10 @@
 					</button>
 				{/each}
 				{#each quick as t}
-					<button type="button" class="chip" onclick={() => onchoose({ kind: 'fritekst', text: t })}>{t}</button>
+					{@const taken = wishMode && wished.has(textKey(t))}
+					<button type="button" class="chip" class:on={taken} disabled={taken} onclick={() => pick({ kind: 'fritekst', text: t }, t)}>
+						{#if taken}<Icon name="check" size={15} stroke={2.4} />{/if}{t}
+					</button>
 				{/each}
 				<button type="button" class="chip" onclick={() => (writing = true)}>Skriv selv</button>
 			</div>
@@ -207,6 +239,12 @@
 	{/if}
 
 	{#snippet footer()}
+		<!-- Ønskelisten: en rolig bekræftelse af det seneste tryk. -->
+		{#if wishMode}
+			<p class="added small" role="status">
+				{#if added}<Icon name="check" size={15} stroke={2.4} />{added} er på ønskelisten · {plan.wishlist.length} i alt{/if}
+			</p>
+		{/if}
 		<label class="find">
 			<Icon name="search" stroke={2.2} />
 			<input type="search" bind:value={q} placeholder="Søg i egne, Valdemarsro og nemlig" aria-label="Søg" onfocus={() => (searching = true)} />
@@ -220,8 +258,8 @@
 
 {#snippet own()}
 	{#each shown as r (r.id)}
-		{@const taken = wishMode && wished.has(r.id)}
-		<button type="button" class="op" disabled={taken} onclick={() => onchoose({ kind: 'opskrift', recipe_id: r.id })}>
+		{@const taken = isWished(r.id)}
+		<button type="button" class="op" disabled={taken} onclick={() => pick({ kind: 'opskrift', recipe_id: r.id }, r.title)}>
 			<Plate src={r.image_url} seed={r.id} size={44} lazy />
 			<span class="grow">
 				<span class="n">{r.title}</span>
@@ -247,6 +285,22 @@
 	}
 	.chips {
 		padding-block: 4px 6px;
+	}
+	/* Allerede på listen: den udfyldte chip med flueben, ikke den falmede. */
+	.chip.on:disabled {
+		gap: 4px;
+		opacity: 1;
+	}
+	.added {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		min-height: 22px;
+		margin-bottom: 8px;
+		color: var(--kobt);
+	}
+	.added:empty {
+		display: none;
 	}
 	.write {
 		display: flex;

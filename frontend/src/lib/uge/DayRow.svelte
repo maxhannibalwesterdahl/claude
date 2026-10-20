@@ -1,23 +1,20 @@
 <script lang="ts">
 	import { parseDate, weekday } from '$lib/dates';
 	import { mult } from '$lib/format';
-	import type { Day, Wish } from '$lib/types';
+	import type { Day } from '$lib/types';
+	import { draggable, dropzone } from '$lib/ui/drag.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import Plate from '$lib/ui/Plate.svelte';
 
 	interface Props {
 		day: Day;
 		today: string;
-		/** Ønsker, der tilbydes direkte på dagen. Kun den første ledige dag får nogen. */
-		wishes?: Wish[];
 		/** Åbner dagen: arket med retten, eller vælgeren, når dagen er tom. */
 		onopen: () => void;
-		/** Lægger et ønske på dagen. */
-		onplace?: (wish: Wish) => void;
-		/** Åbner vælgeren med søgefeltet klar. */
-		onsearch?: () => void;
+		/** Noget er trukket hen på dagen ("meal:<id>", "wish:<id>" eller "recipe:<id>"). */
+		ondrop: (payload: string) => void;
 	}
-	let { day, today, wishes = [], onopen, onplace, onsearch }: Props = $props();
+	let { day, today, onopen, ondrop }: Props = $props();
 
 	const past = $derived(day.date < today);
 	const meal = $derived(day.meal);
@@ -38,35 +35,28 @@
 	<button type="button" class="past" data-day={day.date} onclick={onopen}>
 		<span class="d">{wd}</span>
 		<span class="g ellipsis">
-			{#if meal}{meal.title}{scaled}{:else if day.child}Barnet: {day.child.title}{:else}Ingen ret{/if}
+			{#if meal}{meal.title}{scaled}{:else if day.extras.length}{day.extras.map((x) => x.title).join(', ')}{:else}Ingen ret{/if}
 		</span>
 		{#if meal}<Icon name="check" size={17} stroke={2.4} /><span class="sr">, dagen er gået</span>{/if}
 	</button>
-{:else if !meal && !day.child && wishes.length}
-	<div class="row offer">
-		<p class="d">{wd}<span>{parseDate(day.date).getDate()}.</span></p>
-		<div class="g">
-			<p class="c">Ingen ret endnu. Fra ønskelisten:</p>
-			<div class="chips">
-				{#each wishes as w (w.id)}
-					<button type="button" class="chip" onclick={() => onplace?.(w)}><span class="ellipsis">{w.title}</span></button>
-				{/each}
-				<button type="button" class="chip a" data-day={day.date} onclick={onsearch}>
-					<Icon name="search" size={15} stroke={2.4} />Søg
-				</button>
-			</div>
-		</div>
-	</div>
 {:else}
-	<button type="button" class="row" data-day={day.date} onclick={onopen}>
+	<!-- Hold fingeren på retten for at trække den til en anden dag. Ekstra retter
+	     kan trækkes hver for sig. Et kort tryk åbner dagen. -->
+	<button type="button" class="row" data-day={day.date} onclick={onopen} use:dropzone={ondrop} use:draggable={meal ? `meal:${meal.id}` : ''}>
 		<span class="d">{wd}<span>{parseDate(day.date).getDate()}.</span></span>
 		<span class="g">
 			{#if meal}
 				<span class="n">{meal.title}{scaled}</span>
 			{:else}
-				<span class="c pick">Vælg ret</span>
+				<span class="c pick">{day.extras.length ? 'Vælg hovedret' : 'Vælg ret'}</span>
 			{/if}
-			{#if day.child}<span class="c">Barnet: {day.child.title}</span>{/if}
+			{#if day.extras.length}
+				<span class="xs">
+					{#each day.extras as x (x.id)}
+						<span class="x" use:draggable={`meal:${x.id}`}>+ {x.title}</span>
+					{/each}
+				</span>
+			{/if}
 			{#if husk.length}<span class="c husk ellipsis">Husk: {husk.join(', ')}</span>{/if}
 		</span>
 		{#if !meal}
@@ -148,14 +138,16 @@
 	.pick {
 		font-size: 15.5px;
 	}
-	.offer {
-		align-items: flex-start;
-		padding-block: 10px 14px;
+	/* Ekstra retter: små, så hovedretten stadig fylder mest. */
+	.xs {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 2px 10px;
+		margin-top: 1px;
 	}
-	.offer .d {
-		padding-top: 1px;
-	}
-	.offer .chips {
-		margin-top: 8px;
+	.x {
+		font-size: var(--fs-cap);
+		line-height: 1.5;
+		color: var(--muted);
 	}
 </style>

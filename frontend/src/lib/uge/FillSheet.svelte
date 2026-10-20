@@ -25,7 +25,7 @@
 	const plan = $derived(week.plan);
 	const planId = $derived(plan?.id);
 	// Ledige dage, der ikke er gået.
-	const empty = $derived(plan?.days.filter((d) => !d.meal && !d.child && d.date >= clock.today).length ?? 0);
+	const empty = $derived(plan?.days.filter((d) => !d.meal && !d.extras.length && d.date >= clock.today).length ?? 0);
 	const eyebrow = $derived(empty === 1 ? '1 ledig dag' : `${empty} ledige dage`);
 
 	let rows = $state<Row[]>([]);

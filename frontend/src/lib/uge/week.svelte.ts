@@ -1,11 +1,11 @@
 import { ApiError } from '$lib/api';
-import { confirmDialog } from '$lib/confirm.svelte';
+import { chooseDialog, confirmDialog } from '$lib/confirm.svelte';
 import { addDays, isoDate, parseDate, periodLong, weekdayName } from '$lib/dates';
 import { sequencer } from '$lib/ordered';
 import { planApi } from '$lib/planApi';
 import { clock } from '$lib/resume.svelte';
 import { shopping } from '$lib/shopping.svelte';
-import type { Day, Meal, Plan, PlanBrief } from '$lib/types';
+import { EXTRA, MAIN, type Day, type Meal, type Plan, type PlanBrief, type Slot } from '$lib/types';
 import { say } from '$lib/ui/copy';
 import { weekApi } from './api';
 
@@ -15,11 +15,11 @@ export const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
 /** "lørdag" */
 export const weekdayLower = (iso: string) => weekdayName(iso).toLowerCase();
 
-/** Retter på tidligere dage, der kan give rester (husstandens og barnets). Nyeste først. */
+/** Retter på tidligere dage, der kan give rester (hovedretter og ekstra retter). Nyeste først. */
 export function leftoverSources(plan: Plan, date: string, except?: number): Meal[] {
 	return plan.days
 		.filter((d) => d.date < date)
-		.flatMap((d) => [d.meal, d.child])
+		.flatMap((d) => [d.meal, ...d.extras])
 		.filter((m): m is Meal => !!m && m.kind === 'opskrift' && m.id !== except)
 		.reverse();
 }
@@ -156,15 +156,42 @@ export class Week {
 		return this.run(() => weekApi.distribute(id, clock.today));
 	}
 
-	/** Spørger, før en ret på dagen bliver erstattet. */
-	async mayReplace(d: Day): Promise<boolean> {
-		return !d.meal || (await confirmDialog(`Erstat ${d.meal.title} ${weekdayLower(d.date)}?`, 'Erstat'));
+	/** Hvor en ny ret skal på dagen. Står der allerede en hovedret, spørges der:
+	 *  erstat den, eller læg den nye ved siden af som ekstra ret. null: annulleret. */
+	async whereFor(d: Day): Promise<Slot | null> {
+		if (!d.meal) return MAIN;
+		const answer = await chooseDialog(`${weekdayName(d.date)} står der ${d.meal.title}.`, 'Erstat', 'Tilføj som ekstra ret');
+		return answer === 'ok' ? MAIN : answer === 'alt' ? EXTRA : null;
 	}
 
-	/** Lægger et ønske på en dag. Står der allerede en ret, spørges der først. */
-	async placeWish(wishId: number, d: Day): Promise<boolean> {
+	/** Lægger et ønske på en dag. Uden `slot` spørges der, hvis dagen har en ret. */
+	async placeWish(wishId: number, d: Day, slot?: Slot): Promise<boolean> {
 		const plan = this.plan;
-		if (!plan || !(await this.mayReplace(d))) return false;
-		return this.run(() => planApi.setSlot(plan, d.date, false, { kind: 'ønske', wish_id: wishId }));
+		const where = slot ?? (await this.whereFor(d));
+		if (!plan || !where) return false;
+		return this.run(() => planApi.setSlot(plan, d.date, where, { kind: 'ønske', wish_id: wishId }));
+	}
+
+	/**
+	 * Noget er trukket hen på en dag: "meal:<id>", "wish:<id>" eller "recipe:<id>".
+	 * En hovedret bytter plads med dagens hovedret; en ekstra ret bliver ekstra ret
+	 * på den nye dag. Et ønske eller en opskrift spørger, hvis dagen har en ret.
+	 */
+	async drop(payload: string, d: Day): Promise<boolean> {
+		const plan = this.plan;
+		const [kind, raw] = payload.split(':');
+		const id = Number(raw);
+		if (!plan || !id) return false;
+		if (kind === 'meal') {
+			const meal = plan.days.flatMap((x) => [x.meal, ...x.extras]).find((m) => m?.id === id);
+			if (!meal || meal.date === d.date) return false;
+			return this.run(() => planApi.move(id, d.date, meal.extra));
+		}
+		if (kind === 'wish') return this.placeWish(id, d);
+		if (kind === 'recipe') {
+			const where = await this.whereFor(d);
+			return !!where && this.run(() => planApi.setSlot(plan, d.date, where, { kind: 'opskrift', recipe_id: id }));
+		}
+		return false;
 	}
 }

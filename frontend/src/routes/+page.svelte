@@ -8,7 +8,8 @@
 	import { clock, onResume } from '$lib/resume.svelte';
 	import { shopping } from '$lib/shopping.svelte';
 	import { fetchSuggestions, type Suggestion } from '$lib/suggestions';
-	import type { Day, SlotChoice, Wish } from '$lib/types';
+	import { MAIN, type Day, type Slot, type SlotChoice } from '$lib/types';
+	import { draggable } from '$lib/ui/drag.svelte';
 	import Plate from '$lib/ui/Plate.svelte';
 	import ScreenHeader from '$lib/ui/ScreenHeader.svelte';
 	import WeekNav from '$lib/ui/WeekNav.svelte';
@@ -30,7 +31,7 @@
 
 	type Open =
 		| { kind: 'day'; date: string }
-		| { kind: 'chooser'; date: string; forChild: boolean; focusSearch: boolean }
+		| { kind: 'chooser'; date: string; slot: Slot; focusSearch: boolean }
 		| { kind: 'wishlist' }
 		| { kind: 'fill' }
 		| { kind: 'new' }
@@ -48,13 +49,8 @@
 	const plan = $derived(week.plan);
 	const planId = $derived(week.plan?.id);
 	const hasToday = $derived(!!plan?.days.some((d) => d.date === clock.today));
-	// Den første helt tomme dag, der ikke er gået, får ønsker tilbudt direkte.
-	const firstEmpty = $derived(
-		plan?.wishlist.length ? plan.days.find((d) => !d.meal && !d.child && d.date >= clock.today)?.date : undefined
-	);
-	const offered = $derived(plan?.wishlist.slice(0, 2) ?? []);
 	// Der er en tom dag, der ikke er gået: så kan ugen fyldes.
-	const canFill = $derived(!!plan?.days.some((d) => !d.meal && !d.child && d.date >= clock.today));
+	const canFill = $derived(!!plan?.days.some((d) => !d.meal && !d.extras.length && d.date >= clock.today));
 
 	const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -119,17 +115,17 @@
 	function openDay(date: string) {
 		const d = week.day(date);
 		if (!d) return;
-		if (d.meal || d.child) {
+		if (d.meal || d.extras.length) {
 			week.error = '';
 			notice = '';
 			sheet = { kind: 'day', date };
 		} else openChooser(date);
 	}
 
-	function openChooser(date: string, forChild = false, focusSearch = false) {
+	function openChooser(date: string, slot: Slot = MAIN, focusSearch = false) {
 		week.error = '';
 		notice = '';
-		sheet = { kind: 'chooser', date, forChild, focusSearch };
+		sheet = { kind: 'chooser', date, slot, focusSearch };
 	}
 
 	/** Et ark er lukket. Er rækken, der åbnede det, skiftet ud imens, får dagens række fokus. */
@@ -148,9 +144,9 @@
 	async function choose(choice: SlotChoice) {
 		const p = week.plan;
 		if (sheet?.kind !== 'chooser' || !p) return;
-		const { date, forChild } = sheet;
+		const { date, slot } = sheet;
 		sheet = null;
-		await week.run(() => planApi.setSlot(p, date, forChild, choice));
+		await week.run(() => planApi.setSlot(p, date, slot, choice));
 		refocus(date);
 	}
 
@@ -161,30 +157,10 @@
 		else if (choice.kind === 'fritekst') week.run(() => planApi.addWish(id, { text: choice.text }));
 	}
 
-	async function place(wish: Wish, d: Day) {
-		await week.placeWish(wish.id, d);
-		refocus(d.date);
-	}
-
-	// Træk og slip i ugegitteret. En ret bytter plads med den, der står på dagen.
-	// Et ønske eller en opskrift erstatter den, så der spørges først.
-	function dragstart(e: DragEvent, payload: string) {
-		e.dataTransfer?.setData('text/plain', payload);
-		if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
-	}
-
-	async function drop(payload: string, d: Day) {
-		const p = week.plan;
-		const [kind, raw] = payload.split(':');
-		const id = Number(raw);
-		if (!p || !id) return;
-		if (kind === 'meal') {
-			if (d.meal?.id !== id) week.run(() => planApi.move(id, d.date, false));
-		} else if (kind === 'wish') {
-			week.placeWish(id, d);
-		} else if (kind === 'recipe' && (await week.mayReplace(d))) {
-			week.run(() => planApi.setSlot(p, d.date, false, { kind: 'opskrift', recipe_id: id }));
-		}
+	// Træk og slip (finger og mus): en ret bytter plads med den, der står på dagen.
+	// Et ønske eller en opskrift spørger, hvis dagen har en ret. Se Week.drop.
+	function drop(payload: string, d: Day) {
+		void week.drop(payload, d);
 	}
 
 	// Forslagene under gitteret følger ugen: det, der er lagt på en dag, forsvinder herfra.
@@ -230,14 +206,13 @@
 						<div class="grid2">
 							{#each plan.wishlist as w (w.id)}
 								{#if w.recipe}
-									<a class="rc tile" href="/opskrift/{w.recipe.id}" draggable="true" ondragstart={(e) => dragstart(e, `wish:${w.id}`)}>
+									<a class="rc tile" href="/opskrift/{w.recipe.id}" use:draggable={`wish:${w.id}`}>
 										<Plate src={w.recipe.image_url} seed={w.recipe.id} size={40} lazy />
 										<p class="n">{w.title}</p>
 									</a>
 								{:else}
-									<!-- En idé uden opskrift kan kun trækkes. Uden mus lægges den på en dag fra ønskelisten (chippen i toppen). -->
-									<!-- svelte-ignore a11y_no_static_element_interactions -->
-									<div class="rc tile" draggable="true" ondragstart={(e) => dragstart(e, `wish:${w.id}`)}>
+									<!-- En idé uden opskrift kan kun trækkes. Uden mus og finger lægges den på en dag fra ønskelisten (chippen i toppen). -->
+									<div class="rc tile" use:draggable={`wish:${w.id}`}>
 										<p class="n">{w.title}</p>
 									</div>
 								{/if}
@@ -249,7 +224,7 @@
 						<p class="sl">Længe siden<span>fra jeres egne opskrifter</span></p>
 						<div class="grid2">
 							{#each suggestions as s (s.recipe.id)}
-								<a class="rc tile" href="/opskrift/{s.recipe.id}" draggable="true" ondragstart={(e) => dragstart(e, `recipe:${s.recipe.id}`)}>
+								<a class="rc tile" href="/opskrift/{s.recipe.id}" use:draggable={`recipe:${s.recipe.id}`}>
 									<Plate src={s.recipe.image_url} seed={s.recipe.id} size={40} lazy />
 									<p class="n">{s.recipe.title}</p>
 								</a>
@@ -280,22 +255,9 @@
 
 			{#each plan.days as d (d.date)}
 				{#if d.date === clock.today}
-					<TonightCard
-						day={d}
-						wishes={d.date === firstEmpty ? offered : []}
-						onopen={() => openDay(d.date)}
-						onchoose={() => openChooser(d.date)}
-						onplace={(w) => place(w, d)}
-					/>
+					<TonightCard day={d} onopen={() => openDay(d.date)} onchoose={() => openChooser(d.date)} ondrop={(p) => drop(p, d)} />
 				{:else}
-					<DayRow
-						day={d}
-						today={clock.today}
-						wishes={d.date === firstEmpty ? offered : []}
-						onopen={() => openDay(d.date)}
-						onplace={(w) => place(w, d)}
-						onsearch={() => openChooser(d.date, false, true)}
-					/>
+					<DayRow day={d} today={clock.today} onopen={() => openDay(d.date)} ondrop={(p) => drop(p, d)} />
 				{/if}
 			{/each}
 
@@ -329,10 +291,10 @@
 	<NewWeekSheet {week} oncreated={address} onclose={() => closed()} />
 {:else if plan && sheet?.kind === 'day'}
 	{@const date = sheet.date}
-	<DaySheet {week} {date} onchooser={(forChild) => openChooser(date, forChild)} onclose={() => closed(date)} />
+	<DaySheet {week} {date} onchooser={(slot) => openChooser(date, slot)} onclose={() => closed(date)} />
 {:else if plan && sheet?.kind === 'chooser'}
 	{@const date = sheet.date}
-	<ChooserSheet {plan} {date} forChild={sheet.forChild} focusSearch={sheet.focusSearch} onchoose={choose} onclose={() => closed(date)} />
+	<ChooserSheet {plan} {date} extra={sheet.slot.extra} focusSearch={sheet.focusSearch} onchoose={choose} onclose={() => closed(date)} />
 {:else if plan && sheet?.kind === 'fill'}
 	<FillSheet {week} onclose={() => closed()} />
 {:else if plan && sheet?.kind === 'wishlist'}
@@ -376,10 +338,5 @@
 	}
 	.tile {
 		cursor: grab;
-		-webkit-user-drag: element;
-		-webkit-touch-callout: none;
-	}
-	.tile :global(img) {
-		pointer-events: none;
 	}
 </style>

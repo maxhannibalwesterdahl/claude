@@ -32,7 +32,8 @@
 						<Icon name="x" />
 					</button>
 				</div>
-				<!-- Ledige dage er tegnet op i tomat. En dag med en ret kan også vælges: så spørges der først. -->
+				<!-- Ledige dage er tegnet op i tomat. En dag med en ret kan også vælges: så spørges der,
+		     om retten skal erstattes, eller ønsket skal med som ekstra ret. -->
 				<div class="days" role="group" aria-label="Læg {w.title} på en dag">
 					{#each plan.days as d (d.date)}
 						{@const past = d.date < clock.today}
@@ -41,7 +42,7 @@
 							class="chip"
 							class:a={!d.meal && !past}
 							disabled={past}
-							title={past ? 'Dagen er gået' : d.meal ? `Erstatter ${d.meal.title}` : 'Ledig'}
+							title={past ? 'Dagen er gået' : d.meal ? `Har ${d.meal.title}` : 'Ledig'}
 							onclick={() => week.placeWish(w.id, d)}>{weekday(d.date)}</button
 						>
 					{/each}

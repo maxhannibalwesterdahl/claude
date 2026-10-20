@@ -7,6 +7,7 @@
 from datetime import date, datetime, timezone
 
 from sqlalchemy import BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, false, true
+from sqlalchemy import text as sql
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -306,15 +307,19 @@ class Plan(Base):
 
 
 class PlanMeal(Base):
-    """Én ret på én dag. Højst én til husstanden og én til barnet pr. dag."""
+    """Én ret på én dag. Hver dag har højst én hovedret og et vilkårligt antal
+    ekstra retter (fx grød til barnet eller en salat ved siden af)."""
 
     __tablename__ = "plan_meal"
-    __table_args__ = (UniqueConstraint("plan_id", "date", "for_child"),)
+    __table_args__ = (
+        Index("uq_plan_meal_main", "plan_id", "date", unique=True, sqlite_where=sql("NOT extra")),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     plan_id: Mapped[int] = mapped_column(ForeignKey("plan.id", ondelete="CASCADE"), index=True)
     date: Mapped[date] = mapped_column(Date)
-    for_child: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Ekstra ret ved siden af dagens hovedret.
+    extra: Mapped[bool] = mapped_column(Boolean, default=False)
     # "opskrift", "fritekst" eller "rester"
     kind: Mapped[str] = mapped_column(String(10))
     recipe_id: Mapped[int | None] = mapped_column(ForeignKey("recipe.id", ondelete="SET NULL"))

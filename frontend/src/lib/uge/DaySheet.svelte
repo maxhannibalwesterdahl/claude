@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { longDate, parseDate, weekday } from '$lib/dates';
 	import { planApi } from '$lib/planApi';
-	import type { Plan } from '$lib/types';
+	import { MAIN, type Plan, type Slot } from '$lib/types';
 	import Icon from '$lib/ui/Icon.svelte';
 	import Plate from '$lib/ui/Plate.svelte';
 	import Sheet from '$lib/ui/Sheet.svelte';
@@ -11,30 +11,30 @@
 	interface Props {
 		week: Week;
 		date: string;
-		/** Åbner vælgeren for dagens ret eller barnets ret. Siden lukker dette ark. */
-		onchooser: (forChild: boolean) => void;
+		/** Åbner vælgeren for hovedretten, en ny ekstra ret eller en ekstra ret, der skiftes ud. Siden lukker dette ark. */
+		onchooser: (slot: Slot) => void;
 		onclose: () => void;
 	}
 	let { week, date, onchooser, onclose }: Props = $props();
 
-	/** Arket viser barnets ret i stedet for husstandens. */
-	let child = $state(false);
+	/** Den ekstra ret, arket viser. Tom: dagens hovedret. */
+	let shown = $state<number | null>(null);
 	/** Bunden viser ugens dage i stedet for knapperne. */
 	let moving = $state(false);
 	let busy = $state(false);
 
 	const plan = $derived(week.plan);
 	const day = $derived(week.day(date));
-	const meal = $derived(day ? (child ? day.child : day.meal) : null);
+	const meal = $derived(day ? (shown !== null ? (day.extras.find((m) => m.id === shown) ?? null) : day.meal) : null);
 	const recipe = $derived(meal?.kind === 'opskrift' ? meal.recipe : null);
 
 	$effect(() => {
-		// Barnets ret er fjernet eller flyttet: tilbage til aftensmaden.
-		if (child && day && !day.child) child = false;
+		// Den ekstra ret er fjernet eller flyttet: tilbage til hovedretten.
+		if (shown !== null && day && !day.extras.some((m) => m.id === shown)) shown = null;
 	});
 	$effect(() => {
 		// Dagen er blevet tom (retten er fjernet eller flyttet): der er ikke mere at vise.
-		if (!day || (!day.meal && !day.child)) onclose();
+		if (!day || (!day.meal && !day.extras.length)) onclose();
 	});
 
 	/** Slår knapperne fra, mens ændringen er på vej. */
@@ -47,12 +47,13 @@
 		}
 	}
 
-	/** Flytter retten. Står der en ret på den anden dag, bytter de plads (uden at spørge). */
+	/** Flytter retten. En hovedret bytter plads med hovedretten på den anden dag
+	 *  (uden at spørge). En ekstra ret lægges til den anden dags ekstra retter. */
 	async function moveTo(target: string, close: () => void) {
 		if (!meal) return;
 		const id = meal.id;
-		const forChild = child;
-		if (await run(() => planApi.move(id, target, forChild))) close();
+		const extra = meal.extra;
+		if (await run(() => planApi.move(id, target, extra))) close();
 	}
 
 	function remove() {
@@ -70,25 +71,25 @@
 
 {#if plan && day}
 	<Sheet
-		title={meal?.title ?? 'Ingen ret endnu'}
-		eyebrow={child ? `${longDate(date)} · barnets ret` : longDate(date)}
+		title={meal?.title ?? (day.extras.length ? 'Ingen hovedret endnu' : 'Ingen ret endnu')}
+		eyebrow={shown !== null ? `${longDate(date)} · ekstra ret` : longDate(date)}
 		eyebrowAbove
 		aside={recipe ? plate : undefined}
 		{onclose}
 	>
 		{#if week.error}<p class="msg" role="alert">{week.error}</p>{/if}
-		{#key `${child}:${meal?.id}`}
+		{#key `${shown}:${meal?.id}`}
 			<MealPanel
 				{week}
 				{plan}
 				{day}
 				{meal}
-				forChild={child}
+				extra={shown !== null}
 				{busy}
 				{run}
-				onchild={() => onchooser(true)}
-				onswap={(c) => {
-					child = c;
+				onadd={() => onchooser({ extra: true })}
+				onshow={(id) => {
+					shown = id;
 					moving = false;
 				}}
 			/>
@@ -97,7 +98,7 @@
 		{#snippet footer(close)}
 			{#if !meal}
 				<div class="btns">
-					<button type="button" class="btn primary" onclick={() => onchooser(false)}>Vælg ret</button>
+					<button type="button" class="btn primary" onclick={() => onchooser(MAIN)}>{day.extras.length ? 'Vælg hovedret' : 'Vælg ret'}</button>
 				</div>
 			{:else if moving}
 				<p class="small muted to">Flyt til</p>
@@ -112,7 +113,7 @@
 			{:else}
 				<div class="btns">
 					<button type="button" class="btn" disabled={busy} onclick={() => (moving = true)}><Icon name="move" />Flyt</button>
-					<button type="button" class="btn" disabled={busy} onclick={() => onchooser(child)}>Skift ret</button>
+					<button type="button" class="btn" disabled={busy} onclick={() => onchooser(meal.extra ? { extra: true, replaceId: meal.id } : MAIN)}>Skift ret</button>
 					<button type="button" class="btn danger" disabled={busy} onclick={remove}>Fjern</button>
 				</div>
 			{/if}

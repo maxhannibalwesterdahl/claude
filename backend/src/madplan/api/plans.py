@@ -69,7 +69,8 @@ class ReminderOut(BaseModel):
 class MealOut(BaseModel):
     id: int
     date: date
-    for_child: bool
+    # Ekstra ret ved siden af hovedretten.
+    extra: bool
     kind: Kind
     title: str
     recipe: RecipeBrief | None
@@ -86,7 +87,8 @@ class MealOut(BaseModel):
 class DayOut(BaseModel):
     date: date
     meal: MealOut | None
-    child: MealOut | None
+    # Ekstra retter på dagen, i den rækkefølge de er lagt på.
+    extras: list[MealOut]
 
 
 class WishOut(BaseModel):
@@ -114,7 +116,10 @@ class PlanIn(BaseModel):
 
 class SlotIn(BaseModel):
     date: date
-    for_child: bool = False
+    # Ekstra ret: lægges på ved siden af hovedretten i stedet for at erstatte den.
+    extra: bool = False
+    # Ekstra retten, der skiftes ud. Tom: en ny ekstra ret.
+    replace_id: int | None = None
     kind: Kind
     recipe_id: int | None = None
     text: str = Field("", max_length=200)
@@ -131,7 +136,12 @@ class MealPatch(BaseModel):
 
 class MoveIn(BaseModel):
     date: date
-    for_child: bool = False
+    extra: bool = False
+
+
+class PlaceIn(MoveIn):
+    # Ekstra retten, ønsket skal skifte ud. Tom: en ny ekstra ret.
+    replace_id: int | None = None
 
 
 class LineStateIn(BaseModel):
@@ -201,7 +211,7 @@ def _meal_out(meal: PlanMeal, pantry: set[int], adjust: dict[int, Adjustments], 
             ))
     src = meal.leftover_from
     return MealOut(
-        id=meal.id, date=meal.date, for_child=meal.for_child, kind=meal.kind, title=meal_title(meal),
+        id=meal.id, date=meal.date, extra=meal.extra, kind=meal.kind, title=meal_title(meal),
         recipe=_brief(meal.recipe), text=meal.text, multiplier=meal.multiplier,
         leftover_from=MealRef(id=src.id, date=src.date, title=meal_title(src), multiplier=src.multiplier)
         if src else None,
@@ -225,13 +235,13 @@ def plan_out(plan: Plan) -> PlanOut:
     overlay = Overlay.load(object_session(plan), plan.household_id)
     ings = ingredient_map(object_session(plan))
     extras = parse_extras(object_session(plan), plan.household_id, adjust)
-    by_slot = {(m.date, m.for_child): m for m in plan.meals}
+    out = lambda m: _meal_out(m, pantry, adjust, overlay, ings, extras)  # noqa: E731
     days = []
     for i in range(plan.days):
         d = plan.start_date + timedelta(days=i)
-        main, child = by_slot.get((d, False)), by_slot.get((d, True))
-        days.append(DayOut(date=d, meal=_meal_out(main, pantry, adjust, overlay, ings, extras) if main else None,
-                        child=_meal_out(child, pantry, adjust, overlay, ings, extras) if child else None))
+        main = next((m for m in plan.meals if m.date == d and not m.extra), None)
+        side = sorted((m for m in plan.meals if m.date == d and m.extra), key=lambda m: m.id)
+        days.append(DayOut(date=d, meal=out(main) if main else None, extras=[out(m) for m in side]))
     return PlanOut(
         id=plan.id, start_date=plan.start_date, end_date=_end(plan), days=days,
         wishlist=[WishOut(id=w.id, recipe=_brief(w.recipe), text=w.text, title=_wish_title(w)) for w in plan.wishlist],
@@ -303,11 +313,21 @@ def _detach(plan: Plan, removed: PlanMeal) -> None:
             m.line_states = [s for s in m.line_states if s.state != "rest"]
 
 
-def _clear_slot(session: Session, plan: Plan, d: date, for_child: bool) -> None:
+def _clear_main(session: Session, plan: Plan, d: date) -> None:
     for m in list(plan.meals):
-        if m.date == d and m.for_child == for_child:
+        if m.date == d and not m.extra:
             _detach(plan, m)
             plan.meals.remove(m)
+    session.flush()
+
+
+def _clear_extra(session: Session, plan: Plan, d: date, meal_id: int) -> None:
+    """Ekstra retten med id'et på dagen fjernes, så en ny kan tage pladsen."""
+    old = next((m for m in plan.meals if m.id == meal_id and m.date == d and m.extra), None)
+    if old is None:
+        raise HTTPException(status_code=422, detail="Retten, der skulle skiftes, er her ikke længere")
+    _detach(plan, old)
+    plan.meals.remove(old)
     session.flush()
 
 
@@ -367,11 +387,12 @@ def delete_plan(plan_id: int, session: DbSession, hh: CurrentHousehold) -> None:
 
 @router.put("/plans/{plan_id}/slots")
 def set_slot(plan_id: int, body: SlotIn, session: DbSession, hh: CurrentHousehold) -> PlanOut:
-    """Sæt retten på en dag (erstatter en eventuel ret, der står der)."""
+    """Sæt hovedretten på en dag (erstatter en eventuel ret, der står der). Med
+    `extra` lægges en ekstra ret på dagen, eller `replace_id` skiftes ud."""
     plan = load_plan(session, plan_id, hh)
     _check_date(plan, body.date)
     _check_multiplier(body.multiplier)
-    meal = PlanMeal(date=body.date, for_child=body.for_child, kind=body.kind, multiplier=body.multiplier)
+    meal = PlanMeal(date=body.date, extra=body.extra, kind=body.kind, multiplier=body.multiplier)
     if body.kind == "opskrift":
         meal.recipe = _check_recipe(session, body.recipe_id, hh)
     elif body.kind == "fritekst":
@@ -381,7 +402,10 @@ def set_slot(plan_id: int, body: SlotIn, session: DbSession, hh: CurrentHousehol
     else:
         meal.leftover_from = _check_leftover_source(session, plan, body.leftover_from_id, body.date)
         meal.multiplier = 1.0
-    _clear_slot(session, plan, body.date, body.for_child)
+    if not body.extra:
+        _clear_main(session, plan, body.date)
+    elif body.replace_id is not None:
+        _clear_extra(session, plan, body.date, body.replace_id)
     plan.meals.append(meal)
     session.commit()
     return plan_out(load_plan(session, plan.id, hh))
@@ -412,21 +436,22 @@ def update_meal(meal_id: int, body: MealPatch, session: DbSession, hh: CurrentHo
 
 @router.post("/meals/{meal_id}/move")
 def move_meal(meal_id: int, body: MoveIn, session: DbSession, hh: CurrentHousehold) -> PlanOut:
-    """Flyt en ret til en anden dag. Står der allerede en ret, byttes de."""
+    """Flyt en ret til en anden dag. Som hovedret byttes den med hovedretten, der
+    står der. Som ekstra ret lægges den bare til dagens andre ekstra retter."""
     meal = _meal(session, meal_id, hh)
     plan = meal.plan
     _check_date(plan, body.date)
-    other = next((m for m in plan.meals if m.date == body.date and m.for_child == body.for_child), None)
-    if other is meal:
+    if (meal.date, meal.extra) == (body.date, body.extra):
         return plan_out(load_plan(session, plan.id, hh))
-    old_date, old_child = meal.date, meal.for_child
+    other = None if body.extra else next((m for m in plan.meals if m.date == body.date and not m.extra), None)
+    old_date, old_extra = meal.date, meal.extra
     # Midlertidig plads, så unik-begrænsningen ikke rammer under byttet.
     meal.date = date(1900, 1, 1)
     session.flush()
     if other:
-        other.date, other.for_child = old_date, old_child
+        other.date, other.extra = old_date, old_extra
         session.flush()
-    meal.date, meal.for_child = body.date, body.for_child
+    meal.date, meal.extra = body.date, body.extra
     session.flush()
     # En rest kan ikke komme fra samme eller en senere dag.
     for m in plan.meals:
@@ -483,11 +508,16 @@ def set_line_state(meal_id: int, line_id: int, body: LineStateIn, session: DbSes
 
 @router.post("/plans/{plan_id}/wishlist")
 def add_wish(plan_id: int, body: WishIn, session: DbSession, hh: CurrentHousehold) -> PlanOut:
+    """Læg en ret på ønskelisten. Står den der allerede, sker der ingenting
+    (så et dobbelttryk ikke giver to af samme ønske)."""
     plan = load_plan(session, plan_id, hh)
+    text = body.text.strip()
     if body.recipe_id is not None:
-        plan.wishlist.append(WishlistItem(recipe=_check_recipe(session, body.recipe_id, hh)))
-    elif body.text.strip():
-        plan.wishlist.append(WishlistItem(text=body.text.strip()))
+        if all(w.recipe_id != body.recipe_id for w in plan.wishlist):
+            plan.wishlist.append(WishlistItem(recipe=_check_recipe(session, body.recipe_id, hh)))
+    elif text:
+        if all(w.recipe_id or w.text.casefold() != text.casefold() for w in plan.wishlist):
+            plan.wishlist.append(WishlistItem(text=text))
     else:
         raise HTTPException(status_code=422, detail="Vælg en opskrift eller skriv en ret")
     session.commit()
@@ -517,12 +547,12 @@ def distribute_wishes(plan_id: int, session: DbSession, hh: CurrentHousehold, to
     er gået, røres ikke. Ønsker, der ikke er plads til, bliver på listen."""
     plan = load_plan(session, plan_id, hh)
     today = today or local_today()
-    taken = {m.date for m in plan.meals if not m.for_child}
+    taken = {m.date for m in plan.meals if not m.extra}
     free = [plan.start_date + timedelta(days=i) for i in range(plan.days)]
     free = [d for d in free if d not in taken and d >= today]
     for wish, d in zip(list(plan.wishlist), free):
         plan.meals.append(PlanMeal(
-            date=d, for_child=False, multiplier=1.0,
+            date=d, extra=False, multiplier=1.0,
             kind="opskrift" if wish.recipe_id else "fritekst",
             recipe_id=wish.recipe_id, text=wish.text,
         ))
@@ -532,11 +562,11 @@ def distribute_wishes(plan_id: int, session: DbSession, hh: CurrentHousehold, to
 
 
 @router.post("/wishlist/{wish_id}/place")
-def place_wish(wish_id: int, body: MoveIn, session: DbSession, hh: CurrentHousehold) -> PlanOut:
+def place_wish(wish_id: int, body: PlaceIn, session: DbSession, hh: CurrentHousehold) -> PlanOut:
     """Læg et ønske på en dag. Ønsket fjernes fra listen."""
     wish = _wish(session, wish_id, hh)
     slot = SlotIn(
-        date=body.date, for_child=body.for_child,
+        date=body.date, extra=body.extra, replace_id=body.replace_id if body.extra else None,
         kind="opskrift" if wish.recipe_id else "fritekst",
         recipe_id=wish.recipe_id, text=wish.text,
     )
@@ -560,7 +590,7 @@ def suggestions(
     der allerede står på den plan som ret eller ønske."""
     if plan_id is not None and session.scalar(select(Plan.id).where(Plan.id == plan_id, Plan.household_id == hh.id)) is None:
         raise HTTPException(status_code=404, detail="Planen findes ikke")
-    # Både husstandens og barnets ret tæller: opskriften har været på bordet.
+    # Både hovedretter og ekstra retter tæller: opskriften har været på bordet.
     # Rester tæller ikke (de har ingen opskrift), og den viste plan holdes ude.
     planned = (
         select(PlanMeal.recipe_id, func.max(PlanMeal.date).label("last"))
@@ -619,7 +649,7 @@ class FillIn(BaseModel):
 
 
 def _open_days(plan: Plan, today: date) -> list[date]:
-    """Dagene fra i dag, der hverken har en husstands- eller børneret."""
+    """Dagene fra i dag, der ikke har nogen ret (hverken hovedret eller ekstra)."""
     taken = {m.date for m in plan.meals}
     days = (plan.start_date + timedelta(days=i) for i in range(plan.days))
     return [d for d in days if d not in taken and d >= today]
@@ -696,7 +726,7 @@ def apply_fill(plan_id: int, body: FillIn, session: DbSession, hh: CurrentHouseh
         if item.date in taken or item.date < today:
             continue
         recipe = _check_recipe(session, item.recipe_id, hh)
-        plan.meals.append(PlanMeal(date=item.date, for_child=False, kind="opskrift", multiplier=1.0, recipe=recipe))
+        plan.meals.append(PlanMeal(date=item.date, extra=False, kind="opskrift", multiplier=1.0, recipe=recipe))
         taken.add(item.date)
         wish = next((w for w in plan.wishlist if w.recipe_id == recipe.id), None)
         if wish is not None:

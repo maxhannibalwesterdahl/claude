@@ -730,8 +730,12 @@ html.kb-open .dock {
 	background: var(--card);
 	box-shadow: var(--shadow-sheet);
 	opacity: 0.95;
+	scale: 1.04;
 	pointer-events: none;
-	will-change: transform;
+	will-change: translate, scale;
+	transition:
+		scale 120ms ease,
+		opacity 120ms ease;
 }
 .drag-source {
 	opacity: 0.35;
@@ -746,16 +750,26 @@ html.kb-open .dock {
 	box-shadow: inset 0 0 0 2px var(--tomat) !important;
 	outline: none !important;
 }
-/* Kopien, der følger fingeren, må ikke dele navn med retten i overgangene (se glide). */
-.drag-ghost,
-.drag-ghost * {
+/* Kopien, der følger fingeren, deler ikke navn med retten i overgangene (se glide).
+   Først når den er sluppet på en dag, overtager den navnet fra originalen, så
+   retten glider derfra, hvor den blev sluppet. */
+.drag-ghost:not(.landing),
+.drag-ghost:not(.landing) *,
+.drag-source,
+.drag-source * {
 	view-transition-name: none !important;
 }
 /* Retten er over skraldespanden. */
 .drag-ghost.to-trash {
 	opacity: 0.6;
 	scale: 0.3;
-	transition: scale 120ms ease, opacity 120ms ease;
+}
+/* Sluppet i skraldespanden: retten forsvinder ned i den. */
+.drag-ghost.trashed {
+	opacity: 0;
+	scale: 0.05;
+	transition-duration: 170ms;
+	transition-timing-function: ease-in;
 }
 
 /* ---------- Overgange (se lib/ui/glide.svelte.ts) ---------- */

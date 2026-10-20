@@ -14,7 +14,7 @@
 		/** Åbner vælgeren for aftensmaden. */
 		onchoose: () => void;
 		/** Noget er trukket hen på i aften ("meal:<id>", "wish:<id>" eller "recipe:<id>"). */
-		ondrop: (payload: string) => void;
+		ondrop: (payload: string) => unknown;
 	}
 	let { day, onopen, onchoose, ondrop }: Props = $props();
 

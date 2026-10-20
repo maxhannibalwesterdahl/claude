@@ -11,7 +11,7 @@
  * overgangen over. Hver ret hedder `meal-<id>` og hvert ønske `wish-<id>`.
  */
 import { flushSync } from 'svelte';
-import { dragState } from './drag.svelte';
+import { dragState, land } from './drag.svelte';
 
 /** Et ønske, der lige er lagt på en dag: den nye ret låner ønskets navn, så den glider fra ønskelisten. */
 const aliases = $state<Record<number, string>>({});
@@ -41,10 +41,13 @@ export function canGlide(): boolean {
  */
 export async function glide(update: () => void, lend: Record<number, string> = {}): Promise<void> {
 	if (!canGlide()) {
+		land();
 		update();
 		return;
 	}
 	const t = document.startViewTransition(() => {
+		// En ret, der lige er sluppet, glider fra kopien, hvor fingeren slap.
+		land();
 		Object.assign(aliases, lend);
 		update();
 		flushSync();

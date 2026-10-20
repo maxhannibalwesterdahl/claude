@@ -160,17 +160,19 @@
 
 	// Træk og slip (finger og mus): en ret bytter plads med den, der står på dagen.
 	// Et ønske eller en opskrift spørger, hvis dagen har en ret. Se Week.drop.
+	// Løftet holder kopien af retten, hvor den blev sluppet, til ugen er tegnet om.
 	function drop(payload: string, d: Day) {
-		void week.drop(payload, d);
+		return week.drop(payload, d);
 	}
 
-	/** Sluppet i skraldespanden: retten fjernes fra ugen, ønsket fra ønskelisten. */
+	/** Sluppet i skraldespanden: retten fjernes fra ugen, ønsket fra ønskelisten.
+	 *  Løftet holder originalen falmet, til den er væk. */
 	function trash(payload: string) {
 		const [kind, raw] = payload.split(':');
 		const id = Number(raw);
 		if (!id) return;
-		if (kind === 'meal') void week.run(() => planApi.remove(id));
-		else if (kind === 'wish') void week.run(() => planApi.removeWish(id));
+		if (kind === 'meal') return week.run(() => planApi.remove(id));
+		if (kind === 'wish') return week.run(() => planApi.removeWish(id));
 	}
 
 	// Forslagene under gitteret følger ugen: det, der er lagt på en dag, forsvinder herfra.

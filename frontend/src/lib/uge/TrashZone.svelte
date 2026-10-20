@@ -4,7 +4,7 @@
 
 	interface Props {
 		/** En ret ("meal:<id>") eller et ønske ("wish:<id>") er sluppet i skraldespanden. */
-		ondrop: (payload: string) => void;
+		ondrop: (payload: string) => unknown;
 	}
 	let { ondrop }: Props = $props();
 

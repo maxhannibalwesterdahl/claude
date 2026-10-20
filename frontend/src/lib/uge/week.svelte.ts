@@ -7,6 +7,7 @@ import { clock } from '$lib/resume.svelte';
 import { shopping } from '$lib/shopping.svelte';
 import { EXTRA, MAIN, type Day, type Meal, type Plan, type PlanBrief, type Slot } from '$lib/types';
 import { say } from '$lib/ui/copy';
+import { land } from '$lib/ui/drag.svelte';
 import { glide, wishName } from '$lib/ui/glide.svelte';
 import { weekApi } from './api';
 
@@ -192,6 +193,8 @@ export class Week {
 	 *  erstat den, eller læg den nye ved siden af som ekstra ret. null: annulleret. */
 	async whereFor(d: Day): Promise<Slot | null> {
 		if (!d.meal) return MAIN;
+		// En ret, der lige er sluppet her, skal ikke hænge bag spørgsmålet.
+		land();
 		const answer = await chooseDialog(`${weekdayName(d.date)} står der ${d.meal.title}.`, 'Erstat', 'Tilføj som ekstra ret');
 		return answer === 'ok' ? MAIN : answer === 'alt' ? EXTRA : null;
 	}

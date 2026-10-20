@@ -12,7 +12,7 @@
 		/** Åbner dagen: arket med retten, eller vælgeren, når dagen er tom. */
 		onopen: (date: string) => void;
 		/** Noget er sluppet på dagen: "meal:<id>", "wish:<id>" eller "recipe:<id>". */
-		ondrop: (payload: string, day: Day) => void;
+		ondrop: (payload: string, day: Day) => unknown;
 	}
 	let { plan, today, onopen, ondrop }: Props = $props();
 </script>

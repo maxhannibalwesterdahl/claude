@@ -14,7 +14,8 @@
 /** Det, der trækkes lige nu (fx "meal:12"). Tom, når der ikke trækkes. */
 export const dragState = $state<{ payload: string }>({ payload: '' });
 
-type DropHandler = (payload: string) => void;
+/** Svarer stedet med et løfte, bliver kopien liggende, hvor den blev sluppet, til løftet er indfriet. */
+type DropHandler = (payload: string) => unknown;
 const zones = new WeakMap<Element, DropHandler>();
 
 /** Så længe skal fingeren holdes stille, før retten løftes. */
@@ -25,6 +26,8 @@ const SLOP = 8;
 const MOUSE_START = 6;
 /** Tæt på skærmens top eller bund ruller siden med. */
 const EDGE = 70;
+/** Så længe tager det retten at forsvinde ned i skraldespanden (som i app.css). */
+const TRASH_MS = 170;
 
 interface Session {
 	payload: string;
@@ -39,6 +42,14 @@ interface Session {
 }
 
 let active: Session | null = null;
+/**
+ * Retten, der lige er sluppet på en dag. Kopien bliver liggende, hvor fingeren
+ * slap, indtil ugen er tegnet om; så glider retten derfra hen på sin nye plads
+ * (se glide). Den falmede original står, til det sker.
+ */
+let landing: Session | null = null;
+/** Så længe venter kopien højst på ugen, før den fjernes alligevel. */
+const LAND_MS = 8000;
 /** Tryk, et trækbart element allerede har taget. */
 const claimed = new WeakSet<Event>();
 
@@ -57,7 +68,9 @@ function setOver(s: Session, zone: Element | null) {
 }
 
 function place(s: Session) {
-	s.ghost.style.transform = `translate(${s.x - s.dx}px, ${s.y - s.dy}px) scale(1.04)`;
+	// translate og ikke transform: så skalerer `scale` (over skraldespanden) ikke
+	// også forskydningen med, og kopien skrumper ind mod fingeren, hvor den er.
+	s.ghost.style.translate = `${s.x - s.dx}px ${s.y - s.dy}px`;
 	setOver(s, zoneAt(s.x, s.y));
 }
 
@@ -77,6 +90,7 @@ function autoScroll() {
 }
 
 function begin(source: HTMLElement, payload: string, x: number, y: number) {
+	land();
 	const r = source.getBoundingClientRect();
 	// En kopi af retten følger fingeren (placeret med translate fra hjørnet).
 	const ghost = source.cloneNode(true) as HTMLElement;
@@ -84,6 +98,12 @@ function begin(source: HTMLElement, payload: string, x: number, y: number) {
 	ghost.removeAttribute('data-day');
 	ghost.setAttribute('aria-hidden', 'true');
 	ghost.classList.add('drag-ghost');
+	// Kun det, der trækkes, beholder sit navn i overgangen ("meal:12" -> meal-12),
+	// ikke fx de ekstra retter, der kom med i kopien af dagens række.
+	const keep = payload.replace(':', '-');
+	for (const el of [ghost, ...ghost.querySelectorAll<HTMLElement>('[style*="view-transition-name"]')]) {
+		if (el.style.viewTransitionName !== keep) el.style.removeProperty('view-transition-name');
+	}
 	// Skrumper den (over skraldespanden), er det ind mod fingeren.
 	Object.assign(ghost.style, { width: `${r.width}px`, height: `${r.height}px`, transformOrigin: `${x - r.left}px ${y - r.top}px` });
 	document.body.append(ghost);
@@ -101,13 +121,58 @@ function end(drop: boolean) {
 	if (!s) return;
 	active = null;
 	cancelAnimationFrame(s.raf);
-	s.ghost.remove();
-	s.source.classList.remove('drag-source');
 	document.body.classList.remove('dragging');
 	const zone = s.over;
+	const handler = drop && zone ? zones.get(zone) : undefined;
 	setOver(s, null);
 	dragState.payload = '';
-	if (drop && zone) zones.get(zone)?.(s.payload);
+	if (!handler) return finish(s);
+	if (zone!.hasAttribute('data-trash')) return trash(s, handler);
+	// Sluppet på en dag: kopien bliver liggende, til ugen er tegnet om.
+	s.ghost.classList.add('landing');
+	landing = s;
+	const timer = setTimeout(land, LAND_MS);
+	void Promise.resolve()
+		.then(() => handler(s.payload))
+		.catch(() => {})
+		.finally(() => {
+			clearTimeout(timer);
+			if (landing === s) land();
+		});
+}
+
+function finish(s: Session) {
+	s.ghost.remove();
+	s.source.classList.remove('drag-source');
+}
+
+/** Sluppet i skraldespanden: retten skrumper helt ned i den, før den fjernes. */
+function trash(s: Session, handler: DropHandler) {
+	s.ghost.classList.add('trashed');
+	const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+	setTimeout(
+		() => {
+			s.ghost.remove();
+			landing = s;
+			void Promise.resolve()
+				.then(() => handler(s.payload))
+				.catch(() => {})
+				.finally(() => landing === s && land());
+		},
+		still ? 0 : TRASH_MS
+	);
+}
+
+/**
+ * Fjerner kopien af en ret, der lige er sluppet, og viser originalen igen. Kaldes,
+ * når ugen tegnes om (inde i overgangen, så billedet før har kopien med), og
+ * når et spørgsmål dukker op, så kopien ikke hænger bag det.
+ */
+export function land() {
+	const s = landing;
+	if (!s) return;
+	landing = null;
+	finish(s);
 }
 
 // Mens der trækkes, må siden ikke rulle under fingeren.

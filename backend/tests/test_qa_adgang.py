@@ -157,6 +157,8 @@ NO_FOREIGN_IDS = {
     ("GET", "/api/staples"), ("POST", "/api/staples"),   # egen liste: test_faste_varer.py
     ("GET", "/api/settings/departments"), ("PUT", "/api/settings/departments"),
     ("GET", "/api/push/key"), ("POST", "/api/push/subscriptions"),
+    # Siri: egne nøgler og nøglens egen familie: test_siri.py
+    ("GET", "/api/me/keys"), ("POST", "/api/me/keys"), ("DELETE", "/api/me/keys/{key_id}"), ("POST", "/api/siri/add"),
 }
 
 

@@ -568,13 +568,21 @@ def add_extra(body: ExtraIn, session: DbSession, hh: CurrentHousehold, plan_id: 
     else:
         if not text:
             raise HTTPException(status_code=422, detail="Skriv en vare")
-        # Kendt vare? Så kommer den under den rigtige afdeling.
-        found = Catalog(session, hh.id).parse(text)
-        ing = session.get(Ingredient, found.ingredient_id) if found.match_status == "sikker" else None
-        if not _already_on_list(session, hh, plan, text, today):
-            session.add(ShoppingExtra(household_id=hh.id, text=text, ingredient=ing, source="egen", plan=plan))
+        add_text(session, hh, plan, text, today)
     session.commit()
     return build(session, hh, plan, today=today)
+
+
+def add_text(session: Session, hh: Household, plan: Plan | None, text: str, today: date | None = None) -> bool:
+    """Egen vare ud fra tekst alene. False, hvis den allerede står på listen og ikke er købt."""
+    if _already_on_list(session, hh, plan, text, today):
+        return False
+    # Kendt vare? Så kommer den under den rigtige afdeling.
+    found = Catalog(session, hh.id).parse(text)
+    ing = session.get(Ingredient, found.ingredient_id) if found.match_status == "sikker" else None
+    session.add(ShoppingExtra(household_id=hh.id, text=text, ingredient=ing, source="egen", plan=plan))
+    session.flush()
+    return True
 
 
 def _already_on_list(session: Session, hh: Household, plan: Plan | None, text: str, today: date | None) -> bool:

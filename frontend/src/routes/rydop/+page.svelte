@@ -131,6 +131,7 @@
 		<span class="tag">{shoppingDay ?? '–'}</span>
 	</button>
 	<a class="kv" href="/rydop/familie"><span class="k">Familie<small>Medlemmer, invitation og kodeord</small></span></a>
+	<a class="kv" href="/rydop/siri"><span class="k">Siri<small>"Tilføj til indkøb" med stemmen</small></span></a>
 	<a class="kv" href="/rydop/varer">
 		<span class="k">Alle varer</span>
 		{#if catalog.ingredients.length}<span class="tag">{catalog.ingredients.length}</span>{/if}
